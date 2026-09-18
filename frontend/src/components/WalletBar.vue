@@ -84,7 +84,7 @@ async function onSwitchClick() {
     <div class="brand">
       <img class="mark" src="/favicon.svg" alt="web3Agent logo" width="32" height="32" />
       <div>
-        <p class="name">web3Agent</p>
+        <p class="name">Web3 Agent Chat</p>
         <p class="tag">Arbitrum · ERC-8004</p>
       </div>
     </div>
