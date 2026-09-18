@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #0b1218;
+  --surface: #121b24;
+  --surface-2: #182331;
+  --ink: #e8eef4;
+  --muted: #8b9aab;
+  --border: #243142;
+  --accent: #28a0f0;
+  --warn: #e8a54b;
+  --radius: 0.65rem;
+  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --font-display: 'Outfit', 'Source Sans 3', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, color-mix(in oklab, var(--accent) 16%, transparent), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, color-mix(in oklab, #0b5cab 18%, transparent), transparent 50%),
+    var(--bg);
+  color: var(--ink);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+.btn {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.4rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #041018;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 88%, white);
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--ink);
+}
+
+.btn.ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

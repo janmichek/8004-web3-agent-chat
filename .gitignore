@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables — NEVER commit
+.env
+.env.local
+.env.*.local
+
+# Agent runtime data — NEVER commit (contains private keys)
+agents/*/wallet.json
+agents/*/skills/
+agents/*/memory.json
+agents/*/agent-config.json
+
+# Claude Code local settings
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+.vercel

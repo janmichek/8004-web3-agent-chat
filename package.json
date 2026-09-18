@@ -1,0 +1,71 @@
+{
+  "name": "8004-web3-agent-chat",
+  "version": "0.1.0",
+  "description": "Deploy autonomous AI agents on Arbitrum with LangChain, isolated wallets, and ERC-8004 identity registration.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "setup": "npx tsx src/cli/setup.ts",
+    "create-agent": "npx tsx src/cli/create-agent.ts",
+    "delete-agent": "npx tsx src/cli/delete-agent.ts",
+    "deploy": "npx tsx src/cli/deploy.ts",
+    "chat": "npx tsx src/cli/chat.ts",
+    "serve": "npx tsx src/server/api.ts",
+    "frontend": "npm run dev --prefix frontend",
+    "dev": "concurrently --kill-others --names \"api,frontend\" --prefix-colors \"cyan,magenta\" \"npm run serve\" \"npm run frontend\"",
+    "frontend:build": "npm run build --prefix frontend",
+    "test:e2e": "npm run test:e2e --prefix frontend",
+    "test:e2e:offline": "npm run test:e2e:offline --prefix frontend",
+    "test:e2e:onchain": "npm run test:e2e:onchain --prefix frontend",
+    "test:e2e:ui": "npm run test:e2e:ui --prefix frontend",
+    "test": "npx tsx src/cli/test-workflow.ts"
+  },
+  "keywords": [
+    "arbitrum",
+    "ai-agents",
+    "web3",
+    "langchain",
+    "erc-8004",
+    "defi",
+    "autonomous-agents"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@blockbyvlog/agent0-sdk": "^1.5.6",
+    "@clack/prompts": "^1.1.0",
+    "@hono/node-server": "^2.1.1",
+    "@langchain/anthropic": "^0.3.0",
+    "@langchain/core": "^0.3.0",
+    "@langchain/langgraph": "^0.2.0",
+    "@langchain/openai": "^0.6.17",
+    "@openrouter/sdk": "*",
+    "dotenv": "^16.4.0",
+    "ethers": "^6.13.0",
+    "graphql": "^17.0.2",
+    "hono": "^4.13.7",
+    "qrcode-terminal": "^0.12.0",
+    "viem": "^2.47.4",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "concurrently": "^10.0.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- bg rounded -->
+  <rect width="32" height="32" rx="7" fill="#111827"/>
+  <!-- robot body -->
+  <rect x="9" y="11" width="14" height="11" rx="3" fill="#E5E7EB" stroke="#9CA3AF" stroke-width="1"/>
+  <!-- robot head -->
+  <rect x="10.5" y="6" width="11" height="8" rx="2.5" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1"/>
+  <!-- antenna -->
+  <line x1="16" y1="6" x2="16" y2="3.2" stroke="#9CA3AF" stroke-width="1.2" stroke-linecap="round"/>
+  <circle cx="16" cy="2.5" r="1.6" fill="#10B981" stroke="#059669" stroke-width="0.7"/>
+  <!-- eyes -->
+  <circle cx="13.5" cy="10" r="1.7" fill="#111827"/>
+  <circle cx="18.5" cy="10" r="1.7" fill="#111827"/>
+  <circle cx="13.9" cy="9.5" r="0.55" fill="#fff" opacity="0.9"/>
+  <circle cx="18.9" cy="9.5" r="0.55" fill="#fff" opacity="0.9"/>
+  <!-- mouth / grill -->
+  <rect x="12.8" y="12.2" width="6.4" height="1.1" rx="0.5" fill="#6B7280"/>
+  <rect x="13.3" y="13.9" width="5.4" height="0.7" rx="0.35" fill="#9CA3AF"/>
+  <!-- cash - fanned bills behind -->
+  <g transform="rotate(-18 16 22)">
+    <rect x="18.5" y="17.5" width="9" height="5.5" rx="0.7" fill="#10B981" stroke="#065F46" stroke-width="0.6"/>
+    <circle cx="23" cy="20.25" r="1.4" fill="none" stroke="#A7F3D0" stroke-width="0.5"/>
+    <text x="23" y="20.75" text-anchor="middle" font-size="2.2" font-weight="800" fill="#ECFDF5" font-family="sans-serif">$</text>
+  </g>
+  <g transform="rotate(8 16 22)">
+    <rect x="19.2" y="19.2" width="9" height="5.5" rx="0.7" fill="#34D399" stroke="#065F46" stroke-width="0.6"/>
+    <circle cx="23.7" cy="21.95" r="1.4" fill="none" stroke="#ECFDF5" stroke-width="0.5"/>
+    <text x="23.7" y="22.45" text-anchor="middle" font-size="2.2" font-weight="800" fill="#064E3B" font-family="sans-serif">$</text>
+  </g>
+  <!-- robot arm holding cash -->
+  <rect x="7.2" y="16.5" width="3.2" height="5.2" rx="1.2" fill="#D1D5DB" stroke="#9CA3AF" stroke-width="0.7"/>
+  <circle cx="8.8" cy="21.2" r="1.4" fill="#9CA3AF"/>
+</svg>
