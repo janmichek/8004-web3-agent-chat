@@ -369,8 +369,9 @@ async function main(): Promise<void> {
       const reg = await registerAgent({
         name: config.name,
         description: config.description,
-        privateKey: agentWallet.privateKey,
+        privateKey: masterWallet.privateKey,
         walletAddress: agentWallet.address,
+        agentWalletPrivateKey: agentWallet.privateKey,
         metadata: {
           actions: state.actions,
           tools: [...new Set([...state.actionToolNames, ...state.tools])],

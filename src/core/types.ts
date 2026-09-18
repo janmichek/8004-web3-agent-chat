@@ -44,10 +44,21 @@ export interface RegisterAgentOptions {
   name: string;
   /** Short description of the agent's purpose. */
   description: string;
-  /** Agent's private key (hex string) for signing the registration transaction. */
+  /**
+   * Owner/master private key (hex string) signing the registration tx.
+   * This address becomes on-chain `creator` + `owner` (like the
+   * 8004-identity-nft `PK` flow: `register()` from the EOA).
+   */
   privateKey: string;
-  /** Agent's wallet address. */
+  /** Operational agent wallet address (becomes on-chain `agentWallet` via `setAgentWallet`). */
   walletAddress: string;
+  /**
+   * Operational agent wallet private key (hex string).
+   * Required when `walletAddress` differs from the `privateKey` signer so the
+   * agent wallet can produce the EIP-712 `AgentWalletSet` signature.
+   * Omit for legacy self-registration (signer == agent wallet).
+   */
+  agentWalletPrivateKey?: string;
   /** Optional image URI (https:// or ipfs://) for the agent metadata. */
   image?: string;
   /** Whether the agent should be registered as active (defaults to true). */

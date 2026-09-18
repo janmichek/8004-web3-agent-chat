@@ -555,8 +555,9 @@ app.post("/api/agents", async (c) => {
       const reg = await registerAgent({
         name: config.name,
         description: config.description,
-        privateKey: agentWallet.privateKey,
+        privateKey: masterWallet.privateKey,
         walletAddress: agentWallet.address,
+        agentWalletPrivateKey: agentWallet.privateKey,
         active,
         endpoints,
         metadata: {

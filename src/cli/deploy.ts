@@ -199,8 +199,9 @@ async function main(): Promise<void> {
       const reg = await registerAgent({
         name: agentName,
         description: `Agent ${agentName}`,
-        privateKey: agentWallet.privateKey,
+        privateKey: masterWallet.privateKey,
         walletAddress: agentWallet.address,
+        agentWalletPrivateKey: agentWallet.privateKey,
         metadata: {
           skills: discoverAgentSkills(agentName).map((c) => c.name),
         },

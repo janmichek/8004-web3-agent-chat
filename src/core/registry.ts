@@ -19,6 +19,14 @@ import { toGatewayUrl } from "./ipfs.js";
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
  *
+ * Owner-as-creator flow (matches 8004-identity-nft `register(agentURI)` from
+ * the EOA):
+ * - `options.privateKey` = owner/master signer → on-chain `creator` + `owner`.
+ * - `options.walletAddress` = operational agent wallet → on-chain `agentWallet`
+ *   via `setAgentWallet` (EIP-712 sig from `options.agentWalletPrivateKey`).
+ * - Omit `agentWalletPrivateKey` (or pass signer == wallet) for legacy
+ *   self-registration where creator == agent wallet.
+ *
  * Uses Pinata IPFS mode whenever PINATA_JWT (or IPFS_NODE_URL) is set, so the
  * on-chain tokenURI is `ipfs://<cid>` with resolvable name/description
  * metadata visible on 8004scan. Falls back to HTTP mode only when no IPFS
@@ -38,8 +46,9 @@ import { toGatewayUrl } from "./ipfs.js";
  *   const result = await registerAgent({
  *     name: "my-swap-agent",
  *     description: "Executes Uniswap swaps on Arbitrum Sepolia",
- *     privateKey: wallet.privateKey,
- *     walletAddress: wallet.address,
+ *     privateKey: masterWallet.privateKey, // creator + owner
+ *     walletAddress: agentWallet.address, // operational wallet
+ *     agentWalletPrivateKey: agentWallet.privateKey, // EIP-712 sig
  *   });
  *   console.log(`Registered as agent #${result.agentId} (${result.agentURI})`);
  * } catch (err) {
@@ -50,11 +59,18 @@ import { toGatewayUrl } from "./ipfs.js";
 export async function registerAgent(
   options: RegisterAgentOptions
 ): Promise<RegistrationResult> {
-  const { name, description, privateKey, walletAddress } = options;
+  const { name, description, privateKey, walletAddress, agentWalletPrivateKey } = options;
   const network = getActiveNetwork();
   const config = getNetworkConfig(network);
 
+  const { Wallet } = await import("ethers");
+  const signerAddress = new Wallet(privateKey).address;
+  const needsAgentWallet =
+    walletAddress.toLowerCase() !== signerAddress.toLowerCase();
+
   console.log(`[registry] Registering agent "${name}" on ERC-8004 (${network})...`);
+  console.log(`[registry]   Creator/owner (signer): ${signerAddress}`);
+  console.log(`[registry]   Agent wallet: ${walletAddress}`);
 
   // Get the RPC URL
   const rpcUrl = getRpcUrl();
@@ -63,7 +79,8 @@ export async function registerAgent(
   const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
   const useIpfs = Boolean(pinataJwt || ipfsNodeUrl);
 
-  // Initialize the SDK with chain configuration and the agent's private key.
+  // Initialize the SDK with chain configuration and the owner's private key.
+  // The signer becomes on-chain creator + owner (8004-identity-nft parity).
   const sdk = new SDK({
     chainId: config.chainId,
     rpcUrl,
@@ -112,6 +129,8 @@ export async function registerAgent(
     console.log(`[registry]   TX Hash: ${txHash}`);
     console.log(`[registry]   View on 8004scan: https://8004scan.com/agent/${agentId}`);
 
+    await bindAgentWallet(agent, walletAddress, agentWalletPrivateKey, needsAgentWallet);
+
     return { agentId: String(agentId), txHash: String(txHash), agentURI: String(agentURI) };
   }
 
@@ -133,5 +152,37 @@ export async function registerAgent(
   console.log(`[registry]   TX Hash: ${txHash}`);
   console.log(`[registry]   View on 8004scan: https://8004scan.com/agent/${agentId}`);
 
+  await bindAgentWallet(agent, walletAddress, agentWalletPrivateKey, needsAgentWallet);
+
   return { agentId: String(agentId), txHash: String(txHash), agentURI: agentHttpUri };
+}
+
+/**
+ * Binds the operational agent wallet on-chain via `setAgentWallet`.
+ *
+ * No-op for legacy self-registration (signer == agent wallet).
+ * Requires the agent wallet's private key to produce the EIP-712
+ * `AgentWalletSet` signature; the owner/master pays gas.
+ */
+async function bindAgentWallet(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  agent: { setWallet: (...args: any[]) => Promise<any> },
+  walletAddress: string,
+  agentWalletPrivateKey: string | undefined,
+  needsAgentWallet: boolean,
+): Promise<void> {
+  if (!needsAgentWallet) return;
+  if (!agentWalletPrivateKey) {
+    console.warn(
+      `[registry] Agent wallet ${walletAddress} differs from signer — ` +
+        `skipping on-chain setAgentWallet (no agentWalletPrivateKey provided).`
+    );
+    return;
+  }
+  console.log(`[registry] Binding on-chain agentWallet ${walletAddress} (owner pays gas)...`);
+  const setHandle = (await agent.setWallet(walletAddress, {
+    newWalletPrivateKey: agentWalletPrivateKey,
+  })) as { waitMined: () => Promise<unknown> } | undefined;
+  if (setHandle) await setHandle.waitMined();
+  console.log(`[registry]   agentWallet bound: ${walletAddress}`);
 }
