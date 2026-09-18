@@ -1,63 +1,59 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { fundAgent } from '../api'
+import { computed, ref } from "vue";
+import { fundAgent } from "../api";
 
 const props = defineProps<{
-  agentAddress?: string
-  agentName?: string
-}>()
+  agentAddress?: string;
+  agentName?: string;
+}>();
 
 const emit = defineEmits<{
-  funded: []
-}>()
+  funded: [];
+}>();
 
-const amount = ref('0.001')
-const localError = ref('')
-const statusText = ref('')
-const statusKind = ref<'info' | 'ok' | 'error'>('info')
-const busy = ref(false)
+const amount = ref("0.001");
+const localError = ref("");
+const statusText = ref("");
+const statusKind = ref<"info" | "ok" | "error">("info");
+const busy = ref(false);
 
 const canSend = computed(() => {
-  if (!props.agentName || !props.agentAddress || busy.value) return false
-  const n = Number(amount.value)
-  return Number.isFinite(n) && n > 0 && n <= 1
-})
+  if (!props.agentName || !props.agentAddress || busy.value) return false;
+  const n = Number(amount.value);
+  return Number.isFinite(n) && n > 0 && n <= 1;
+});
 
 function friendlyError(err: unknown): string {
   const raw =
-    err instanceof Error
-      ? err.message
-      : typeof err === 'string'
-        ? err
-        : 'Transfer failed'
-  const line = raw.split('\n')[0] || raw
+    err instanceof Error ? err.message : typeof err === "string" ? err : "Transfer failed";
+  const line = raw.split("\n")[0] || raw;
   if (/insufficient funds|insufficient balance/i.test(line)) {
-    return 'Master wallet has insufficient ETH. Fund it on Arbitrum Sepolia, then retry.'
+    return "Master wallet has insufficient ETH. Fund it on Arbitrum Sepolia, then retry.";
   }
   if (/exceeds defined limit|limit exceeded|-32005|429/i.test(line)) {
-    return 'RPC rate limit hit. Wait a few seconds and retry.'
+    return "RPC rate limit hit. Wait a few seconds and retry.";
   }
-  return line
+  return line;
 }
 
 async function fund() {
-  if (!canSend.value || !props.agentName) return
-  localError.value = ''
-  statusText.value = 'Sending from master wallet…'
-  statusKind.value = 'info'
-  busy.value = true
+  if (!canSend.value || !props.agentName) return;
+  localError.value = "";
+  statusText.value = "Sending from master wallet…";
+  statusKind.value = "info";
+  busy.value = true;
 
   try {
-    const result = await fundAgent(props.agentName, amount.value)
-    statusText.value = `Sent ${result.txHash.slice(0, 10)}…`
-    statusKind.value = 'ok'
-    emit('funded')
+    const result = await fundAgent(props.agentName, amount.value);
+    statusText.value = `Sent ${result.txHash.slice(0, 10)}…`;
+    statusKind.value = "ok";
+    emit("funded");
   } catch (err) {
-    localError.value = friendlyError(err)
-    statusText.value = localError.value
-    statusKind.value = 'error'
+    localError.value = friendlyError(err);
+    statusText.value = localError.value;
+    statusKind.value = "error";
   } finally {
-    busy.value = false
+    busy.value = false;
   }
 }
 </script>
@@ -87,7 +83,7 @@ async function fund() {
         />
       </label>
       <button class="btn primary" type="submit" :disabled="!canSend">
-        {{ busy ? 'Sending…' : 'Send to agent' }}
+        {{ busy ? "Sending…" : "Send to agent" }}
       </button>
     </form>
 

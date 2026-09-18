@@ -8,7 +8,7 @@
  *
  * Run: RUN_E2E=1 npx vitest run src/server/tests/feedback-api.e2e.test.ts
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll } from "vite-plus/test";
 
 const RUN_E2E = process.env.RUN_E2E === "1";
 

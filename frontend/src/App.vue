@@ -1,96 +1,96 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useQueryClient } from '@tanstack/vue-query'
-import WalletBar from './components/WalletBar.vue'
-import AgentPicker from './components/AgentPicker.vue'
-import AgentMemory from './components/AgentMemory.vue'
-import AgentStats from './components/AgentStats.vue'
-import AgentChat from './components/AgentChat.vue'
-import CreateAgent from './components/CreateAgent.vue'
-import type { AgentSummary, MemorySession } from './api'
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useQueryClient } from "@tanstack/vue-query";
+import WalletBar from "./components/WalletBar.vue";
+import AgentPicker from "./components/AgentPicker.vue";
+import AgentMemory from "./components/AgentMemory.vue";
+import AgentStats from "./components/AgentStats.vue";
+import AgentChat from "./components/AgentChat.vue";
+import CreateAgent from "./components/CreateAgent.vue";
+import type { AgentSummary, MemorySession } from "./api";
 
 function networkSlug(chainId: number): string {
-  if (chainId === 42161) return 'arbitrum-one'
-  if (chainId === 421614) return 'arbitrum-sepolia'
-  return 'arbitrum-sepolia'
+  if (chainId === 42161) return "arbitrum-one";
+  if (chainId === 421614) return "arbitrum-sepolia";
+  return "arbitrum-sepolia";
 }
 
-const selectedAgent = ref<AgentSummary | null>(null)
-const refreshKey = ref(0)
-const showCreate = ref(false)
-const showConvos = ref(false)
-const pendingSelect = ref<string | null>(null)
-const recalledSession = ref<MemorySession | null>(null)
-const queryClient = useQueryClient()
+const selectedAgent = ref<AgentSummary | null>(null);
+const refreshKey = ref(0);
+const showCreate = ref(false);
+const showConvos = ref(false);
+const pendingSelect = ref<string | null>(null);
+const recalledSession = ref<MemorySession | null>(null);
+const queryClient = useQueryClient();
 
 function extractNumericId(agentId: string): string {
-  const parts = agentId.split(':')
-  return parts[parts.length - 1] || agentId
+  const parts = agentId.split(":");
+  return parts[parts.length - 1] || agentId;
 }
 
 const scanId = computed(() => {
-  if (!selectedAgent.value?.agentId) return null
-  return extractNumericId(selectedAgent.value.agentId)
-})
+  if (!selectedAgent.value?.agentId) return null;
+  return extractNumericId(selectedAgent.value.agentId);
+});
 
 const scanUrl = computed(() => {
-  if (!scanId.value) return null
-  const slug = networkSlug(selectedAgent.value!.walletChainId)
-  return `https://testnet.8004scan.io/agents/${slug}/${scanId.value}`
-})
+  if (!scanId.value) return null;
+  const slug = networkSlug(selectedAgent.value!.walletChainId);
+  return `https://testnet.8004scan.io/agents/${slug}/${scanId.value}`;
+});
 
 function onSelect(agent: AgentSummary | null) {
-  selectedAgent.value = agent
-  recalledSession.value = null
+  selectedAgent.value = agent;
+  recalledSession.value = null;
   if (agent && agent.name === pendingSelect.value) {
-    pendingSelect.value = null
+    pendingSelect.value = null;
   }
 }
 
 function onFunded() {
-  refreshKey.value += 1
-  void queryClient.invalidateQueries()
+  refreshKey.value += 1;
+  void queryClient.invalidateQueries();
 }
 
 function onDeleted(_name: string) {
-  selectedAgent.value = null
-  recalledSession.value = null
-  pendingSelect.value = null
-  refreshKey.value += 1
-  void queryClient.invalidateQueries()
+  selectedAgent.value = null;
+  recalledSession.value = null;
+  pendingSelect.value = null;
+  refreshKey.value += 1;
+  void queryClient.invalidateQueries();
 }
 
 function onMemoryChat() {
-  refreshKey.value += 1
+  refreshKey.value += 1;
 }
 
 function onRecall(session: MemorySession) {
-  recalledSession.value = session
+  recalledSession.value = session;
   // keep the Conversations panel open so the selection stays visible
 }
 
 function toggleConvos() {
-  showConvos.value = !showConvos.value
+  showConvos.value = !showConvos.value;
 }
 
 function onNewChat() {
-  recalledSession.value = null
+  recalledSession.value = null;
 }
 
 function onCreated(agent: AgentSummary) {
-  showCreate.value = false
-  selectedAgent.value = agent
-  pendingSelect.value = agent.name
-  refreshKey.value += 1
-  void queryClient.invalidateQueries()
+  showCreate.value = false;
+  selectedAgent.value = agent;
+  pendingSelect.value = agent.name;
+  refreshKey.value += 1;
+  void queryClient.invalidateQueries();
 }
 
 function onDialogKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && showCreate.value) showCreate.value = false
+  if (e.key === "Escape" && showCreate.value) showCreate.value = false;
 }
 
-onMounted(() => window.addEventListener('keydown', onDialogKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
+onMounted(() => window.addEventListener("keydown", onDialogKeydown));
+onBeforeUnmount(() => window.removeEventListener("keydown", onDialogKeydown));
 </script>
 
 <template>
@@ -130,7 +130,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 
         <div class="main-body">
           <div v-show="showConvos" class="convos">
-            <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" @new-chat="onNewChat" />
+            <AgentMemory
+              :agent="selectedAgent"
+              :refresh-key="refreshKey"
+              @recall="onRecall"
+              @new-chat="onNewChat"
+            />
           </div>
 
           <div class="chat-col">
@@ -145,11 +150,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
     </main>
 
     <Teleport to="body">
-      <div
-        v-if="showCreate"
-        class="dialog-backdrop"
-        @click.self="showCreate = false"
-      >
+      <div v-if="showCreate" class="dialog-backdrop" @click.self="showCreate = false">
         <div class="dialog" role="dialog" aria-modal="true" aria-label="Create agent">
           <CreateAgent @created="onCreated" @cancel="showCreate = false" />
         </div>
@@ -237,7 +238,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   font-size: 0.9rem;
   line-height: 1;
 }
-.convo-btn[aria-pressed='true'] {
+.convo-btn[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
 }

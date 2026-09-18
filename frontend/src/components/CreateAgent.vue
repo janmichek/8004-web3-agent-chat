@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from "vue";
 import {
   createAgent,
   fetchCatalog,
@@ -7,167 +7,168 @@ import {
   type AgentSummary,
   type CatalogResponse,
   type CreateAgentStep,
-} from '../api'
+} from "../api";
 
-type Phase =
-  | 'env'
-  | 'configure'
-  | 'fund'
-  | 'creating'
-  | 'done'
-  | 'error'
+type Phase = "env" | "configure" | "fund" | "creating" | "done" | "error";
 
 const emit = defineEmits<{
-  created: [agent: AgentSummary]
-  cancel: []
-}>()
+  created: [agent: AgentSummary];
+  cancel: [];
+}>();
 
-const phase = ref<Phase>('env')
-const catalog = ref<CatalogResponse | null>(null)
-const loadError = ref('')
-const createError = ref('')
-const busy = ref(false)
+const phase = ref<Phase>("env");
+const catalog = ref<CatalogResponse | null>(null);
+const loadError = ref("");
+const createError = ref("");
+const busy = ref(false);
 
-const agentName = ref('')
-const selectedActions = ref<string[]>([])
-const selectedTools = ref<string[]>([])
-const fundEth = ref('0.002')
-const skipRegister = ref(false)
+const agentName = ref("");
+const selectedActions = ref<string[]>([]);
+const selectedTools = ref<string[]>([]);
+const fundEth = ref("0.002");
+const skipRegister = ref(false);
 
-const createSteps = ref<CreateAgentStep[]>([])
-const createdAgent = ref<AgentSummary | null>(null)
-const createdBalance = ref('')
+const createSteps = ref<CreateAgentStep[]>([]);
+const createdAgent = ref<AgentSummary | null>(null);
+const createdBalance = ref("");
 
 const createdWalletScanUrl = computed(() => {
-  const address = createdAgent.value?.walletAddress
-  if (!address) return null
-  const chainId = createdAgent.value?.walletChainId ?? 421614
-  const base = chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
-  return `${base}/address/${address}`
-})
+  const address = createdAgent.value?.walletAddress;
+  if (!address) return null;
+  const chainId = createdAgent.value?.walletChainId ?? 421614;
+  const base = chainId === 42161 ? "https://arbiscan.io" : "https://sepolia.arbiscan.io";
+  return `${base}/address/${address}`;
+});
 
 const createdScanId = computed(() => {
-  const agentId = createdAgent.value?.agentId
-  if (!agentId) return null
-  const parts = agentId.split(':')
-  return parts[parts.length - 1] || agentId
-})
+  const agentId = createdAgent.value?.agentId;
+  if (!agentId) return null;
+  const parts = agentId.split(":");
+  return parts[parts.length - 1] || agentId;
+});
 
 const createdScanUrl = computed(() => {
-  const agentId = createdAgent.value?.agentId
-  if (!agentId) return null
-  return scanUrlForAgent(agentId, createdAgent.value?.walletChainId ?? 421614)
-})
+  const agentId = createdAgent.value?.agentId;
+  if (!agentId) return null;
+  return scanUrlForAgent(agentId, createdAgent.value?.walletChainId ?? 421614);
+});
 
-const nameValid = computed(() =>
-  /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(agentName.value.trim()),
-)
+const nameValid = computed(() => /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(agentName.value.trim()));
 
 const fundValid = computed(() => {
-  const n = Number(fundEth.value)
-  return Number.isFinite(n) && n >= 0 && n <= 1
-})
+  const n = Number(fundEth.value);
+  return Number.isFinite(n) && n >= 0 && n <= 1;
+});
 
 async function loadCatalog() {
-  loadError.value = ''
+  loadError.value = "";
   try {
-    catalog.value = await fetchCatalog()
+    catalog.value = await fetchCatalog();
   } catch (err) {
     loadError.value =
-      err instanceof Error ? err.message : 'Failed to load catalog — is the API running?'
+      err instanceof Error ? err.message : "Failed to load catalog — is the API running?";
   }
 }
 
 onMounted(() => {
-  void loadCatalog()
-})
+  void loadCatalog();
+});
 
 // Mutual exclusivity: transfer-eth bundles send_eth + get_token_balance
-const TRANSFER_ETH_TOOLS = ['send_eth', 'get_token_balance'] as const
-const TRANSFER_ETH_ACTION = 'transfer-eth'
+const TRANSFER_ETH_TOOLS = ["send_eth", "get_token_balance"] as const;
+const TRANSFER_ETH_ACTION = "transfer-eth";
 
 function isToolPale(name: string): boolean {
-  return (TRANSFER_ETH_TOOLS as readonly string[]).includes(name) && selectedActions.value.includes(TRANSFER_ETH_ACTION)
+  return (
+    (TRANSFER_ETH_TOOLS as readonly string[]).includes(name) &&
+    selectedActions.value.includes(TRANSFER_ETH_ACTION)
+  );
 }
 
 function isActionPale(name: string): boolean {
-  if (name !== TRANSFER_ETH_ACTION) return false
+  if (name !== TRANSFER_ETH_ACTION) return false;
   // Pale when both constituent tools are selected as standalone (group-level exclusivity)
   // Also pale when any single constituent is selected — keeps visual cue symmetric
   // Choose ANY to give earlier feedback; switch to .every if strict group exclusivity is desired
-  return TRANSFER_ETH_TOOLS.some((t) => selectedTools.value.includes(t))
+  return TRANSFER_ETH_TOOLS.some((t) => selectedTools.value.includes(t));
 }
 
 function toggleAction(name: string) {
-  const i = selectedActions.value.indexOf(name)
-  const isSelected = i >= 0
+  const i = selectedActions.value.indexOf(name);
+  const isSelected = i >= 0;
   if (isSelected) {
-    selectedActions.value.splice(i, 1)
+    selectedActions.value.splice(i, 1);
   } else {
     // Selecting transfer-eth deselects its constituent standalone tools
     if (name === TRANSFER_ETH_ACTION) {
-      selectedTools.value = selectedTools.value.filter((t) => !(TRANSFER_ETH_TOOLS as readonly string[]).includes(t))
+      selectedTools.value = selectedTools.value.filter(
+        (t) => !(TRANSFER_ETH_TOOLS as readonly string[]).includes(t),
+      );
     }
-    selectedActions.value.push(name)
+    selectedActions.value.push(name);
   }
 }
 
 function toggleTool(name: string) {
-  const isTransferTool = (TRANSFER_ETH_TOOLS as readonly string[]).includes(name)
-  const transferActionSelected = selectedActions.value.includes(TRANSFER_ETH_ACTION)
+  const isTransferTool = (TRANSFER_ETH_TOOLS as readonly string[]).includes(name);
+  const transferActionSelected = selectedActions.value.includes(TRANSFER_ETH_ACTION);
 
   // Selecting a constituent tool deselects the transfer-eth action (vice versa)
   if (isTransferTool && transferActionSelected) {
-    const idx = selectedActions.value.indexOf(TRANSFER_ETH_ACTION)
-    if (idx >= 0) selectedActions.value.splice(idx, 1)
+    const idx = selectedActions.value.indexOf(TRANSFER_ETH_ACTION);
+    if (idx >= 0) selectedActions.value.splice(idx, 1);
   }
 
-  const i = selectedTools.value.indexOf(name)
-  if (i >= 0) selectedTools.value.splice(i, 1)
-  else selectedTools.value.push(name)
+  const i = selectedTools.value.indexOf(name);
+  if (i >= 0) selectedTools.value.splice(i, 1);
+  else selectedTools.value.push(name);
 
   // If both constituent tools are now individually selected, ensure action stays deselected
-  if (isTransferTool && selectedTools.value.includes('send_eth') && selectedTools.value.includes('get_token_balance')) {
-    const ai = selectedActions.value.indexOf(TRANSFER_ETH_ACTION)
-    if (ai >= 0) selectedActions.value.splice(ai, 1)
+  if (
+    isTransferTool &&
+    selectedTools.value.includes("send_eth") &&
+    selectedTools.value.includes("get_token_balance")
+  ) {
+    const ai = selectedActions.value.indexOf(TRANSFER_ETH_ACTION);
+    if (ai >= 0) selectedActions.value.splice(ai, 1);
   }
 }
 
 function goConfigure() {
-  if (!nameValid.value) return
-  phase.value = 'configure'
+  if (!nameValid.value) return;
+  phase.value = "configure";
 }
 
 async function submitCreate() {
-  if (!fundValid.value || busy.value) return
-  phase.value = 'creating'
-  createError.value = ''
-  createSteps.value = []
-  createdAgent.value = null
-  busy.value = true
+  if (!fundValid.value || busy.value) return;
+  phase.value = "creating";
+  createError.value = "";
+  createSteps.value = [];
+  createdAgent.value = null;
+  busy.value = true;
 
   try {
     const res = await createAgent({
       name: agentName.value.trim(),
       actions: selectedActions.value,
       tools: selectedTools.value,
-      fundEth: fundEth.value.trim() || '0.002',
+      fundEth: fundEth.value.trim() || "0.002",
       skipRegister: skipRegister.value,
-    })
-    createSteps.value = res.steps
-    createdAgent.value = res.agent
-    createdBalance.value = res.balanceEth
-    phase.value = 'done'
+    });
+    createSteps.value = res.steps;
+    createdAgent.value = res.agent;
+    createdBalance.value = res.balanceEth;
+    phase.value = "done";
   } catch (err) {
-    createError.value = err instanceof Error ? err.message : String(err)
-    phase.value = 'error'
+    createError.value = err instanceof Error ? err.message : String(err);
+    phase.value = "error";
   } finally {
-    busy.value = false
+    busy.value = false;
   }
 }
 
 function openChat() {
-  if (createdAgent.value) emit('created', createdAgent.value)
+  if (createdAgent.value) emit("created", createdAgent.value);
 }
 </script>
 
@@ -203,7 +204,7 @@ function openChat() {
         </div>
         <div>
           <dt>Balance</dt>
-          <dd class="mono">{{ catalog.master.balanceEth ?? '—' }} ETH</dd>
+          <dd class="mono">{{ catalog.master.balanceEth ?? "—" }} ETH</dd>
         </div>
       </dl>
       <p v-else class="hint">Loading environment…</p>
@@ -221,7 +222,13 @@ function openChat() {
       </label>
       <p class="hint">Letters, numbers, . _ - (1–63 chars)</p>
       <div class="nav">
-        <button type="button" class="btn primary" data-testid="create-name-continue" :disabled="!catalog || !nameValid" @click="goConfigure">
+        <button
+          type="button"
+          class="btn primary"
+          data-testid="create-name-continue"
+          :disabled="!catalog || !nameValid"
+          @click="goConfigure"
+        >
           Next →
         </button>
       </div>
@@ -242,7 +249,13 @@ function openChat() {
             />
             <span>
               <strong>{{ a.name }} <span class="badge">action</span></strong>
-              <em>{{ a.description }} [tools: {{ a.toolNames.join(', ') }}]<template v-if="a.name === 'transfer-eth'"> · Mutually exclusive with send_eth + get_token_balance standalone tools.</template></em>
+              <em
+                >{{ a.description }} [tools: {{ a.toolNames.join(", ") }}]<template
+                  v-if="a.name === 'transfer-eth'"
+                >
+                  · Mutually exclusive with send_eth + get_token_balance standalone tools.</template
+                ></em
+              >
             </span>
           </label>
         </li>
@@ -257,7 +270,12 @@ function openChat() {
             />
             <span>
               <strong>{{ t.name }} <span class="badge tool">tool</span></strong>
-              <em>{{ t.description }}<template v-if="t.name === 'send_eth' || t.name === 'get_token_balance'"> · Mutually exclusive with transfer-eth action.</template></em>
+              <em
+                >{{ t.description
+                }}<template v-if="t.name === 'send_eth' || t.name === 'get_token_balance'">
+                  · Mutually exclusive with transfer-eth action.</template
+                ></em
+              >
             </span>
           </label>
         </li>
@@ -344,17 +362,17 @@ function openChat() {
         </div>
         <div>
           <dt>Actions</dt>
-          <dd>{{ createdAgent.actions.join(', ') || 'none' }}</dd>
+          <dd>{{ createdAgent.actions.join(", ") || "none" }}</dd>
         </div>
         <div>
           <dt>Tools</dt>
-          <dd>{{ createdAgent.tools.join(', ') || 'none' }}</dd>
+          <dd>{{ createdAgent.tools.join(", ") || "none" }}</dd>
         </div>
       </dl>
       <ul v-if="createSteps.length" class="steps">
         <li v-for="s in createSteps" :key="s.step" :class="{ fail: !s.ok }">
           <span class="mono">{{ s.step }}</span>
-          — {{ s.ok ? 'ok' : 'failed' }}
+          — {{ s.ok ? "ok" : "failed" }}
           <template v-if="s.detail"> · {{ s.detail }}</template>
         </li>
       </ul>
@@ -500,7 +518,9 @@ function openChat() {
   background: var(--bg);
   color: var(--ink);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .menu-item:hover {

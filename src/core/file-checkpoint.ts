@@ -76,7 +76,10 @@ export function createFileCheckpointer(agentName: string) {
     const data: Record<string, unknown> = { storage: {}, writes: {} };
 
     // Serialize Uint8Array to base64
-    const storage: Record<string, Record<string, Record<string, [string, string, string | undefined]>>> = {};
+    const storage: Record<
+      string,
+      Record<string, Record<string, [string, string, string | undefined]>>
+    > = {};
     for (const threadId of Object.keys(saver.storage)) {
       storage[threadId] = {};
       for (const ns of Object.keys(saver.storage[threadId])) {
@@ -98,11 +101,7 @@ export function createFileCheckpointer(agentName: string) {
       writes[threadId] = {};
       for (const key of Object.keys(saver.writes[threadId])) {
         const entry = saver.writes[threadId][key];
-        writes[threadId][key] = [
-          entry[0],
-          entry[1],
-          Buffer.from(entry[2]).toString("base64"),
-        ];
+        writes[threadId][key] = [entry[0], entry[1], Buffer.from(entry[2]).toString("base64")];
       }
     }
     data.writes = writes;

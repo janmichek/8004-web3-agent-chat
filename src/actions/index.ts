@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Types
-export * from "./types.js"
+export * from "./types.js";
 
 // Level 2, standalone tools
-export * from "./tools/index.js"
+export * from "./tools/index.js";
 
 // Skills, exported separately for advanced use
-export * from "./skills/index.js"
+export * from "./skills/index.js";
 
 // Level 1, Actions (skill + tools bundled)
-import { sendEthTool } from "./tools/send-eth.tool.js"
-import { tokenBalanceTool } from "./tools/token-balance.tool.js"
-import { giveFeedbackTool, getReputationTool } from "./tools/feedback.tool.js"
-import { transferEthSkill } from "./skills/transfer-eth.skill.js"
-import { rateFeedbackSkill } from "./skills/rate-feedback.skill.js"
-import type { Action } from "./types.js"
+import { sendEthTool } from "./tools/send-eth.tool.js";
+import { tokenBalanceTool } from "./tools/token-balance.tool.js";
+import { giveFeedbackTool, getReputationTool } from "./tools/feedback.tool.js";
+import { transferEthSkill } from "./skills/transfer-eth.skill.js";
+import { rateFeedbackSkill } from "./skills/rate-feedback.skill.js";
+import type { Action } from "./types.js";
 
 /**
  * @notice Action for transferring ETH on Arbitrum.
@@ -27,7 +27,7 @@ export const TransferEthAction = (): Action => ({
   description: "Transfer ETH on Arbitrum with balance checks and safety confirmations",
   tools: [sendEthTool, tokenBalanceTool],
   skill: transferEthSkill,
-})
+});
 
 /**
  * @notice Action for ERC-8004 ratings + reputation reads.
@@ -38,4 +38,4 @@ export const RateFeedbackAction = (): Action => ({
   description: "Rate ERC-8004 agents after successful transactions and read reputation",
   tools: [giveFeedbackTool, getReputationTool],
   skill: rateFeedbackSkill,
-})
+});

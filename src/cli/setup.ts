@@ -48,10 +48,7 @@ if (privateKey) {
 
   // Write the private key into .env
   if (envContent.includes("MASTER_PRIVATE_KEY=")) {
-    envContent = envContent.replace(
-      /MASTER_PRIVATE_KEY=.*/,
-      `MASTER_PRIVATE_KEY=${privateKey}`
-    );
+    envContent = envContent.replace(/MASTER_PRIVATE_KEY=.*/, `MASTER_PRIVATE_KEY=${privateKey}`);
   } else {
     envContent += `\nMASTER_PRIVATE_KEY=${privateKey}\n`;
   }

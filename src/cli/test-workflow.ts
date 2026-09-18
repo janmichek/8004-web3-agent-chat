@@ -49,7 +49,7 @@ async function main(): Promise<void> {
     const receipt = await provider.waitForTransaction(txHash);
     console.log(`[test] Confirmed in block ${receipt?.blockNumber}\n`);
   } catch (err) {
-    console.error(`[test] Funding failed: ${err instanceof Error ? err.message : err}`);
+    console.error(`[test] Funding failed: ${err instanceof Error ? err.message : String(err)}`);
     console.log(`[test] Continuing anyway...\n`);
   }
 
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     console.log(result.output);
     console.log();
   } catch (err) {
-    console.error(`[test] Agent run failed: ${err instanceof Error ? err.message : err}`);
+    console.error(`[test] Agent run failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const finalMasterBalance = await getMasterWalletBalance();

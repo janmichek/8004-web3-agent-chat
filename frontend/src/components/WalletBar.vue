@@ -1,80 +1,80 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, unref, watch } from 'vue'
-import { useAccount, useBalance, useConnect, useDisconnect, useSwitchChain } from '@wagmi/vue'
-import { arbitrum, arbitrumSepolia } from '@wagmi/vue/chains'
-import { formatEther } from 'viem'
-import { ensureArbitrumSepolia, getInjectedChainId } from '../chain'
+import { computed, onMounted, ref, unref, watch } from "vue";
+import { useAccount, useBalance, useConnect, useDisconnect, useSwitchChain } from "@wagmi/vue";
+import { arbitrum, arbitrumSepolia } from "@wagmi/vue/chains";
+import { formatEther } from "viem";
+import { ensureArbitrumSepolia, getInjectedChainId } from "../chain";
 
-const { address, isConnected, status, chainId: accountChainId } = useAccount()
-const { connectors, connect, isPending } = useConnect()
-const { disconnect } = useDisconnect()
-const { switchChain } = useSwitchChain()
+const { address, isConnected, status, chainId: accountChainId } = useAccount();
+const { connectors, connect, isPending } = useConnect();
+const { disconnect } = useDisconnect();
+const { switchChain } = useSwitchChain();
 
-const walletChainId = ref<number | undefined>(undefined)
-const switching = ref(false)
+const walletChainId = ref<number | undefined>(undefined);
+const switching = ref(false);
 
 async function refreshWalletChain() {
   if (!isConnected.value) {
-    walletChainId.value = undefined
-    return
+    walletChainId.value = undefined;
+    return;
   }
   try {
-    walletChainId.value = await getInjectedChainId()
+    walletChainId.value = await getInjectedChainId();
   } catch {
-    walletChainId.value = accountChainId.value
+    walletChainId.value = accountChainId.value;
   }
 }
 
 watch([isConnected, accountChainId], () => {
-  void refreshWalletChain()
-})
+  void refreshWalletChain();
+});
 
 onMounted(() => {
-  void refreshWalletChain()
-})
+  void refreshWalletChain();
+});
 
 const shortAddress = computed(() => {
-  if (!address.value) return ''
-  return `${address.value.slice(0, 6)}…${address.value.slice(-4)}`
-})
+  if (!address.value) return "";
+  return `${address.value.slice(0, 6)}…${address.value.slice(-4)}`;
+});
 
-const activeChainId = computed(() => walletChainId.value ?? accountChainId.value)
+const activeChainId = computed(() => walletChainId.value ?? accountChainId.value);
 
 const chainLabel = computed(() => {
-  const id = activeChainId.value
-  if (id === arbitrumSepolia.id) return 'Arb Sepolia'
-  if (id === arbitrum.id) return 'Arbitrum'
-  if (id == null) return 'Unknown'
-  return `Chain ${id}`
-})
+  const id = activeChainId.value;
+  if (id === arbitrumSepolia.id) return "Arb Sepolia";
+  if (id === arbitrum.id) return "Arbitrum";
+  if (id == null) return "Unknown";
+  return `Chain ${id}`;
+});
 
 const wrongNetwork = computed(
   () => isConnected.value && activeChainId.value !== arbitrumSepolia.id,
-)
+);
 
-const eth = useBalance({ address: address })
+const eth = useBalance({ address: address });
 const ethDisplay = computed(() => {
-  if (!isConnected.value || !address.value) return null
-  if (unref(eth.isFetching) && unref(eth.data) === undefined) return '…'
-  const d = unref(eth.data)
-  if (d?.value === undefined) return null
-  return `${Number(formatEther(d.value)).toPrecision(5)} ETH`
-})
+  if (!isConnected.value || !address.value) return null;
+  if (unref(eth.isFetching) && unref(eth.data) === undefined) return "…";
+  const d = unref(eth.data);
+  if (d?.value === undefined) return null;
+  return `${Number(formatEther(d.value)).toPrecision(5)} ETH`;
+});
 
 function connectWallet() {
-  const connector = connectors[0]
-  if (connector) connect({ connector })
+  const connector = connectors[0];
+  if (connector) connect({ connector });
 }
 
 async function onSwitchClick() {
-  switching.value = true
+  switching.value = true;
   try {
-    await ensureArbitrumSepolia()
-    await refreshWalletChain()
+    await ensureArbitrumSepolia();
+    await refreshWalletChain();
   } catch {
-    switchChain({ chainId: arbitrumSepolia.id })
+    switchChain({ chainId: arbitrumSepolia.id });
   } finally {
-    switching.value = false
+    switching.value = false;
   }
 }
 </script>
@@ -98,7 +98,7 @@ async function onSwitchClick() {
           :disabled="switching"
           @click="onSwitchClick"
         >
-          {{ switching ? 'Switching…' : wrongNetwork ? `Switch · ${chainLabel}` : chainLabel }}
+          {{ switching ? "Switching…" : wrongNetwork ? `Switch · ${chainLabel}` : chainLabel }}
         </button>
         <span class="addr mono">{{ shortAddress }}</span>
         <span v-if="ethDisplay" class="balance mono">{{ ethDisplay }}</span>
@@ -111,7 +111,7 @@ async function onSwitchClick() {
         :disabled="isPending || status === 'connecting'"
         @click="connectWallet"
       >
-        {{ isPending || status === 'connecting' ? 'Connecting…' : 'Connect wallet' }}
+        {{ isPending || status === "connecting" ? "Connecting…" : "Connect wallet" }}
       </button>
     </div>
   </header>

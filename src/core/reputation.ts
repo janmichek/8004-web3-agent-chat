@@ -104,8 +104,17 @@ export async function giveFeedback(options: GiveFeedbackOptions): Promise<GiveFe
   return { txHash: String(txHash), agentId, value, ...(feedbackURI ? { feedbackURI } : {}) };
 }
 
-export async function getReputationSummary(agentId: string, tag?: string): Promise<ReputationSummary> {
-  const rpcUrl = (() => { try { return getRpcUrl(); } catch { return undefined; } })();
+export async function getReputationSummary(
+  agentId: string,
+  tag?: string,
+): Promise<ReputationSummary> {
+  const rpcUrl = (() => {
+    try {
+      return getRpcUrl();
+    } catch {
+      return undefined;
+    }
+  })();
   const network = getActiveNetwork();
   const config = getNetworkConfig(network);
   // Read-only SDK: omit privateKey when no signer available.

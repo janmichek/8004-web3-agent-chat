@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap");
 
 :root {
   --bg: #0b1218;
@@ -10,9 +10,9 @@
   --accent: #28a0f0;
   --warn: #e8a54b;
   --radius: 0.65rem;
-  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
-  --font-display: 'Outfit', 'Source Sans 3', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-body: "Source Sans 3", "Segoe UI", sans-serif;
+  --font-display: "Outfit", "Source Sans 3", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   color-scheme: dark;
 }
 
@@ -32,8 +32,16 @@ body {
 body {
   font-family: var(--font-body);
   background:
-    radial-gradient(1200px 600px at 10% -10%, color-mix(in oklab, var(--accent) 16%, transparent), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, color-mix(in oklab, #0b5cab 18%, transparent), transparent 50%),
+    radial-gradient(
+      1200px 600px at 10% -10%,
+      color-mix(in oklab, var(--accent) 16%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      900px 500px at 100% 0%,
+      color-mix(in oklab, #0b5cab 18%, transparent),
+      transparent 50%
+    ),
     var(--bg);
   color: var(--ink);
   line-height: 1.4;
@@ -59,7 +67,10 @@ body {
   border-radius: 0.4rem;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .btn:disabled {

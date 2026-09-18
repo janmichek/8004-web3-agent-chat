@@ -99,8 +99,9 @@ function asString(v: unknown): string {
       })
       .join("\n");
   }
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") return String(v);
   if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
+  return "";
 }
 
 function truncate(s: string, n: number): string {
@@ -111,14 +112,19 @@ function truncate(s: string, n: number): string {
 function collectMemoryPaths(agentName: string): string[] {
   const isVercel = !!process.env.VERCEL;
   const baseDir = isVercel ? path.join("/tmp", "agents") : AGENTS_DIR;
-  const fallback = isVercel ? path.join(path.resolve(process.cwd(), "agents"), agentName, "memory.json") : null;
+  const fallback = isVercel
+    ? path.join(path.resolve(process.cwd(), "agents"), agentName, "memory.json")
+    : null;
   const primary = path.join(baseDir, agentName, "memory.json");
   return fallback ? [primary, fallback] : [primary];
 }
 
 export function readAgentMemory(agentName: string): MemorySummary {
   const paths = collectMemoryPaths(agentName);
-  let raw: { storage?: Record<string, Record<string, Record<string, [string, string, string | null]>>>; writes?: unknown } | null = null;
+  let raw: {
+    storage?: Record<string, Record<string, Record<string, [string, string, string | null]>>>;
+    writes?: unknown;
+  } | null = null;
   let loadedPath: string | null = null;
   for (const p of paths) {
     if (!fs.existsSync(p)) continue;
@@ -218,11 +224,16 @@ export function readAgentMemory(agentName: string): MemorySummary {
   const order: string[] = []; // ids in first-seen order
 
   for (const cp of checkpoints) {
-    const rawMsgs = (cp.channel_values as Record<string, unknown>)?.messages as RawMessage[] | undefined;
+    const rawMsgs = (cp.channel_values as Record<string, unknown>)?.messages as
+      | RawMessage[]
+      | undefined;
     if (!Array.isArray(rawMsgs)) continue;
     for (const m of rawMsgs) {
       const kwargs = m.kwargs as Record<string, unknown>;
-      const mid = typeof kwargs.id === "string" ? kwargs.id : `${cp.id}:${m.id.join(".")}:${JSON.stringify(kwargs.content).slice(0, 50)}`;
+      const mid =
+        typeof kwargs.id === "string"
+          ? kwargs.id
+          : `${cp.id}:${m.id.join(".")}:${JSON.stringify(kwargs.content).slice(0, 50)}`;
       if (seenIds.has(mid)) continue;
       seenIds.add(mid);
       tsById.set(mid, cp.ts);
@@ -244,7 +255,9 @@ export function readAgentMemory(agentName: string): MemorySummary {
       }
     }
     const latest = latestWithMessages ?? checkpoints[checkpoints.length - 1];
-    rawMsgsFallback = ((latest.channel_values as Record<string, unknown>)?.messages as RawMessage[] | undefined) ?? [];
+    rawMsgsFallback =
+      ((latest.channel_values as Record<string, unknown>)?.messages as RawMessage[] | undefined) ??
+      [];
     if (Array.isArray(rawMsgsFallback)) {
       for (const m of rawMsgsFallback) {
         const kwargs = m.kwargs as Record<string, unknown>;
@@ -264,13 +277,22 @@ export function readAgentMemory(agentName: string): MemorySummary {
       const role = lcTypeToRole(m.id);
       const kwargs = m.kwargs as Record<string, unknown>;
       const content = asString(kwargs.content);
-      const name = typeof kwargs.name === "string" ? kwargs.name : typeof (kwargs as Record<string, unknown>).name === "string" ? String((kwargs as Record<string, unknown>).name) : undefined;
+      const name =
+        typeof kwargs.name === "string"
+          ? kwargs.name
+          : typeof (kwargs as Record<string, unknown>).name === "string"
+            ? String((kwargs as Record<string, unknown>).name)
+            : undefined;
       const toolCallsRaw = kwargs.tool_calls as Array<{ name: string; args: unknown }> | undefined;
-      const toolCalls = Array.isArray(toolCallsRaw) && toolCallsRaw.length
-        ? toolCallsRaw.map((tc) => ({ name: String(tc.name), args: tc.args }))
-        : undefined;
+      const toolCalls =
+        Array.isArray(toolCallsRaw) && toolCallsRaw.length
+          ? toolCallsRaw.map((tc) => ({ name: String(tc.name), args: tc.args }))
+          : undefined;
       const id = typeof kwargs.id === "string" ? kwargs.id : mid;
-      const toolName = role === "tool" ? (name ?? (typeof kwargs["name"] === "string" ? String(kwargs["name"]) : undefined)) : undefined;
+      const toolName =
+        role === "tool"
+          ? (name ?? (typeof kwargs["name"] === "string" ? String(kwargs["name"]) : undefined))
+          : undefined;
       return {
         role,
         content: content.slice(0, 4000),
@@ -347,7 +369,12 @@ export function readAgentMemory(agentName: string): MemorySummary {
     // helper to format date for title
     const fmtDate = (iso: string) => {
       const d = new Date(iso);
-      return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     };
     let cur: SimplifiedMessage[] = [];
     let curStart = simplified[0].ts ?? firstActive ?? lastActive ?? new Date().toISOString();
@@ -373,7 +400,8 @@ export function readAgentMemory(agentName: string): MemorySummary {
         if (mm.toolCalls) {
           for (const tc of mm.toolCalls) {
             const args = tc.args as Record<string, unknown> | null;
-            if (args?.to && typeof args.to === "string" && /^0x[a-fA-F0-9]{40}$/.test(args.to)) sRec.add(args.to as string);
+            if (args?.to && typeof args.to === "string" && /^0x[a-fA-F0-9]{40}$/.test(args.to))
+              sRec.add(args.to as string);
             // tx already captured via content
           }
         }
@@ -440,12 +468,14 @@ export function readAgentMemory(agentName: string): MemorySummary {
   if (simplified.length === 0) {
     parts.push("No messages yet");
   } else {
-    const exchanges = Math.ceil(simplified.length / 2);
     parts.push(`${simplified.length} messages in ${humanCount} exchanges`);
     if (toolCount > 0) parts.push(`${toolCount} tool results`);
     const topTool = Object.entries(toolCallsByName).sort((a, b) => b[1] - a[1])[0];
     if (topTool) parts.push(`top tool: ${topTool[0]} ×${topTool[1]}`);
-    if (uniqueRecipients.length) parts.push(`${uniqueRecipients.length} address${uniqueRecipients.length > 1 ? "es" : ""} touched`);
+    if (uniqueRecipients.length)
+      parts.push(
+        `${uniqueRecipients.length} address${uniqueRecipients.length > 1 ? "es" : ""} touched`,
+      );
     if (txHashes.length) parts.push(`${txHashes.length} tx${txHashes.length > 1 ? "s" : ""} sent`);
     if (totalEthSent > 0) {
       const ethStr = totalEthSent.toFixed(8).replace(/0+$/, "").replace(/\.$/, "");

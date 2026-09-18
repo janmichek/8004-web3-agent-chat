@@ -1,172 +1,172 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useAccount } from '@wagmi/vue'
-import { fetchReputation, scanUrlForAgent, submitFeedback, txScanUrl } from '../api'
+import { computed, ref, watch } from "vue";
+import { useAccount } from "@wagmi/vue";
+import { fetchReputation, scanUrlForAgent, submitFeedback, txScanUrl } from "../api";
 
 const props = defineProps<{
   /** Local agent name used for the feedback API route. */
-  agentName: string
+  agentName: string;
   /** Default target agent ID, e.g. "421614:204". */
-  defaultAgentId?: string
-  walletChainId?: number
-  owners?: string[]
-  operators?: string[]
+  defaultAgentId?: string;
+  walletChainId?: number;
+  owners?: string[];
+  operators?: string[];
   /** Optional tx hash of the successful transaction being rated (display only). */
-  txHash?: string
+  txHash?: string;
   /** Prefilled tag describing the rated interaction (per tool/action). */
-  initialTag?: string
+  initialTag?: string;
   /** Prefilled full service URL the rating applies to (origin-aware). */
-  initialEndpoint?: string
-}>()
+  initialEndpoint?: string;
+}>();
 
 const emit = defineEmits<{
-  rated: [payload: { txHash: string; scanUrl: string }]
-}>()
+  rated: [payload: { txHash: string; scanUrl: string }];
+}>();
 
-const { address: wagmiAddress } = useAccount()
+const { address: wagmiAddress } = useAccount();
 
 /** Playwright can set window.__E2E_CONNECTED_ADDRESS to simulate a connected wallet. */
 const connected = computed(() => {
-  if (typeof window !== 'undefined') {
-    const forced = (window as unknown as { __E2E_CONNECTED_ADDRESS?: string }).__E2E_CONNECTED_ADDRESS
-    if (forced) return forced as `0x${string}`
+  if (typeof window !== "undefined") {
+    const forced = (window as unknown as { __E2E_CONNECTED_ADDRESS?: string })
+      .__E2E_CONNECTED_ADDRESS;
+    if (forced) return forced as `0x${string}`;
   }
-  return wagmiAddress.value
-})
+  return wagmiAddress.value;
+});
 
-const agentId = computed(() => props.defaultAgentId?.trim() ?? '')
-const stars = ref(5)
+const agentId = computed(() => props.defaultAgentId?.trim() ?? "");
+const stars = ref(5);
 /** Quality rating context (stored as tag2 — tag1 is always 'starred'). */
-const tag = ref(props.initialTag ?? 'starred')
+const tag = ref(props.initialTag ?? "starred");
 /** Full service URL the rating applies to (origin-aware). */
-const endpoint = ref(props.initialEndpoint ?? '')
+const endpoint = ref(props.initialEndpoint ?? "");
 /** Optional user-written review (public: tag2 fallback or IPFS feedback file). */
-const comment = ref('')
-const busy = ref(false)
-const error = ref('')
-const resultTx = ref('')
-const scanUrl = ref('')
-const feedbackURI = ref('')
-const submitted = ref(false)
-const reputation = ref<{ count: number; averageValue: number } | null>(null)
-const loadingRep = ref(false)
+const comment = ref("");
+const busy = ref(false);
+const error = ref("");
+const resultTx = ref("");
+const scanUrl = ref("");
+const feedbackURI = ref("");
+const submitted = ref(false);
+const reputation = ref<{ count: number; averageValue: number } | null>(null);
+const loadingRep = ref(false);
 
 watch(
   () => props.initialTag,
   (t) => {
-    if (t && !submitted.value) tag.value = t
+    if (t && !submitted.value) tag.value = t;
   },
-)
+);
 
 watch(
   () => props.initialEndpoint,
   (e) => {
-    if (e !== undefined && !submitted.value) endpoint.value = e
+    if (e !== undefined && !submitted.value) endpoint.value = e;
   },
-)
+);
 
-const value = computed(() => stars.value * 20)
+const value = computed(() => stars.value * 20);
 
 function addrIn(list: string[] | undefined, addr?: string): boolean {
-  if (!addr || !list?.length) return false
-  const a = addr.toLowerCase()
-  return list.some((x) => x.toLowerCase() === a)
+  if (!addr || !list?.length) return false;
+  const a = addr.toLowerCase();
+  return list.some((x) => x.toLowerCase() === a);
 }
 
 /** Connected wallet cannot rate if it is owner or operator of this agent. */
 const blockedAsOwnerOrOperator = computed(() => {
-  return (
-    addrIn(props.owners, connected.value) || addrIn(props.operators, connected.value)
-  )
-})
+  return addrIn(props.owners, connected.value) || addrIn(props.operators, connected.value);
+});
 
 const canSubmit = computed(() => {
   return Boolean(
     props.agentName &&
-      agentId.value.trim() &&
-      !busy.value &&
-      !submitted.value &&
-      !blockedAsOwnerOrOperator.value,
-  )
-})
+    agentId.value.trim() &&
+    !busy.value &&
+    !submitted.value &&
+    !blockedAsOwnerOrOperator.value,
+  );
+});
 
-const chainId = computed(() => props.walletChainId ?? 421614)
+const chainId = computed(() => props.walletChainId ?? 421614);
 
 const previewScanUrl = computed(() => {
-  const id = agentId.value.trim()
-  if (!id) return ''
-  return scanUrlForAgent(id, chainId.value, 'feedback')
-})
+  const id = agentId.value.trim();
+  if (!id) return "";
+  return scanUrlForAgent(id, chainId.value, "feedback");
+});
 
 const feedbackScanUrl = computed(() => {
-  if (scanUrl.value) return scanUrl.value.includes('?tab=') ? scanUrl.value : `${scanUrl.value}?tab=feedback`
-  return previewScanUrl.value
-})
+  if (scanUrl.value)
+    return scanUrl.value.includes("?tab=") ? scanUrl.value : `${scanUrl.value}?tab=feedback`;
+  return previewScanUrl.value;
+});
 
 const ratingTxUrl = computed(() => {
-  if (!resultTx.value) return ''
-  return txScanUrl(resultTx.value, chainId.value)
-})
+  if (!resultTx.value) return "";
+  return txScanUrl(resultTx.value, chainId.value);
+});
 
 function setStars(n: number) {
-  stars.value = n
+  stars.value = n;
 }
 
 async function loadReputation() {
-  const id = agentId.value.trim()
+  const id = agentId.value.trim();
   if (!id) {
-    reputation.value = null
-    return
+    reputation.value = null;
+    return;
   }
-  loadingRep.value = true
+  loadingRep.value = true;
   try {
-    reputation.value = await fetchReputation(id)
+    reputation.value = await fetchReputation(id);
   } catch {
-    reputation.value = null
+    reputation.value = null;
   } finally {
-    loadingRep.value = false
+    loadingRep.value = false;
   }
 }
 
 watch(agentId, () => {
-  submitted.value = false
-  resultTx.value = ''
-  scanUrl.value = ''
-  feedbackURI.value = ''
-  void loadReputation()
-})
+  submitted.value = false;
+  resultTx.value = "";
+  scanUrl.value = "";
+  feedbackURI.value = "";
+  void loadReputation();
+});
 
 async function submit() {
-  if (!canSubmit.value) return
-  busy.value = true
-  error.value = ''
-  resultTx.value = ''
-  scanUrl.value = ''
-  feedbackURI.value = ''
+  if (!canSubmit.value) return;
+  busy.value = true;
+  error.value = "";
+  resultTx.value = "";
+  scanUrl.value = "";
+  feedbackURI.value = "";
   try {
     const res = await submitFeedback(props.agentName, {
       agentId: agentId.value.trim(),
       value: value.value,
       // Backend forces tag1='starred'; this is kept as tag2 context.
-      tag: tag.value.trim() || 'starred',
+      tag: tag.value.trim() || "starred",
       endpoint: endpoint.value.trim() || undefined,
       comment: comment.value.trim() || undefined,
-    })
-    resultTx.value = res.txHash
-    feedbackURI.value = res.feedbackURI ?? ''
-    const base = res.scanUrl || scanUrlForAgent(agentId.value.trim(), chainId.value)
-    scanUrl.value = base.includes('?tab=') ? base : `${base}?tab=feedback`
-    reputation.value = res.reputation
-    submitted.value = true
-    emit('rated', { txHash: res.txHash, scanUrl: scanUrl.value })
+    });
+    resultTx.value = res.txHash;
+    feedbackURI.value = res.feedbackURI ?? "";
+    const base = res.scanUrl || scanUrlForAgent(agentId.value.trim(), chainId.value);
+    scanUrl.value = base.includes("?tab=") ? base : `${base}?tab=feedback`;
+    reputation.value = res.reputation;
+    submitted.value = true;
+    emit("rated", { txHash: res.txHash, scanUrl: scanUrl.value });
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
+    error.value = err instanceof Error ? err.message : String(err);
   } finally {
-    busy.value = false
+    busy.value = false;
   }
 }
 
-void loadReputation()
+void loadReputation();
 </script>
 
 <template>
@@ -185,7 +185,7 @@ void loadReputation()
       <template v-if="loadingRep">Loading reputation…</template>
       <template v-else-if="reputation"
         >★ {{ reputation.averageValue.toFixed(1) }}/100 · {{ reputation.count }} rating{{
-          reputation.count === 1 ? '' : 's'
+          reputation.count === 1 ? "" : "s"
         }}</template
       >
       <template v-else-if="agentId.trim()">No reputation found (or lookup failed).</template>
@@ -231,7 +231,7 @@ void loadReputation()
       @click="submit"
     >
       <template v-if="submitted">✓ Rated</template>
-      <template v-else>{{ busy ? 'Submitting…' : `Submit ${value}/100 rating` }}</template>
+      <template v-else>{{ busy ? "Submitting…" : `Submit ${value}/100 rating` }}</template>
     </button>
 
     <ul v-if="submitted" class="links" data-testid="rate-scan-link">

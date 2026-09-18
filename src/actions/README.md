@@ -43,28 +43,28 @@ Three levels of abstraction, pick the one that fits your use case:
 When an agent loads an Action, two things happen:
 
 1. **Tools** are registered with the LangChain agent — the LLM can call them during execution.
-2. **Skill context** is injected verbatim into the agent's system prompt — this gives the LLM reasoning guidance about *when* and *how* to use those tools.
+2. **Skill context** is injected verbatim into the agent's system prompt — this gives the LLM reasoning guidance about _when_ and _how_ to use those tools.
 
-The Skill is not executable code. It's prompt engineering packaged alongside the tools it describes. This is what separates an Action from a bare tool: the agent doesn't just know it *can* send ETH, it knows it *should* check the balance first and only ask for confirmation above 0.1 ETH.
+The Skill is not executable code. It's prompt engineering packaged alongside the tools it describes. This is what separates an Action from a bare tool: the agent doesn't just know it _can_ send ETH, it knows it _should_ check the balance first and only ask for confirmation above 0.1 ETH.
 
 ## Quickstart
 
 ```typescript
-import { createReactAgent } from "@langchain/langgraph/prebuilt"
-import { ChatAnthropic } from "@langchain/anthropic"
-import { TransferEthAction } from "web3agent/actions"
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { ChatAnthropic } from "@langchain/anthropic";
+import { TransferEthAction } from "web3agent/actions";
 
-const transfer = TransferEthAction()
+const transfer = TransferEthAction();
 
-const llm = new ChatAnthropic({ modelName: "claude-sonnet-4-20250514" })
+const llm = new ChatAnthropic({ modelName: "claude-sonnet-4-20250514" });
 const agent = createReactAgent({
   llm,
   tools: transfer.tools, // includes send_eth + get_token_balance
-})
+});
 
 const result = await agent.invoke({
   messages: [{ role: "user", content: "What is my ETH balance?" }],
-})
+});
 ```
 
 ## Using with LangChain
@@ -72,21 +72,21 @@ const result = await agent.invoke({
 Extract tools from an action and inject the skill context into your system prompt:
 
 ```typescript
-import { TransferEthAction } from "web3agent/actions"
+import { TransferEthAction } from "web3agent/actions";
 
-const transfer = TransferEthAction()
+const transfer = TransferEthAction();
 
 // Use tools with any LangChain agent (send_eth + get_token_balance)
-const tools = transfer.tools
+const tools = transfer.tools;
 
 // Inject skill context into the system prompt
-const systemPrompt = `You are an onchain agent.\n\n${transfer.skill.context}`
+const systemPrompt = `You are an onchain agent.\n\n${transfer.skill.context}`;
 ```
 
 ## Available actions
 
-| Action            | Tools included                  | Description                                              |
-|-------------------|---------------------------------|----------------------------------------------------------|
+| Action                | Tools included                  | Description                                               |
+| --------------------- | ------------------------------- | --------------------------------------------------------- |
 | `TransferEthAction()` | `send_eth`, `get_token_balance` | Transfer ETH with balance checks and safety confirmations |
 
 ## Using tools directly (Level 2)
@@ -94,15 +94,15 @@ const systemPrompt = `You are an onchain agent.\n\n${transfer.skill.context}`
 Import individual tools without the skill wrapper:
 
 ```typescript
-import { sendEthTool, tokenBalanceTool } from "web3agent/actions"
+import { sendEthTool, tokenBalanceTool } from "web3agent/actions";
 
 // Use directly with a LangChain agent
-const tools = [sendEthTool, tokenBalanceTool]
+const tools = [sendEthTool, tokenBalanceTool];
 
 // Or invoke manually
 const balance = await tokenBalanceTool.invoke({
   address: "0x742d35Cc6634C0532925a3b8D4C9C4A3b5C09d21",
-})
+});
 ```
 
 ## Dynamic contract tools (Level 3)
@@ -110,13 +110,14 @@ const balance = await tokenBalanceTool.invoke({
 Two tools that let the agent discover and call any verified contract at runtime, no pre-configuration needed:
 
 ```typescript
-import { fetchContractAbiTool, callContractTool } from "web3agent/actions"
+import { fetchContractAbiTool, callContractTool } from "web3agent/actions";
 
 // Give both tools to your agent
-const tools = [fetchContractAbiTool, callContractTool]
+const tools = [fetchContractAbiTool, callContractTool];
 ```
 
 The agent autonomously:
+
 1. Calls `fetch_contract_abi` with a contract address to see its functions
 2. Calls `call_contract` with the address, function name, and args to execute
 
@@ -130,8 +131,8 @@ Set `ARBISCAN_API_KEY` for higher rate limits (optional).
 
 ```typescript
 // actions/tools/my-tool.tool.ts
-import { DynamicStructuredTool } from "@langchain/core/tools"
-import { z } from "zod"
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
 
 export const myTool = new DynamicStructuredTool({
   name: "my_tool",
@@ -142,20 +143,20 @@ export const myTool = new DynamicStructuredTool({
   func: async ({ param }): Promise<string> => {
     try {
       // Your viem logic here
-      return `Success: ${param}`
+      return `Success: ${param}`;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      return `Error: ${message}`
+      const message = err instanceof Error ? err.message : String(err);
+      return `Error: ${message}`;
     }
   },
-})
+});
 ```
 
 ### Step 2: Create the skill
 
 ```typescript
 // actions/skills/my-tool.skill.ts
-import type { Skill } from "../types"
+import type { Skill } from "../types";
 
 export const myToolSkill: Skill = {
   name: "my-tool",
@@ -165,22 +166,22 @@ export const myToolSkill: Skill = {
     - Always validate input before calling
     - Return results clearly
   `,
-}
+};
 ```
 
 ### Step 3: Compose the action in index.ts
 
 ```typescript
-import { myTool } from "./tools/my-tool.tool"
-import { myToolSkill } from "./skills/my-tool.skill"
-import type { Action } from "./types"
+import { myTool } from "./tools/my-tool.tool";
+import { myToolSkill } from "./skills/my-tool.skill";
+import type { Action } from "./types";
 
 export const MyToolAction = (): Action => ({
   name: "my-tool",
   description: "My custom onchain action",
   tools: [myTool],
   skill: myToolSkill,
-})
+});
 ```
 
 ## API reference
@@ -189,23 +190,23 @@ export const MyToolAction = (): Action => ({
 
 Prompt context injected into the agent system prompt. Defines when and how to use tools.
 
-| Field         | Type       | Description                                      |
-|---------------|------------|--------------------------------------------------|
-| `name`        | `string`   | Skill identifier                                 |
-| `description` | `string`   | Short description of the skill's purpose         |
-| `context`     | `string`   | Injected verbatim into the agent system prompt   |
-| `examples`    | `Array`    | Optional usage examples (user, thought, action)  |
+| Field         | Type     | Description                                     |
+| ------------- | -------- | ----------------------------------------------- |
+| `name`        | `string` | Skill identifier                                |
+| `description` | `string` | Short description of the skill's purpose        |
+| `context`     | `string` | Injected verbatim into the agent system prompt  |
+| `examples`    | `Array`  | Optional usage examples (user, thought, action) |
 
 ### `Action`
 
 Composable unit combining tools + skill. Level 1 of the actions architecture.
 
-| Field         | Type                      | Description                          |
-|---------------|---------------------------|--------------------------------------|
-| `name`        | `string`                  | Action identifier                    |
-| `description` | `string`                  | Short description                    |
-| `tools`       | `DynamicStructuredTool[]` | Tools included in this action        |
-| `skill`       | `Skill`                   | Reasoning context for the agent      |
+| Field         | Type                      | Description                     |
+| ------------- | ------------------------- | ------------------------------- |
+| `name`        | `string`                  | Action identifier               |
+| `description` | `string`                  | Short description               |
+| `tools`       | `DynamicStructuredTool[]` | Tools included in this action   |
+| `skill`       | `Skill`                   | Reasoning context for the agent |
 
 ## Actions vs MCP (Model Context Protocol)
 
@@ -225,7 +226,7 @@ A common question is whether this actions system should be replaced by or aligne
 
 Actions are an **agent behavior composition** layer. An Action bundles execution (Tools) with reasoning guidance (Skills) into a single unit that shapes how an LLM thinks and acts. MCP has no equivalent concept for:
 
-- **Skills** — prompt context that teaches the LLM *when* and *why* to use a tool, not just *how*. MCP tools have descriptions, but not structured reasoning guidance with examples.
+- **Skills** — prompt context that teaches the LLM _when_ and _why_ to use a tool, not just _how_. MCP tools have descriptions, but not structured reasoning guidance with examples.
 - **Action bundles** — curated groupings of tools that belong together (e.g., `send_eth` + `get_token_balance` as a single `TransferEthAction`). MCP exposes flat tool lists.
 - **Agent-level configuration** — which actions an agent has selected, stored in an ERC-8004 compliant config.
 
@@ -258,14 +259,14 @@ The ERC-8004 agent config already defines `"MCP"` as a supported endpoint type, 
 
 ### TL;DR
 
-| Concern | Actions | MCP |
-|---------|---------|-----|
-| What it solves | Agent behavior composition (tools + reasoning) | Tool discovery & invocation across boundaries |
-| Scope | In-process, per-agent | Cross-process, multi-agent |
-| Key primitive | `Action` (Skill + Tools bundle) | `Tool` (JSON Schema + JSON-RPC handler) |
-| Reasoning guidance | Yes (Skills with prompt context + examples) | No (tool descriptions only) |
-| Remote tool access | No | Yes |
-| Relationship | Sits above MCP — can compose MCP-sourced tools | Sits below Actions — transports tool calls |
+| Concern            | Actions                                        | MCP                                           |
+| ------------------ | ---------------------------------------------- | --------------------------------------------- |
+| What it solves     | Agent behavior composition (tools + reasoning) | Tool discovery & invocation across boundaries |
+| Scope              | In-process, per-agent                          | Cross-process, multi-agent                    |
+| Key primitive      | `Action` (Skill + Tools bundle)                | `Tool` (JSON Schema + JSON-RPC handler)       |
+| Reasoning guidance | Yes (Skills with prompt context + examples)    | No (tool descriptions only)                   |
+| Remote tool access | No                                             | Yes                                           |
+| Relationship       | Sits above MCP — can compose MCP-sourced tools | Sits below Actions — transports tool calls    |
 
 ## Contributing
 

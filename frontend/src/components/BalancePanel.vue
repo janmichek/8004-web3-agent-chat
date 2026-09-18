@@ -1,65 +1,65 @@
 <script setup lang="ts">
-import { computed, unref, watch } from 'vue'
-import { useAccount, useBalance } from '@wagmi/vue'
-import { formatEther, type Address, isAddress } from 'viem'
+import { computed, unref, watch } from "vue";
+import { useAccount, useBalance } from "@wagmi/vue";
+import { formatEther, type Address, isAddress } from "viem";
 
 const props = defineProps<{
-  watchAddress?: string
-  label?: string
+  watchAddress?: string;
+  label?: string;
   /** Bump to force a balance refetch (e.g. after a transfer). */
-  refreshKey?: number
-}>()
+  refreshKey?: number;
+}>();
 
-const { address: connected } = useAccount()
+const { address: connected } = useAccount();
 
 const target = computed<Address | undefined>(() => {
   if (props.watchAddress && isAddress(props.watchAddress)) {
-    return props.watchAddress as Address
+    return props.watchAddress as Address;
   }
-  return connected.value
-})
+  return connected.value;
+});
 
-const hasTarget = computed(() => Boolean(target.value))
+const hasTarget = computed(() => Boolean(target.value));
 
 const eth = useBalance({
   address: target,
   query: { enabled: hasTarget },
-})
+});
 
 const ethDisplay = computed(() => {
-  if (!target.value) return '—'
-  if (unref(eth.isFetching) && unref(eth.data) === undefined) return '…'
-  const err = unref(eth.error)
-  if (err) return 'Error'
-  const data = unref(eth.data)
-  if (data?.value === undefined) return '—'
-  return `${Number(formatEther(data.value)).toPrecision(6)} ETH`
-})
+  if (!target.value) return "—";
+  if (unref(eth.isFetching) && unref(eth.data) === undefined) return "…";
+  const err = unref(eth.error);
+  if (err) return "Error";
+  const data = unref(eth.data);
+  if (data?.value === undefined) return "—";
+  return `${Number(formatEther(data.value)).toPrecision(6)} ETH`;
+});
 
 const shortTarget = computed(() => {
-  if (!target.value) return null
-  return `${target.value.slice(0, 6)}…${target.value.slice(-4)}`
-})
+  if (!target.value) return null;
+  return `${target.value.slice(0, 6)}…${target.value.slice(-4)}`;
+});
 
 function refresh() {
-  void eth.refetch()
+  void eth.refetch();
 }
 
 watch(
   () => props.refreshKey,
   () => {
-    if (hasTarget.value) refresh()
+    if (hasTarget.value) refresh();
   },
-)
+);
 
-defineExpose({ refresh })
+defineExpose({ refresh });
 </script>
 
 <template>
   <section class="panel">
     <header class="head">
       <div>
-        <h2>{{ label || 'Balances' }}</h2>
+        <h2>{{ label || "Balances" }}</h2>
         <p v-if="shortTarget" class="sub mono">{{ shortTarget }}</p>
         <p v-else class="sub">Connect a wallet to read balances</p>
       </div>

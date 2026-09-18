@@ -38,7 +38,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const webReq = new Request(url, {
       method: req.method,
       headers,
-      body,
+      // Copy into a fresh Uint8Array: undici's BodyInit accepts views over
+      // a non-shared ArrayBuffer, which a pool-backed Buffer is not.
+      body: body ? Uint8Array.from(body) : undefined,
       // @ts-ignore duplex needed for Node fetch with body
       duplex: body ? "half" : undefined,
     });

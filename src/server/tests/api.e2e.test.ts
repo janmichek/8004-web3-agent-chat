@@ -5,7 +5,7 @@
  *
  * Run: npx vitest run src/server/tests/api.e2e.test.ts
  */
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vite-plus/test";
 
 process.env.VERCEL = "1";
 
@@ -13,7 +13,10 @@ vi.mock("../../core/wallet.js", () => ({
   AGENTS_DIR: "/tmp/web3agent-test-agents",
   getMasterWallet: () => ({ address: "0x0000000000000000000000000000000000000001" }),
   getMasterWalletBalance: async () => "1.0",
-  getOrCreateAgentWallet: () => ({ address: "0x0000000000000000000000000000000000000002", privateKey: "0x" + "1".repeat(64) }),
+  getOrCreateAgentWallet: () => ({
+    address: "0x0000000000000000000000000000000000000002",
+    privateKey: "0x" + "1".repeat(64),
+  }),
   fundAgentWallet: async () => "0x" + "a".repeat(64),
   getMasterWalletAddress: () => "0x0000000000000000000000000000000000000001",
 }));
@@ -37,7 +40,7 @@ vi.mock("../../core/agent-config.js", async (importOriginal) => {
 });
 
 describe("API offline e2e", () => {
-  let app: typeof import("../api.js")["app"];
+  let app: (typeof import("../api.js"))["app"];
 
   beforeAll(async () => {
     process.env.RPC_URL = process.env.RPC_URL || "http://localhost:8545";

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Skill } from "../types.js"
+import type { Skill } from "../types.js";
 
 /**
  * @notice Skill context for the transfer-eth action.
@@ -31,17 +31,17 @@ export const transferEthSkill: Skill = {
     {
       user: "What's my ETH balance?",
       thought: "ETH balance requested. No tokenAddress needed, omit address to use own wallet.",
-      action: "Call get_token_balance with no args"
+      action: "Call get_token_balance with no args",
     },
     {
       user: "Send 0.01 ETH to 0x742d35Cc6634C0532925a3b8D4C9C4A3b5C09d21",
       thought: "Address and amount provided. Check balance, then send directly.",
-      action: "Call get_token_balance, then call send_eth"
+      action: "Call get_token_balance, then call send_eth",
     },
     {
       user: "Send some ETH to my friend",
       thought: "Missing destination and amount. Cannot call tool yet.",
-      action: "Ask user for destination address and amount before calling any tool"
-    }
-  ]
-}
+      action: "Ask user for destination address and amount before calling any tool",
+    },
+  ],
+};

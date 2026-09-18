@@ -32,9 +32,7 @@ const args = process.argv.slice(2);
 
 function getFlag(name: string): string | undefined {
   const idx = args.indexOf(`--${name}`);
-  return idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith("--")
-    ? args[idx + 1]
-    : undefined;
+  return idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith("--") ? args[idx + 1] : undefined;
 }
 function hasFlag(name: string): boolean {
   return args.includes(`--${name}`);
@@ -48,7 +46,7 @@ const skipRegister = hasFlag("skip-register");
 async function startChat(
   agentName: string,
   privateKey: string,
-  masterAddress: string
+  masterAddress: string,
 ): Promise<void> {
   const skillNames = discoverAgentSkills(agentName).map((c) => c.name);
   const tools = await resolveAgentSkills(agentName, privateKey);
@@ -67,13 +65,20 @@ async function startChat(
   const threadId = agentName;
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl.on("close", () => { flush(); console.log("\nGoodbye!\n"); process.exit(0); });
+  rl.on("close", () => {
+    flush();
+    console.log("\nGoodbye!\n");
+    process.exit(0);
+  });
 
   const prompt = () => {
     rl.question("you > ", async (input) => {
       const trimmed = input.trim();
       if (!trimmed) return prompt();
-      if (trimmed.toLowerCase() === "exit") { rl.close(); return; }
+      if (trimmed.toLowerCase() === "exit") {
+        rl.close();
+        return;
+      }
 
       try {
         const prevState = await agent.getState({ configurable: { thread_id: threadId } });
@@ -81,7 +86,7 @@ async function startChat(
 
         const result = await agent.invoke(
           { messages: [{ role: "user", content: trimmed }] },
-          { configurable: { thread_id: threadId } }
+          { configurable: { thread_id: threadId } },
         );
         flush();
 
@@ -90,7 +95,8 @@ async function startChat(
 
         for (const msg of newMessages) {
           const role = (msg as any)._getType?.() ?? "unknown";
-          const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+          const content =
+            typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 
           if (role === "ai" && (msg as any).tool_calls?.length) {
             const calls = (msg as any).tool_calls;
@@ -103,9 +109,8 @@ async function startChat(
         }
 
         const last = allMessages[allMessages.length - 1];
-        const text = typeof last.content === "string"
-          ? last.content
-          : JSON.stringify(last.content, null, 2);
+        const text =
+          typeof last.content === "string" ? last.content : JSON.stringify(last.content, null, 2);
 
         if (text.trim()) {
           console.log(`\nagent > ${text}\n`);
@@ -135,9 +140,9 @@ async function main(): Promise<void> {
 
   p.note(
     `Network : ${networkConfig.name} (${network})\n` +
-    `Master  : ${masterWallet.address}\n` +
-    `Balance : ${masterBalance} ETH`,
-    "Environment"
+      `Master  : ${masterWallet.address}\n` +
+      `Balance : ${masterBalance} ETH`,
+    "Environment",
   );
 
   // --- Agent name ---
@@ -150,9 +155,12 @@ async function main(): Promise<void> {
     const nameResult = await p.text({
       message: "Agent name",
       placeholder: "my-agent",
-      validate: (v) => !v?.trim() ? "Name is required" : undefined,
+      validate: (v) => (!v?.trim() ? "Name is required" : undefined),
     });
-    if (p.isCancel(nameResult)) { p.cancel("Cancelled."); process.exit(0); }
+    if (p.isCancel(nameResult)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
     agentName = nameResult;
   }
 
@@ -174,7 +182,10 @@ async function main(): Promise<void> {
       placeholder: "0.002",
       initialValue: "0.002",
     });
-    if (p.isCancel(fundResult)) { p.cancel("Cancelled."); process.exit(0); }
+    if (p.isCancel(fundResult)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
     fundAmount = fundResult || "0.002";
   }
 
@@ -189,7 +200,7 @@ async function main(): Promise<void> {
     const receipt = await provider.waitForTransaction(txHash);
     s.stop(`Funded (block ${receipt?.blockNumber}): ${txHash}`);
   } catch (err) {
-    s.stop(`Funding failed: ${err instanceof Error ? err.message : err}`);
+    s.stop(`Funding failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // --- Registration ---
@@ -207,7 +218,7 @@ async function main(): Promise<void> {
       });
       s.stop(`Registered. Agent ID: ${reg.agentId} (${reg.agentURI})`);
     } catch (err) {
-      s.stop(`Registration failed: ${err instanceof Error ? err.message : err}`);
+      s.stop(`Registration failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   } else {
     p.log.info("Skipping ERC-8004 registration (--skip-register)");
@@ -222,11 +233,11 @@ async function main(): Promise<void> {
 
   p.note(
     `Name    : ${agentName}\n` +
-    `Wallet  : ${agentWallet.address}\n` +
-    `Balance : ${ethers.formatEther(agentBalance)} ETH\n` +
-    `Skills  : ${discoveredSkills.join(", ") || "none"}\n` +
-    `Master  : ${masterWallet.address}`,
-    "Agent Deployed"
+      `Wallet  : ${agentWallet.address}\n` +
+      `Balance : ${ethers.formatEther(agentBalance)} ETH\n` +
+      `Skills  : ${discoveredSkills.join(", ") || "none"}\n` +
+      `Master  : ${masterWallet.address}`,
+    "Agent Deployed",
   );
 
   // --- Open chat ---

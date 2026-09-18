@@ -15,7 +15,11 @@ import { getLLM } from "../core/llm.js";
 import { AGENTS_DIR, getOrCreateAgentWallet } from "../core/wallet.js";
 import { discoverAgentSkills, resolveAgentSkills } from "../core/agent-skills.js";
 import { createFileCheckpointer } from "../core/file-checkpoint.js";
-import { loadAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "../core/agent-config.js";
+import {
+  loadAgentConfig,
+  resolveToolsFromConfig,
+  buildCapabilitySummary,
+} from "../core/agent-config.js";
 import { getNetworkNameByChainId, getNetworkConfig } from "../core/config.js";
 import type { Skill } from "../actions/types.js";
 
@@ -110,7 +114,9 @@ async function main() {
     : getNetworkConfig().name;
 
   const skillContext = skills.map((s) => `## Skill: ${s.name}\n\n${s.context}`).join("\n\n");
-  const capabilitySummary = agentConfig ? buildCapabilitySummary(agentConfig) : "No capabilities configured.";
+  const capabilitySummary = agentConfig
+    ? buildCapabilitySummary(agentConfig)
+    : "No capabilities configured.";
   const systemMessage = [
     `You are "${agentName}", an onchain AI agent on ${networkName}.`,
     `Your wallet address is: ${wallet.address}`,
@@ -119,7 +125,9 @@ async function main() {
     "",
     `## Your Capabilities\n\n${capabilitySummary}`,
     skillContext,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const llm = getLLM();
   const agent = createReactAgent({
@@ -131,13 +139,20 @@ async function main() {
   const threadId = agentName; // stable thread per agent
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl.on("close", () => { flush(); console.log("\nGoodbye!\n"); process.exit(0); });
+  rl.on("close", () => {
+    flush();
+    console.log("\nGoodbye!\n");
+    process.exit(0);
+  });
 
   const prompt = () => {
     rl.question("you > ", async (input) => {
       const trimmed = input.trim();
       if (!trimmed) return prompt();
-      if (trimmed.toLowerCase() === "exit") { rl.close(); return; }
+      if (trimmed.toLowerCase() === "exit") {
+        rl.close();
+        return;
+      }
 
       try {
         const stream = await agent.stream(
@@ -147,12 +162,13 @@ async function main() {
 
         for await (const update of stream) {
           // Each update is { nodeName: nodeOutput }
-          for (const [nodeName, output] of Object.entries(update)) {
+          for (const output of Object.values(update)) {
             const messages = (output as any)?.messages ?? [];
 
             for (const msg of messages) {
               const role = msg._getType?.() ?? "unknown";
-              const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+              const content =
+                typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 
               if (role === "ai") {
                 // Show tool calls
@@ -186,4 +202,7 @@ async function main() {
   prompt();
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

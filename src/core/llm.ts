@@ -18,11 +18,7 @@ import {
   type BaseChatModelParams,
   type BindToolsInput,
 } from "@langchain/core/language_models/chat_models";
-import {
-  AIMessage,
-  type BaseMessage,
-  ToolMessage,
-} from "@langchain/core/messages";
+import { AIMessage, type BaseMessage, ToolMessage } from "@langchain/core/messages";
 import type { ChatResult } from "@langchain/core/outputs";
 import type { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager";
 import type { Runnable } from "@langchain/core/runnables";
@@ -108,9 +104,7 @@ function toORMessage(msg: BaseMessage): ORMessage {
 }
 
 function msgText(msg: BaseMessage): string {
-  return typeof msg.content === "string"
-    ? msg.content
-    : JSON.stringify(msg.content);
+  return typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 }
 
 class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
@@ -197,7 +191,7 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
     })) as unknown as {
       choices?: Array<{
         message: {
-          content?: string | unknown | null;
+          content?: unknown;
           toolCalls?: Array<{ id: string; function: { name: string; arguments: string } }>;
         };
       }>;
@@ -206,10 +200,15 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
     const choice = response.choices?.[0];
     if (process.env.DEBUG_LLM) {
       console.log("[debug:llm] _generate called");
-      console.log("[debug:llm] tools sent:", JSON.stringify(tools?.map((t: ORToolDef) => ({
-        name: t.function.name,
-        params: Object.keys((t.function.parameters as any)?.properties ?? {}),
-      }))));
+      console.log(
+        "[debug:llm] tools sent:",
+        JSON.stringify(
+          tools?.map((t: ORToolDef) => ({
+            name: t.function.name,
+            params: Object.keys((t.function.parameters as any)?.properties ?? {}),
+          })),
+        ),
+      );
       console.log("[debug:llm] response:", JSON.stringify(choice?.message, null, 2));
     }
     if (!choice) {
@@ -251,14 +250,16 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
       ],
     };
   }
-
 }
 
 /** Extract JSON Schema from a Zod schema (best-effort). */
 function jsonSchemaFromZod(schema: unknown): Record<string, unknown> {
   if (schema && typeof schema === "object") {
     // If it has a jsonSchema method (zod-to-json-schema integration)
-    if ("jsonSchema" in schema && typeof (schema as Record<string, unknown>).jsonSchema === "function") {
+    if (
+      "jsonSchema" in schema &&
+      typeof (schema as Record<string, unknown>).jsonSchema === "function"
+    ) {
       return (schema as { jsonSchema: () => Record<string, unknown> }).jsonSchema();
     }
     try {
@@ -293,9 +294,7 @@ export function getLLM(options: { streaming?: boolean } = {}): BaseChatModel {
     case "openrouter": {
       const apiKey = process.env.OPENROUTER_API_KEY;
       if (!apiKey) {
-        throw new Error(
-          "OPENROUTER_API_KEY is not set. Get a key at https://openrouter.ai/keys"
-        );
+        throw new Error("OPENROUTER_API_KEY is not set. Get a key at https://openrouter.ai/keys");
       }
       return new ChatOpenRouter({ apiKey, model, maxTokens: 4096 });
     }
@@ -304,7 +303,7 @@ export function getLLM(options: { streaming?: boolean } = {}): BaseChatModel {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         throw new Error(
-          "ANTHROPIC_API_KEY is not set. Get a key at https://console.anthropic.com/"
+          "ANTHROPIC_API_KEY is not set. Get a key at https://console.anthropic.com/",
         );
       }
       return new ChatAnthropic({
@@ -318,7 +317,7 @@ export function getLLM(options: { streaming?: boolean } = {}): BaseChatModel {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
         throw new Error(
-          "OPENAI_API_KEY is not set. Get a key at https://platform.openai.com/api-keys"
+          "OPENAI_API_KEY is not set. Get a key at https://platform.openai.com/api-keys",
         );
       }
       return new ChatOpenAI({
@@ -330,7 +329,7 @@ export function getLLM(options: { streaming?: boolean } = {}): BaseChatModel {
 
     default:
       throw new Error(
-        `Unknown LLM_PROVIDER "${provider}". Use one of: openrouter, anthropic, openai`
+        `Unknown LLM_PROVIDER "${String(provider)}". Use one of: openrouter, anthropic, openai`,
       );
   }
 }

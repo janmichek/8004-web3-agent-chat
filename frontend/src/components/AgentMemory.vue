@@ -1,75 +1,82 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { fetchMemory, type MemorySummary, type MemorySession, type AgentSummary } from '../api'
+import { ref, watch } from "vue";
+import { fetchMemory, type MemorySummary, type MemorySession, type AgentSummary } from "../api";
 
 const props = defineProps<{
-  agent?: AgentSummary | null
-  refreshKey?: number
-}>()
+  agent?: AgentSummary | null;
+  refreshKey?: number;
+}>();
 
 const emit = defineEmits<{
-  recall: [session: MemorySession]
-  newChat: []
-}>()
+  recall: [session: MemorySession];
+  newChat: [];
+}>();
 
-const memory = ref<MemorySummary | null>(null)
-const loading = ref(false)
-const error = ref('')
-const selectedId = ref<string | null>(null)
+const memory = ref<MemorySummary | null>(null);
+const loading = ref(false);
+const error = ref("");
+const selectedId = ref<string | null>(null);
 
 function timeAgo(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const diff = Date.now() - d.getTime()
-  if (diff < 60_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
-  return d.toLocaleDateString()
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+  return d.toLocaleDateString();
 }
 
 async function load() {
-  const name = props.agent?.name
+  const name = props.agent?.name;
   if (!name) {
-    memory.value = null
-    error.value = ''
-    selectedId.value = null
-    return
+    memory.value = null;
+    error.value = "";
+    selectedId.value = null;
+    return;
   }
-  loading.value = true
-  error.value = ''
+  loading.value = true;
+  error.value = "";
   try {
-    memory.value = await fetchMemory(name)
+    memory.value = await fetchMemory(name);
     // reset selection if memory changed and selected id no longer exists
-    if (selectedId.value && !memory.value.sessions.some(s => s.id === selectedId.value)) {
-      selectedId.value = null
+    if (selectedId.value && !memory.value.sessions.some((s) => s.id === selectedId.value)) {
+      selectedId.value = null;
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-    memory.value = null
+    error.value = e instanceof Error ? e.message : String(e);
+    memory.value = null;
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
-watch(() => props.agent?.name, load, { immediate: true })
-watch(() => props.refreshKey, () => { void load() })
+watch(() => props.agent?.name, load, { immediate: true });
+watch(
+  () => props.refreshKey,
+  () => {
+    void load();
+  },
+);
 
 function onRecall(s: MemorySession) {
-  selectedId.value = s.id
-  emit('recall', s)
+  selectedId.value = s.id;
+  emit("recall", s);
 }
 
 function onNewChat() {
-  selectedId.value = null
-  emit('newChat')
+  selectedId.value = null;
+  emit("newChat");
 }
 </script>
 
 <template>
   <section class="card memory" data-testid="agent-memory">
     <div class="convos-top">
-      <button type="button" class="btn ghost small" :disabled="!agent?.name" @click="onNewChat">+ New chat</button>
+      <button type="button" class="btn ghost small" :disabled="!agent?.name" @click="onNewChat">
+        + New chat
+      </button>
     </div>
 
     <p v-if="!agent?.name" class="hint">Select an agent to see its on-disk memory.</p>
@@ -83,8 +90,8 @@ function onNewChat() {
         <div v-if="memory.empty" class="empty">
           <p class="empty-title">No history yet</p>
           <p class="hint">
-            This agent has no <code>memory.json</code> history. Chat to create the first checkpoint — it persists to
-            <code>agents/{{ agent.name }}/memory.json</code>.
+            This agent has no <code>memory.json</code> history. Chat to create the first checkpoint
+            — it persists to <code>agents/{{ agent.name }}/memory.json</code>.
           </p>
           <ul class="empty-meta mono">
             <li>threads: {{ memory.threads.length || 0 }}</li>
@@ -147,9 +154,20 @@ function onNewChat() {
   align-items: center;
   gap: 0.35rem;
 }
-.brain { font-size: 1rem; line-height: 1; }
-.head-actions { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
-.btn.small { padding: 0.35rem 0.65rem; font-size: 0.75rem; }
+.brain {
+  font-size: 1rem;
+  line-height: 1;
+}
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.btn.small {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+}
 .hint {
   margin: 0;
   font-size: 0.82rem;
@@ -173,8 +191,18 @@ function onNewChat() {
   border-radius: 0.4rem;
   word-break: break-all;
 }
-.pulse { animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse { 0%,100%{opacity:.5}50%{opacity:1}}
+.pulse {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 
 .empty {
   display: flex;
@@ -185,8 +213,20 @@ function onNewChat() {
   border-radius: 0.45rem;
   background: color-mix(in oklab, var(--bg) 60%, var(--surface));
 }
-.empty-title { margin: 0; font-size: 0.85rem; font-weight: 600; }
-.empty-meta { margin: 0; display: flex; gap: 0.8rem; font-size: 0.72rem; color: var(--muted); list-style: none; padding: 0; }
+.empty-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.empty-meta {
+  margin: 0;
+  display: flex;
+  gap: 0.8rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  list-style: none;
+  padding: 0;
+}
 
 .summary {
   margin: 0;
@@ -226,7 +266,9 @@ function onNewChat() {
   line-height: 1.1;
   color: var(--ink);
 }
-.stat .v.small { font-size: 0.85rem; }
+.stat .v.small {
+  font-size: 0.85rem;
+}
 .stat .sub {
   font-size: 0.68rem;
   color: var(--muted);
@@ -235,7 +277,9 @@ function onNewChat() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mono { font-family: var(--font-mono, ui-monospace, monospace); }
+.mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
 
 .chips {
   display: flex;
@@ -252,11 +296,24 @@ function onNewChat() {
   border: 1px solid var(--border);
   font-size: 0.72rem;
 }
-.chip-name { color: var(--ink); }
-.chip-count { color: var(--muted); font-weight: 600; }
+.chip-name {
+  color: var(--ink);
+}
+.chip-count {
+  color: var(--muted);
+  font-weight: 600;
+}
 
-.lists { display: flex; flex-direction: column; gap: 0.55rem; }
-.list-block { display: flex; flex-direction: column; gap: 0.3rem; }
+.lists {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.list-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
 .list-label {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -278,8 +335,13 @@ function onNewChat() {
   border-radius: 0.3rem;
   background: color-mix(in oklab, var(--accent) 6%, var(--surface));
 }
-.addr:hover { text-decoration: underline; }
-.more { font-size: 0.72rem; color: var(--muted); }
+.addr:hover {
+  text-decoration: underline;
+}
+.more {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
 
 .sessions-head {
   display: flex;
@@ -287,10 +349,20 @@ function onNewChat() {
   align-items: baseline;
   margin-top: 0.2rem;
 }
-.convos-top { display: flex; flex-shrink: 0; }
-.convos-top .btn { flex: 1; justify-content: center; }
-.small { font-size: 0.7rem; }
-.muted { color: var(--muted); }
+.convos-top {
+  display: flex;
+  flex-shrink: 0;
+}
+.convos-top .btn {
+  flex: 1;
+  justify-content: center;
+}
+.small {
+  font-size: 0.7rem;
+}
+.muted {
+  color: var(--muted);
+}
 
 .session-list {
   display: flex;
@@ -314,7 +386,10 @@ function onNewChat() {
   background: var(--bg);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.1s ease;
   width: 100%;
   font: inherit;
   color: inherit;

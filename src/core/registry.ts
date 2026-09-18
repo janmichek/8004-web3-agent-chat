@@ -46,9 +46,7 @@ import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
  * }
  * ```
  */
-export async function registerAgent(
-  options: RegisterAgentOptions
-): Promise<RegistrationResult> {
+export async function registerAgent(options: RegisterAgentOptions): Promise<RegistrationResult> {
   const { name, description, privateKey, walletAddress } = options;
   const network = getActiveNetwork();
   const config = getNetworkConfig(network);
@@ -101,8 +99,7 @@ export async function registerAgent(
     };
     const agentId = agent.agentId ?? "unknown";
     const txHash = (handle as unknown as { hash?: string }).hash ?? "unknown";
-    const agentURI =
-      mined?.result?.agentURI ?? agent.agentURI ?? "unknown";
+    const agentURI = mined?.result?.agentURI ?? agent.agentURI ?? "unknown";
 
     console.log(`[registry] Agent registered successfully (IPFS mode).`);
     console.log(`[registry]   Agent ID: ${agentId}`);
@@ -116,7 +113,7 @@ export async function registerAgent(
   // HTTP fallback (no IPFS configured): tokenURI has no pinned metadata,
   // so 8004scan shows the agent without name/description.
   console.warn(
-    "[registry] PINATA_JWT/ IPFS_NODE_URL not set — falling back to HTTP mode (no IPFS metadata)."
+    "[registry] PINATA_JWT/ IPFS_NODE_URL not set — falling back to HTTP mode (no IPFS metadata).",
   );
   const agentHttpUri = `https://8004scan.com/api/agent/${walletAddress}`;
   const handle = await agent.registerHTTP(agentHttpUri);

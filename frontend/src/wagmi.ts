@@ -1,9 +1,9 @@
-import { http, createConfig } from '@wagmi/vue'
-import { arbitrum, arbitrumSepolia } from '@wagmi/vue/chains'
-import { injected } from '@wagmi/vue/connectors'
+import { http, createConfig } from "@wagmi/vue";
+import { arbitrum, arbitrumSepolia } from "@wagmi/vue/chains";
+import { injected } from "@wagmi/vue/connectors";
 
 /** Browser calls go through the API proxy → RPC_URL from server .env */
-const rpc = http('/api/rpc')
+const rpc = http("/api/rpc");
 
 export const config = createConfig({
   chains: [arbitrumSepolia, arbitrum],
@@ -12,10 +12,10 @@ export const config = createConfig({
     [arbitrumSepolia.id]: rpc,
     [arbitrum.id]: rpc,
   },
-})
+});
 
-declare module '@wagmi/vue' {
+declare module "@wagmi/vue" {
   interface Register {
-    config: typeof config
+    config: typeof config;
   }
 }

@@ -40,7 +40,7 @@ export function getActiveNetwork(): NetworkName {
   const raw = process.env.NETWORK || "arbitrum-sepolia";
   if (!(raw in NETWORKS)) {
     throw new Error(
-      `Unsupported network "${raw}". Supported networks: ${Object.keys(NETWORKS).join(", ")}`
+      `Unsupported network "${raw}". Supported networks: ${Object.keys(NETWORKS).join(", ")}`,
     );
   }
   return raw as NetworkName;
@@ -60,19 +60,18 @@ export function getNetworkConfig(network?: NetworkName): NetworkConfig {
 /**
  * Returns the RPC endpoint URL for the active network.
  *
- * Uses the RPC_URL environment variable if set, otherwise falls back
- * to the network's default RPC URL.
+ * Uses the RPC_URL environment variable.
  *
- * @param network - The network name. Defaults to the active network.
+ * @param _network - Reserved for per-network endpoints. Currently unused.
  * @returns The RPC endpoint URL.
  * @throws If RPC_URL is not set.
  */
-export function getRpcUrl(network?: NetworkName): string {
+export function getRpcUrl(_network?: NetworkName): string {
   const rpcUrl = process.env.RPC_URL;
   if (!rpcUrl) {
     throw new Error(
       `Missing RPC endpoint. Set the RPC_URL environment variable.\n` +
-        `Example: https://arb-sepolia.g.alchemy.com/v2/YOUR_API_KEY`
+        `Example: https://arb-sepolia.g.alchemy.com/v2/YOUR_API_KEY`,
     );
   }
   return rpcUrl;

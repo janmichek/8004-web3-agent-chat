@@ -20,7 +20,7 @@ import {
   getMasterWallet,
   getOrCreateAgentWallet,
 } from "../core/wallet.js";
-import { discoverAgentSkills, resolveAgentSkills } from "../core/agent-skills.js";
+import { resolveAgentSkills } from "../core/agent-skills.js";
 import { createFileCheckpointer } from "../core/file-checkpoint.js";
 import {
   loadAgentConfig,
@@ -83,7 +83,9 @@ function listEnvAgents(): string[] {
           try {
             const parsed = JSON.parse(configRaw) as { name?: string };
             if (parsed.name) agents.add(parsed.name);
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
         // fallback: if we haven't added yet, use suffix lowercased
         if (!agents.has(suffix.toLowerCase().replace(/_/g, "-"))) {
@@ -126,19 +128,26 @@ function publicAgentSummary(name: string) {
   if (!walletAddress) {
     const envPk = process.env[`AGENT_${agentEnvSuffix(name)}_PRIVATE_KEY`];
     if (envPk) {
-      try { walletAddress = new ethers.Wallet(envPk).address; } catch { /* ignore */ }
+      try {
+        walletAddress = new ethers.Wallet(envPk).address;
+      } catch {
+        /* ignore */
+      }
     }
   }
   if (!walletAddress) {
     const candidates = [path.join(AGENTS_DIR, name, "wallet.json")];
-    if (process.env.VERCEL) candidates.push(path.join(path.resolve(process.cwd(), "agents"), name, "wallet.json"));
+    if (process.env.VERCEL)
+      candidates.push(path.join(path.resolve(process.cwd(), "agents"), name, "wallet.json"));
     for (const walletPath of candidates) {
       if (!fs.existsSync(walletPath)) continue;
       try {
         const raw = JSON.parse(fs.readFileSync(walletPath, "utf-8")) as { address?: string };
         walletAddress = raw.address;
         break;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -155,7 +164,10 @@ function publicAgentSummary(name: string) {
   };
 }
 
-async function runChat(agentName: string, message: string): Promise<{
+async function runChat(
+  agentName: string,
+  message: string,
+): Promise<{
   reply: string;
   events: ChatEvent[];
 }> {
@@ -222,8 +234,7 @@ async function runChat(agentName: string, message: string): Promise<{
           tool_calls?: { name: string; args: unknown }[];
         };
         const role = m._getType?.() ?? "unknown";
-        const content =
-          typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+        const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
 
         if (role === "ai") {
           const calls = m.tool_calls ?? [];
@@ -364,9 +375,12 @@ app.post("/api/agents", async (c) => {
     return c.json({ error: "name is required" }, 400);
   }
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(name)) {
-    return c.json({
-      error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
-    }, 400);
+    return c.json(
+      {
+        error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
+      },
+      400,
+    );
   }
   if (listExistingAgents().includes(name)) {
     return c.json({ error: `Agent "${name}" already exists` }, 409);
@@ -399,7 +413,7 @@ app.post("/api/agents", async (c) => {
   const standaloneTools = selectedTools.filter((t) => !actionToolNames.has(t));
   const allToolNames = [...new Set([...actionToolNames, ...standaloneTools])];
 
-  const fundEth = (body.fundEth?.trim() || "0.002");
+  const fundEth = body.fundEth?.trim() || "0.002";
   const fundAmount = Number(fundEth);
   if (!Number.isFinite(fundAmount) || fundAmount < 0 || fundAmount > 1) {
     return c.json({ error: "fundEth must be a number between 0 and 1" }, 400);
@@ -511,13 +525,16 @@ app.post("/api/agents", async (c) => {
     /* ignore */
   }
 
-  return c.json({
-    ok: true,
-    agent: publicAgentSummary(name),
-    balanceEth,
-    fundTxHash,
-    steps,
-  }, 201);
+  return c.json(
+    {
+      ok: true,
+      agent: publicAgentSummary(name),
+      balanceEth,
+      fundTxHash,
+      steps,
+    },
+    201,
+  );
 });
 
 app.get("/api/agents/:name", (c) => {
@@ -535,7 +552,10 @@ app.delete("/api/agents/:name", (c) => {
   }
   if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE) {
     return c.json(
-      { error: "Agent deletion is disabled on Vercel (ephemeral filesystem). Delete env vars manually." },
+      {
+        error:
+          "Agent deletion is disabled on Vercel (ephemeral filesystem). Delete env vars manually.",
+      },
       403,
     );
   }
@@ -673,7 +693,9 @@ app.post("/api/agents/:name/feedback", async (c) => {
     let networkSlug = "arbitrum-sepolia";
     try {
       networkSlug = getNetworkSlugByChainId(chainId);
-    } catch { /* keep default */ }
+    } catch {
+      /* keep default */
+    }
     const numericId = String(agentId).split(":").pop();
     const base = chainId === 42161 ? "https://8004scan.io" : "https://testnet.8004scan.io";
     return c.json({

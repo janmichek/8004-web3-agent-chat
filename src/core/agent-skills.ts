@@ -86,7 +86,7 @@ export function listAgentSkills(agentName: string): string[] {
  */
 export async function resolveAgentSkills(
   agentName: string,
-  agentPrivateKey: string
+  agentPrivateKey: string,
 ): Promise<DynamicStructuredTool[]> {
   const skillsDir = path.join(AGENTS_DIR, agentName, "skills");
   if (!fs.existsSync(skillsDir)) return [];
