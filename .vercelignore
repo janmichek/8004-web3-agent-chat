@@ -1,0 +1,9 @@
+# Never upload secrets or local-only runtime data to Vercel.
+# Agent identity is injected via AGENT_*_CONFIG / AGENT_*_PRIVATE_KEY env vars.
+.env
+.env.*.local
+agents/*/wallet.json
+agents/*/memory.json
+agents/*/agent-config.json
+agents/*/skills/
+.idea/
