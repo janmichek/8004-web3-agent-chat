@@ -187,7 +187,7 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
           : undefined;
 
     const response = (await this.client.chat.send({
-      chatGenerationParams: {
+      chatRequest: {
         model: this.model,
         messages: orMessages as any,
         maxTokens: this.maxTokens,
