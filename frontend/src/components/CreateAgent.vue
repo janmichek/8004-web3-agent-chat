@@ -4,6 +4,7 @@ import {
   createAgent,
   fetchCatalog,
   scanUrlForAgent,
+  uploadImage,
   type AgentSummary,
   type CatalogResponse,
   type CreateAgentStep,
@@ -29,10 +30,75 @@ const createError = ref('')
 const busy = ref(false)
 
 const agentName = ref('')
+const agentDescription = ref('')
 const selectedActions = ref<string[]>([])
 const selectedTools = ref<string[]>([])
 const fundEth = ref('0.002')
 const skipRegister = ref(false)
+
+// Optional agent image (step 1): chosen via file picker or drag & drop,
+// uploaded to IPFS right away, attached to metadata at creation time.
+const imageFile = ref<File | null>(null)
+const imagePreviewUrl = ref('')
+const imageUri = ref('')
+const imageStatus = ref<'idle' | 'uploading' | 'done' | 'error'>('idle')
+const imageError = ref('')
+const dragging = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
+
+const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+
+function pickImage() {
+  fileInput.value?.click()
+}
+
+function onFileChosen(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) void selectImage(file)
+}
+
+function onDrop(event: DragEvent) {
+  dragging.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file) void selectImage(file)
+}
+
+async function selectImage(file: File) {
+  imageError.value = ''
+  if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+    imageStatus.value = 'error'
+    imageError.value = 'Unsupported image type — use PNG, JPEG, GIF, WebP or SVG'
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    imageStatus.value = 'error'
+    imageError.value = 'Image is too large — max 5 MB'
+    return
+  }
+  if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value)
+  imageFile.value = file
+  imagePreviewUrl.value = URL.createObjectURL(file)
+  imageStatus.value = 'uploading'
+  try {
+    const res = await uploadImage(file)
+    imageUri.value = res.imageUri
+    imageStatus.value = 'done'
+  } catch (err) {
+    imageStatus.value = 'error'
+    imageError.value = err instanceof Error ? err.message : 'Image upload failed'
+  }
+}
+
+function removeImage() {
+  if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value)
+  imageFile.value = null
+  imagePreviewUrl.value = ''
+  imageUri.value = ''
+  imageStatus.value = 'idle'
+  imageError.value = ''
+}
 
 const createSteps = ref<CreateAgentStep[]>([])
 const createdAgent = ref<AgentSummary | null>(null)
@@ -149,6 +215,8 @@ async function submitCreate() {
   try {
     const res = await createAgent({
       name: agentName.value.trim(),
+      description: agentDescription.value.trim() || undefined,
+      imageUri: imageUri.value || undefined,
       actions: selectedActions.value,
       tools: selectedTools.value,
       fundEth: fundEth.value.trim() || '0.002',
@@ -220,8 +288,82 @@ function openChat() {
         />
       </label>
       <p class="hint">Letters, numbers, . _ - (1–63 chars)</p>
+      <p class="step-label">Description <span class="optional">(optional)</span></p>
+      <label class="field">
+        <textarea
+          v-model="agentDescription"
+          rows="3"
+          placeholder="What does this agent do?"
+          data-testid="create-description-input"
+        ></textarea>
+      </label>
+      <p class="step-label">Image <span class="optional">(optional)</span></p>
+      <div
+        v-if="!imageFile"
+        class="dropzone"
+        :class="{ dragging }"
+        data-testid="create-image-dropzone"
+        role="button"
+        tabindex="0"
+        aria-label="Add agent image"
+        @click="pickImage"
+        @keydown.enter.prevent="pickImage"
+        @dragover.prevent="dragging = true"
+        @dragleave.prevent="dragging = false"
+        @drop.prevent="onDrop"
+      >
+        <span class="dropzone-icon">🖼️</span>
+        <span class="dropzone-text">
+          Drag &amp; drop an image here, or <strong>browse files</strong>
+        </span>
+        <span class="dropzone-hint">PNG, JPEG, GIF, WebP or SVG · max 5 MB</span>
+        <input
+          ref="fileInput"
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+          class="visually-hidden"
+          data-testid="create-image-input"
+          @change="onFileChosen"
+        />
+      </div>
+      <template v-if="imageFile">
+        <div class="image-preview" data-testid="create-image-preview">
+          <img :src="imagePreviewUrl" alt="Agent image preview" />
+          <div class="image-meta">
+            <strong class="image-name">{{ imageFile.name }}</strong>
+            <span v-if="imageStatus === 'uploading'" class="image-status" data-testid="create-image-uploading">
+              Uploading to IPFS…
+            </span>
+            <span v-else-if="imageStatus === 'done'" class="image-status ok mono" data-testid="create-image-uri">
+              {{ imageUri }}
+            </span>
+            <span v-else-if="imageStatus === 'error'" class="image-status fail" data-testid="create-image-error">
+              {{ imageError }}
+            </span>
+          </div>
+          <button
+            type="button"
+            class="btn ghost small icon-btn"
+            aria-label="Remove image"
+            title="Remove image"
+            data-testid="create-image-remove"
+            @click.stop="removeImage"
+          >
+            ✕
+          </button>
+        </div>
+      </template>
+      <p v-else-if="imageStatus === 'error' && imageError" class="image-status fail" data-testid="create-image-error">
+        {{ imageError }}
+      </p>
       <div class="nav">
-        <button type="button" class="btn primary" data-testid="create-name-continue" :disabled="!catalog || !nameValid" @click="goConfigure">
+        <button
+          type="button"
+          class="btn primary"
+          data-testid="create-name-continue"
+          :disabled="!catalog || !nameValid || imageStatus === 'uploading'"
+          @click="goConfigure"
+        >
           Next →
         </button>
       </div>
@@ -473,6 +615,130 @@ function openChat() {
 .field input:focus {
   outline: 2px solid color-mix(in oklab, var(--accent) 45%, transparent);
   outline-offset: 1px;
+}
+
+.field textarea {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink);
+  resize: vertical;
+  min-height: 3.5rem;
+}
+
+.field textarea:focus {
+  outline: 2px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.optional {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1rem 0.85rem;
+  border: 1.5px dashed var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--muted);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dropzone:hover,
+.dropzone.dragging {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border));
+  background: color-mix(in oklab, var(--accent) 8%, var(--bg));
+}
+
+.dropzone:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.dropzone-icon {
+  font-size: 1.3rem;
+}
+
+.dropzone-text {
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.dropzone-text strong {
+  color: var(--accent);
+}
+
+.dropzone-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.image-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+}
+
+.image-preview img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  flex-shrink: 0;
+}
+
+.image-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.image-name {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-status {
+  font-size: 0.72rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.image-status.ok {
+  color: var(--accent);
+}
+
+.image-status.fail {
+  color: #ffb4b0;
 }
 
 .hint {

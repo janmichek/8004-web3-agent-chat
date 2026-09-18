@@ -4,6 +4,7 @@
 - [] a2a
 - [] x402
 - [] endpoint vs services
+- [] make the RATER_PRIVATE_KEYthe connected wallet address
 - [] MCP https://best-practices.8004scan.io/docs/01-agent-metadata-standard.html#_1-mcp-model-context-protocol
 - [] ENS
 - [] updatedAt

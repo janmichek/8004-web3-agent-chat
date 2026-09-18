@@ -62,6 +62,8 @@ export type CatalogResponse = {
 
 export type CreateAgentRequest = {
   name: string
+  description?: string
+  imageUri?: string
   actions?: string[]
   tools?: string[]
   fundEth?: string
@@ -86,7 +88,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // Merge headers via the Headers API: spreading init.headers into an
   // object literal silently drops Headers instances and mangles arrays.
   const headers = new Headers(init?.headers)
-  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  // Only default to JSON for string bodies — FormData needs the browser's
+  // multipart Content-Type (with boundary) and must stay untouched.
+  if (!headers.has('Content-Type') && typeof init?.body === 'string') {
+    headers.set('Content-Type', 'application/json')
+  }
   const res = await fetch(path, { ...init, headers })
   // Read as text first: backends/proxies can return non-JSON bodies
   // (plain-text 404s, proxy errors, empty responses). Parsing those with
@@ -128,6 +134,21 @@ export function createAgent(body: CreateAgentRequest) {
   return request<CreateAgentResponse>('/api/agents', {
     method: 'POST',
     body: JSON.stringify(body),
+  })
+}
+
+export type UploadImageResponse = {
+  ok: boolean
+  imageUri: string
+}
+
+/** Upload an agent image (multipart) — backend pins it to IPFS. */
+export function uploadImage(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return request<UploadImageResponse>('/api/upload/image', {
+    method: 'POST',
+    body: form,
   })
 }
 

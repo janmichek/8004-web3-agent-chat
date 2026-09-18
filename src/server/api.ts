@@ -40,6 +40,7 @@ import {
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
 import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
 import { registerAgent } from "../core/registry.js";
+import { hasIpfsBackend, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemory } from "../core/memory-reader.js";
 import type { Skill } from "../actions/types.js";
 
@@ -345,9 +346,44 @@ app.get("/api/agents", (c) => {
   return c.json({ agents });
 });
 
+/** Optional image upload (multipart) → pinned to IPFS, returns ipfs:// URI. */
+app.post("/api/upload/image", async (c) => {
+  if (!hasIpfsBackend()) {
+    return c.json(
+      { error: "No IPFS backend configured (set PINATA_JWT or IPFS_NODE_URL)" },
+      503,
+    );
+  }
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: "Expected multipart/form-data with a `file` field" }, 400);
+  }
+  const file = form.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "Missing `file` field" }, 400);
+  }
+  const err = validateImage(file.name, file.type, file.size);
+  if (err) return c.json({ error: err }, 400);
+  try {
+    const imageUri = await uploadImage({
+      data: Buffer.from(await file.arrayBuffer()),
+      mimeType: file.type,
+      fileName: file.name,
+    });
+    return c.json({ ok: true, imageUri });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
 app.post("/api/agents", async (c) => {
   let body: {
     name?: string;
+    description?: string;
+    imageUri?: string;
     actions?: string[];
     tools?: string[];
     fundEth?: string;
@@ -406,6 +442,11 @@ app.post("/api/agents", async (c) => {
   }
 
   const skipRegister = Boolean(body.skipRegister);
+  const description = body.description?.trim() || `Agent ${name}`;
+  const imageUri = body.imageUri?.trim();
+  if (imageUri && !/^(https?:\/\/|ipfs:\/\/)/i.test(imageUri)) {
+    return c.json({ error: "imageUri must be an https:// or ipfs:// URI" }, 400);
+  }
   const steps: { step: string; ok: boolean; detail?: string }[] = [];
 
   let masterWallet: ReturnType<typeof getMasterWallet>;
@@ -452,7 +493,8 @@ app.post("/api/agents", async (c) => {
   // --- Persist config ---
   const config: AgentConfig = {
     name,
-    description: `Agent ${name}`,
+    description,
+    image: imageUri || undefined,
     walletAddress: agentWallet.address,
     walletChainId: getChainId(),
     endpoints: [],
@@ -489,6 +531,7 @@ app.post("/api/agents", async (c) => {
           actions: selectedActions,
           tools: allToolNames,
         },
+        ...(imageUri ? { image: imageUri } : {}),
       });
       config.agentId = reg.agentId;
       config.agentURI = reg.agentURI;

@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test'
+import type { Route } from '@playwright/test'
+import { DEMO_AGENT, gotoWithAgent, sendChat, setupOffline } from './helpers'
 
 /**
  * Chat rate UI after a successful tool tx + real on-chain feedback via RATER_PRIVATE_KEY.
@@ -7,13 +9,13 @@ import { test, expect } from '@playwright/test'
  * Chat is mocked so we don't depend on the LLM; feedback hits testnet for real.
  */
 test.describe('chat reputation after successful tx', () => {
-  test('shows rate UI after success tx and submits feedback with 8004scan link', async ({
+  test('shows rate UI after success tx and submits feedback with 8004scan link @onchain', async ({
     page,
   }) => {
     const fakeTx =
       '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
-    await page.route('**/api/agents/*/chat', async (route) => {
+    await page.route('**/api/agents/*/chat', async (route: Route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -77,38 +79,20 @@ test.describe('chat reputation after successful tx', () => {
       ;(window as unknown as { __E2E_CONNECTED_ADDRESS?: string }).__E2E_CONNECTED_ADDRESS = addr
     }, owner)
 
-    await page.route('**/api/agents', async (route) => {
-      const res = await route.fetch()
-      const json = await res.json()
-      const agents = (json.agents || []).map((a: Record<string, unknown>) => ({
-        ...a,
-        owners: [owner],
-        operators: [],
-      }))
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ agents }),
-      })
+    await setupOffline(page, {
+      agents: [{ ...DEMO_AGENT, owners: [owner], operators: [] }],
+      chat: {
+        reply: 'ok',
+        events: [
+          { type: 'tool_call', name: 'send_eth', args: {} },
+          { type: 'tool_result', content: fakeTx },
+          { type: 'message', content: 'done' },
+        ],
+      },
     })
 
-    await page.route('**/api/agents/*/chat', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          reply: 'ok',
-          events: [
-            { type: 'tool_result', content: fakeTx },
-            { type: 'message', content: 'done' },
-          ],
-        }),
-      })
-    })
-
-    await page.goto('/')
-    await page.getByTestId('chat-input').fill('ping')
-    await page.getByTestId('chat-send').click()
+    await gotoWithAgent(page)
+    await sendChat(page, 'ping')
 
     await expect(page.getByTestId('rate-agent')).toBeVisible({ timeout: 20_000 })
     await expect(page.getByTestId('rate-disabled')).toBeVisible()
