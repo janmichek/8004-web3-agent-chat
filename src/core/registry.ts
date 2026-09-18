@@ -97,9 +97,10 @@ export async function registerAgent(
   const agent = sdk.createAgent(name, description, image);
 
   // Pin capabilities/endpoints into the registration file so they land in IPFS.
-  if (options.metadata && Object.keys(options.metadata).length > 0) {
-    agent.setMetadata(options.metadata);
-  }
+  // Always include `updatedAt` (unix seconds) at the moment of creation so
+  // on-chain metadata carries a creation timestamp.
+  const updatedAt = Math.floor(Date.now() / 1000);
+  agent.setMetadata({ ...options.metadata, updatedAt });
   if (options.endpoints && options.endpoints.length > 0) {
     const file = agent.getRegistrationFile() as unknown as {
       endpoints?: { type: string; value: string }[];
