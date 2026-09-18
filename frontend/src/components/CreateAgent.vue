@@ -34,10 +34,12 @@ const agentDescription = ref('')
 const selectedActions = ref<string[]>([])
 const selectedTools = ref<string[]>([])
 const fundEth = ref('0.002')
-const skipRegister = ref(false)
+const webEndpoint = ref('https://example.com')
+const emailEndpoint = ref('e@mail.fun')
 
 // Optional agent image (step 1): chosen via file picker or drag & drop,
-// uploaded to IPFS right away, attached to metadata at creation time.
+// kept locally for preview and uploaded to IPFS at creation time,
+// just before the agent metadata is pinned.
 const imageFile = ref<File | null>(null)
 const imagePreviewUrl = ref('')
 const imageUri = ref('')
@@ -56,16 +58,16 @@ function onFileChosen(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (file) void selectImage(file)
+  if (file) selectImage(file)
 }
 
 function onDrop(event: DragEvent) {
   dragging.value = false
   const file = event.dataTransfer?.files?.[0]
-  if (file) void selectImage(file)
+  if (file) selectImage(file)
 }
 
-async function selectImage(file: File) {
+function selectImage(file: File) {
   imageError.value = ''
   if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
     imageStatus.value = 'error'
@@ -80,15 +82,8 @@ async function selectImage(file: File) {
   if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value)
   imageFile.value = file
   imagePreviewUrl.value = URL.createObjectURL(file)
-  imageStatus.value = 'uploading'
-  try {
-    const res = await uploadImage(file)
-    imageUri.value = res.imageUri
-    imageStatus.value = 'done'
-  } catch (err) {
-    imageStatus.value = 'error'
-    imageError.value = err instanceof Error ? err.message : 'Image upload failed'
-  }
+  imageUri.value = ''
+  imageStatus.value = 'idle'
 }
 
 function removeImage() {
@@ -213,14 +208,36 @@ async function submitCreate() {
   busy.value = true
 
   try {
+    // Upload the image now (if one was picked and not yet uploaded),
+    // just before the agent metadata is pinned during creation.
+    let imageUriToSend = imageUri.value || undefined
+    if (imageFile.value && !imageUriToSend) {
+      imageStatus.value = 'uploading'
+      try {
+        const res = await uploadImage(imageFile.value)
+        imageUri.value = res.imageUri
+        imageUriToSend = res.imageUri
+        imageStatus.value = 'done'
+      } catch (err) {
+        imageStatus.value = 'error'
+        imageError.value = err instanceof Error ? err.message : 'Image upload failed'
+        throw err
+      }
+    }
+
+    const services = [
+      { name: 'web', endpoint: webEndpoint.value.trim() },
+      { name: 'email', endpoint: emailEndpoint.value.trim() },
+    ].filter((s) => s.endpoint.length > 0)
+
     const res = await createAgent({
       name: agentName.value.trim(),
       description: agentDescription.value.trim() || undefined,
-      imageUri: imageUri.value || undefined,
+      imageUri: imageUriToSend,
       actions: selectedActions.value,
       tools: selectedTools.value,
       fundEth: fundEth.value.trim() || '0.002',
-      skipRegister: skipRegister.value,
+      services,
     })
     createSteps.value = res.steps
     createdAgent.value = res.agent
@@ -297,6 +314,27 @@ function openChat() {
           data-testid="create-description-input"
         ></textarea>
       </label>
+      <p class="step-label">Services</p>
+      <label class="field">
+        <span>Web endpoint</span>
+        <input
+          v-model="webEndpoint"
+          type="text"
+          placeholder="https://example.com"
+          spellcheck="false"
+          data-testid="create-web-endpoint"
+        />
+      </label>
+      <label class="field">
+        <span>Email endpoint</span>
+        <input
+          v-model="emailEndpoint"
+          type="text"
+          placeholder="e@mail.fun"
+          spellcheck="false"
+          data-testid="create-email-endpoint"
+        />
+      </label>
       <p class="step-label">Image <span class="optional">(optional)</span></p>
       <div
         v-if="!imageFile"
@@ -334,11 +372,11 @@ function openChat() {
             <span v-if="imageStatus === 'uploading'" class="image-status" data-testid="create-image-uploading">
               Uploading to IPFS…
             </span>
-            <span v-else-if="imageStatus === 'done'" class="image-status ok mono" data-testid="create-image-uri">
-              {{ imageUri }}
-            </span>
             <span v-else-if="imageStatus === 'error'" class="image-status fail" data-testid="create-image-error">
               {{ imageError }}
+            </span>
+            <span v-else class="image-status" data-testid="create-image-ready">
+              Ready — uploads when you create the agent
             </span>
           </div>
           <button
@@ -361,7 +399,7 @@ function openChat() {
           type="button"
           class="btn primary"
           data-testid="create-name-continue"
-          :disabled="!catalog || !nameValid || imageStatus === 'uploading'"
+          :disabled="!catalog || !nameValid"
           @click="goConfigure"
         >
           Next →
@@ -423,10 +461,6 @@ function openChat() {
           spellcheck="false"
         />
       </label>
-      <label class="check skip">
-        <input v-model="skipRegister" type="checkbox" />
-        <span>Skip ERC-8004 registration</span>
-      </label>
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
         <button
@@ -443,7 +477,7 @@ function openChat() {
     <!-- Creating -->
     <div v-else-if="phase === 'creating'" class="body">
       <p class="step-label">Creating “{{ agentName }}”…</p>
-      <p class="hint creating-pulse">Wallet → fund → config → register</p>
+      <p class="hint creating-pulse">Image → wallet → fund → config → register</p>
     </div>
 
     <!-- Done -->
@@ -491,6 +525,14 @@ function openChat() {
         <div>
           <dt>Tools</dt>
           <dd>{{ createdAgent.tools.join(', ') || 'none' }}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{{ createdAgent.active ? 'Active' : 'Inactive' }}</dd>
+        </div>
+        <div v-if="(createdAgent.services ?? []).length">
+          <dt>Services</dt>
+          <dd class="mono">{{ createdAgent.services!.map((s) => `${s.name}: ${s.endpoint}`).join(', ') }}</dd>
         </div>
       </dl>
       <ul v-if="createSteps.length" class="steps">
@@ -817,12 +859,6 @@ function openChat() {
 .check.pale {
   opacity: 0.55;
   /* pale like disabled, but still interactive */
-}
-
-.check.skip {
-  border: none;
-  background: transparent;
-  padding: 0.25rem 0;
 }
 
 .check strong {

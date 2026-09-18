@@ -10,7 +10,20 @@
  */
 
 const PINATA_UPLOAD_URL = "https://uploads.pinata.cloud/v3/files";
+const DEFAULT_GATEWAY = "https://beige-added-mole-82.mypinata.cloud/ipfs";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** Gateway base URL, overridable via PINATA_GATEWAY_URL. */
+export function getGatewayBase(): string {
+  return (process.env.PINATA_GATEWAY_URL?.trim() || DEFAULT_GATEWAY).replace(/\/$/, "");
+}
+
+/** Convert `ipfs://<cid>` (or bare CID) to `https://<gateway>/ipfs/<cid>`. */
+export function toGatewayUrl(uri: string): string {
+  const t = uri.trim();
+  if (/^ipfs:\/\//i.test(t)) return `${getGatewayBase()}/${t.replace(/^ipfs:\/\//i, "")}`;
+  return t;
+}
 
 export type IpfsImage = {
   /** Contents as a buffer. */
@@ -43,7 +56,7 @@ export function validateImage(
 
 /**
  * Upload binary data to the configured IPFS backend.
- * @returns URI in the form `ipfs://<cid>`.
+ * @returns Gateway URL in the form `https://<gateway>/ipfs/<cid>`.
  */
 export async function uploadImage(image: IpfsImage): Promise<string> {
   const pinataJwt = process.env.PINATA_JWT?.trim();
@@ -57,6 +70,9 @@ async function uploadToPinata(image: IpfsImage, jwt: string): Promise<string> {
   const form = new FormData();
   const bytes = new Uint8Array(image.data);
   form.append("file", new Blob([bytes], { type: image.mimeType }), image.fileName);
+  // Pinata v3 defaults to `private` — private CIDs are NOT servable via
+  // public/dedicated gateways (ERR_ID:00006). Agent images must be public.
+  form.append("network", "public");
   const res = await fetch(PINATA_UPLOAD_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${jwt}` },
@@ -69,7 +85,7 @@ async function uploadToPinata(image: IpfsImage, jwt: string): Promise<string> {
   const json = (await res.json()) as { data?: { cid?: string }; cid?: string };
   const cid = json.data?.cid ?? json.cid;
   if (!cid) throw new Error("Pinata upload response did not contain a CID");
-  return `ipfs://${cid}`;
+  return `${getGatewayBase()}/${cid}`;
 }
 
 async function uploadToIpfsNode(image: IpfsImage, nodeUrl: string): Promise<string> {
@@ -87,5 +103,5 @@ async function uploadToIpfsNode(image: IpfsImage, nodeUrl: string): Promise<stri
   const firstLine = text.split("\n")[0];
   const json = JSON.parse(firstLine) as { Hash?: string };
   if (!json.Hash) throw new Error("IPFS node upload response did not contain a Hash");
-  return `ipfs://${json.Hash}`;
+  return `${getGatewayBase()}/${json.Hash}`;
 }

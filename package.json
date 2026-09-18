@@ -25,7 +25,7 @@
     "chat": "npx tsx src/cli/chat.ts",
     "serve": "npx tsx src/server/api.ts",
     "dev:frontend": "vite frontend",
-    "dev": "concurrently --kill-others --names \"api,frontend\" --prefix-colors \"cyan,magenta\" \"npm run serve\" \"npm run dev:frontend\"",
+    "dev": "concurrently --kill-others-on-fail --names \"api,frontend\" --prefix-colors \"cyan,magenta\" \"npm run serve\" \"sleep 3 && npm run dev:frontend\"",
     "frontend": "npm run dev:frontend",
     "frontend:build": "vite build frontend",
     "preview": "vite preview frontend",

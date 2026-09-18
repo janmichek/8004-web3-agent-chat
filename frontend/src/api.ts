@@ -10,6 +10,8 @@ export type AgentSummary = {
   actions: string[]
   tools: string[]
   active: boolean
+  endpoints?: { type: string; value: string }[]
+  services?: CreateAgentService[]
 }
 
 export type ReputationSummary = {
@@ -60,6 +62,11 @@ export type CatalogResponse = {
   tools: CatalogTool[]
 }
 
+export type CreateAgentService = {
+  name: string
+  endpoint: string
+}
+
 export type CreateAgentRequest = {
   name: string
   description?: string
@@ -68,6 +75,8 @@ export type CreateAgentRequest = {
   tools?: string[]
   fundEth?: string
   skipRegister?: boolean
+  active?: boolean
+  services?: CreateAgentService[]
 }
 
 export type CreateAgentStep = {

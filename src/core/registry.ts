@@ -14,6 +14,7 @@
 import { SDK } from "@blockbyvlog/agent0-sdk";
 import type { RegisterAgentOptions, RegistrationResult } from "./types.js";
 import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
+import { toGatewayUrl } from "./ipfs.js";
 
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
@@ -74,8 +75,9 @@ export async function registerAgent(
         : {}),
   });
 
-  // Create the agent metadata
-  const agent = sdk.createAgent(name, description, options.image);
+  // Create the agent metadata — image must be an https gateway URL, not ipfs://.
+  const image = options.image ? toGatewayUrl(options.image) : undefined;
+  const agent = sdk.createAgent(name, description, image);
 
   // Pin capabilities/endpoints into the registration file so they land in IPFS.
   if (options.metadata && Object.keys(options.metadata).length > 0) {
@@ -87,7 +89,7 @@ export async function registerAgent(
     };
     file.endpoints = options.endpoints as never;
   }
-  agent.setActive(true);
+  agent.setActive(options.active !== false);
 
   if (useIpfs) {
     // IPFS mode: tokenURI becomes ipfs://<cid> with full metadata JSON.

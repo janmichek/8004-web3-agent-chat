@@ -40,7 +40,7 @@ import {
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
 import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
 import { registerAgent } from "../core/registry.js";
-import { hasIpfsBackend, uploadImage, validateImage } from "../core/ipfs.js";
+import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemory } from "../core/memory-reader.js";
 import type { Skill } from "../actions/types.js";
 
@@ -153,6 +153,8 @@ function publicAgentSummary(name: string) {
     actions: config?.metadata?.actions ?? [],
     tools: config?.metadata?.tools ?? [],
     active: config?.active ?? true,
+    endpoints: config?.endpoints ?? [],
+    services: (config?.endpoints ?? []).map((e) => ({ name: e.type, endpoint: e.value })),
   };
 }
 
@@ -346,7 +348,7 @@ app.get("/api/agents", (c) => {
   return c.json({ agents });
 });
 
-/** Optional image upload (multipart) → pinned to IPFS, returns ipfs:// URI. */
+/** Optional image upload (multipart) → pinned to IPFS, returns https gateway URL. */
 app.post("/api/upload/image", async (c) => {
   if (!hasIpfsBackend()) {
     return c.json(
@@ -388,6 +390,8 @@ app.post("/api/agents", async (c) => {
     tools?: string[];
     fundEth?: string;
     skipRegister?: boolean;
+    active?: boolean;
+    services?: { name?: string; endpoint?: string }[];
   };
   try {
     body = await c.req.json();
@@ -442,11 +446,37 @@ app.post("/api/agents", async (c) => {
   }
 
   const skipRegister = Boolean(body.skipRegister);
+  const active = body.active !== false;
+  const rawServices = body.services ?? [
+    { name: "web", endpoint: "https://example.com" },
+    { name: "email", endpoint: "e@mail.fun" },
+  ];
+  if (!Array.isArray(rawServices)) {
+    return c.json({ error: "services must be an array" }, 400);
+  }
+  if (rawServices.length > 20) {
+    return c.json({ error: "services must have at most 20 entries" }, 400);
+  }
+  const services: { name: string; endpoint: string }[] = [];
+  for (const entry of rawServices) {
+    const svcName = entry?.name?.trim();
+    const svcEndpoint = entry?.endpoint?.trim();
+    if (!svcName || !svcEndpoint) {
+      return c.json({ error: "each service needs a name and an endpoint" }, 400);
+    }
+    if (svcName.length > 64 || svcEndpoint.length > 500) {
+      return c.json({ error: "service name (max 64) or endpoint (max 500) too long" }, 400);
+    }
+    services.push({ name: svcName, endpoint: svcEndpoint });
+  }
+  const endpoints = services.map((s) => ({ type: s.name, value: s.endpoint })) as AgentConfig["endpoints"];
   const description = body.description?.trim() || `Agent ${name}`;
-  const imageUri = body.imageUri?.trim();
+  let imageUri = body.imageUri?.trim();
   if (imageUri && !/^(https?:\/\/|ipfs:\/\/)/i.test(imageUri)) {
     return c.json({ error: "imageUri must be an https:// or ipfs:// URI" }, 400);
   }
+  // Normalize ipfs:// to https gateway so on-chain metadata `image` is resolvable.
+  if (imageUri) imageUri = toGatewayUrl(imageUri);
   const steps: { step: string; ok: boolean; detail?: string }[] = [];
 
   let masterWallet: ReturnType<typeof getMasterWallet>;
@@ -497,11 +527,11 @@ app.post("/api/agents", async (c) => {
     image: imageUri || undefined,
     walletAddress: agentWallet.address,
     walletChainId: getChainId(),
-    endpoints: [],
+    endpoints,
     trustModels: [],
     owners: [masterWallet.address],
     operators: [agentWallet.address],
-    active: true,
+    active,
     x402support: false,
     metadata: {
       actions: selectedActions,
@@ -527,6 +557,8 @@ app.post("/api/agents", async (c) => {
         description: config.description,
         privateKey: agentWallet.privateKey,
         walletAddress: agentWallet.address,
+        active,
+        endpoints,
         metadata: {
           actions: selectedActions,
           tools: allToolNames,

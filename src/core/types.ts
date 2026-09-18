@@ -50,6 +50,8 @@ export interface RegisterAgentOptions {
   walletAddress: string;
   /** Optional image URI (https:// or ipfs://) for the agent metadata. */
   image?: string;
+  /** Whether the agent should be registered as active (defaults to true). */
+  active?: boolean;
   /** Optional communication endpoints pinned into the IPFS metadata. */
   endpoints?: { type: string; value: string }[];
   /** Optional free-form metadata (e.g. actions/tools) pinned into the IPFS file. */

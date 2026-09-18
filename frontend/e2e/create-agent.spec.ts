@@ -92,6 +92,12 @@ test.describe('create agent wizard', () => {
     await expect(page.getByTestId('create-dialog')).toContainText('wallet')
     expect(created).toHaveLength(1)
     expect(created[0]).toMatchObject({ name: 'my-agent' })
+    expect(created[0]).toMatchObject({
+      services: [
+        { name: 'web', endpoint: 'https://example.com' },
+        { name: 'email', endpoint: 'e@mail.fun' },
+      ],
+    })
 
     await page.getByRole('button', { name: 'Open chat' }).click()
     await expect(page.getByTestId('create-dialog')).toHaveCount(0)
@@ -142,16 +148,25 @@ test.describe('create agent wizard', () => {
     await expect(page.getByTestId('create-name-input')).toBeVisible()
   })
 
-  test('skip-registration checkbox is sent to the API', async ({ page }) => {
+  test('step 1 sends prefilled web/email services with creation', async ({ page }) => {
     const created: unknown[] = []
     await setupOffline(page, { capture: { create: created } })
     await gotoWithAgent(page)
-    await toConfigure(page)
+    await openCreateDialog(page)
+    await expect(page.getByTestId('create-web-endpoint')).toHaveValue('https://example.com')
+    await expect(page.getByTestId('create-email-endpoint')).toHaveValue('e@mail.fun')
+    await page.getByTestId('create-name-input').fill('my-agent')
+    await page.getByTestId('create-name-continue').click()
+    await expect(page.getByTestId('create-action-transfer-eth')).toBeVisible()
     await page.getByRole('button', { name: 'Next →' }).last().click()
-    await page.getByText('Skip ERC-8004 registration').click()
     await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
     await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
-    expect(created[0]).toMatchObject({ skipRegister: true })
+    expect(created[0]).toMatchObject({
+      services: [
+        { name: 'web', endpoint: 'https://example.com' },
+        { name: 'email', endpoint: 'e@mail.fun' },
+      ],
+    })
   })
 })
 
@@ -170,7 +185,7 @@ test.describe('create agent — step 1 image & description', () => {
       if (opts.seen) opts.seen.value = true
       expect(route.request().method()).toBe('POST')
       expect(route.request().headers()['content-type']).toContain('multipart/form-data')
-      // Keep the "Uploading to IPFS…" state observable for the assertion below.
+      // The upload happens at creation time (creating phase), after the wizard steps.
       if (opts.delayMs) await new Promise((resolve) => setTimeout(resolve, opts.delayMs))
       await route.fulfill({
         status: 200,
@@ -191,6 +206,10 @@ test.describe('create agent — step 1 image & description', () => {
     await page.getByTestId('create-name-input').fill('e2e-agent')
     await page.getByTestId('create-description-input').fill('A helpful e2e agent')
 
+    // Services are prefilled in step 1
+    await expect(page.getByTestId('create-web-endpoint')).toHaveValue('https://example.com')
+    await expect(page.getByTestId('create-email-endpoint')).toHaveValue('e@mail.fun')
+
     await page
       .getByTestId('create-image-input')
       .setInputFiles({
@@ -199,10 +218,11 @@ test.describe('create agent — step 1 image & description', () => {
         buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
       })
 
-    await expect(page.getByTestId('create-image-uploading')).toBeVisible()
-    await expect(page.getByTestId('create-image-uri')).toHaveText(`ipfs://${cid}`)
+    // Picking an image only stages it locally — the upload happens at creation time.
+    await expect(page.getByTestId('create-image-ready')).toContainText('uploads when you create')
+    await expect(page.getByTestId('create-image-preview')).toContainText('avatar.png')
 
-    // Continue is gated while the upload is in flight, then enabled
+    // Continue is not gated on the staged image
     const next = page.getByTestId('create-name-continue')
     await expect(next).toBeEnabled()
     await next.click()
@@ -219,6 +239,10 @@ test.describe('create agent — step 1 image & description', () => {
       name: 'e2e-agent',
       description: 'A helpful e2e agent',
       imageUri: `ipfs://${cid}`,
+      services: [
+        { name: 'web', endpoint: 'https://example.com' },
+        { name: 'email', endpoint: 'e@mail.fun' },
+      ],
     })
   })
 
@@ -238,8 +262,8 @@ test.describe('create agent — step 1 image & description', () => {
       dropzone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
     })
 
-    await expect(page.getByTestId('create-image-uri')).toHaveText(`ipfs://${cid}`)
-    expect(seen.value).toBe(true)
+    await expect(page.getByTestId('create-image-ready')).toContainText('uploads when you create')
+    expect(seen.value).toBe(false)
     await expect(page.getByTestId('create-image-preview')).toContainText('dropped.png')
   })
 
