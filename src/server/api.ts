@@ -20,7 +20,7 @@ import {
   getMasterWallet,
   getOrCreateAgentWallet,
 } from "../core/wallet.js";
-import { discoverAgentSkills, resolveAgentSkills } from "../core/agent-skills.js";
+import { resolveAgentSkills } from "../core/agent-skills.js";
 import { createFileCheckpointer } from "../core/file-checkpoint.js";
 import {
   loadAgentConfig,

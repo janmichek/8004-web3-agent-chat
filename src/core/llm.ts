@@ -197,7 +197,7 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
     })) as unknown as {
       choices?: Array<{
         message: {
-          content?: string | unknown | null;
+          content?: unknown;
           toolCalls?: Array<{ id: string; function: { name: string; arguments: string } }>;
         };
       }>;
@@ -330,7 +330,7 @@ export function getLLM(options: { streaming?: boolean } = {}): BaseChatModel {
 
     default:
       throw new Error(
-        `Unknown LLM_PROVIDER "${provider}". Use one of: openrouter, anthropic, openai`
+        `Unknown LLM_PROVIDER "${String(provider)}". Use one of: openrouter, anthropic, openai`
       );
   }
 }

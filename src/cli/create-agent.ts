@@ -232,7 +232,7 @@ async function startChat(
         )
 
         for await (const update of stream) {
-          for (const [nodeName, output] of Object.entries(update)) {
+          for (const output of Object.values(update)) {
             const messages = (output as any)?.messages ?? []
 
             for (const msg of messages) {
@@ -338,7 +338,7 @@ async function main(): Promise<void> {
     const receipt = await provider.waitForTransaction(txHash)
     s.stop(`Funded (block ${receipt?.blockNumber}): ${txHash}`)
   } catch (err) {
-    s.stop(`Funding failed: ${err instanceof Error ? err.message : err}`)
+    s.stop(`Funding failed: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   // --- Persist ERC-8004 config ---
@@ -383,7 +383,7 @@ async function main(): Promise<void> {
       saveAgentConfig(agentName, config)
       s.stop(`Registered. Agent ID: ${reg.agentId}`)
     } catch (err) {
-      s.stop(`Registration failed: ${err instanceof Error ? err.message : err}`)
+      s.stop(`Registration failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   } else {
     p.log.info("Skipping ERC-8004 registration (--skip-register)")
@@ -395,7 +395,7 @@ async function main(): Promise<void> {
   const { ethers } = await import("ethers")
 
   const allToolNames = [
-    ...[...state.actionToolNames],
+    ...state.actionToolNames,
     ...state.tools,
   ]
 

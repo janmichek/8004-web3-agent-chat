@@ -189,7 +189,7 @@ async function main(): Promise<void> {
     const receipt = await provider.waitForTransaction(txHash);
     s.stop(`Funded (block ${receipt?.blockNumber}): ${txHash}`);
   } catch (err) {
-    s.stop(`Funding failed: ${err instanceof Error ? err.message : err}`);
+    s.stop(`Funding failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // --- Registration ---
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       });
       s.stop(`Registered. Agent ID: ${reg.agentId} (${reg.agentURI})`);
     } catch (err) {
-      s.stop(`Registration failed: ${err instanceof Error ? err.message : err}`);
+      s.stop(`Registration failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   } else {
     p.log.info("Skipping ERC-8004 registration (--skip-register)");

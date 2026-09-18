@@ -33,7 +33,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
   console.log(`[orchestrator] Task: ${task}`);
   console.log(`[orchestrator] Skills: ${skillNames.length > 0 ? skillNames.join(", ") : "none"}`);
 
-  const llm = await getLLM({ streaming });
+  const llm = getLLM({ streaming });
   const agent = createReactAgent({ llm, tools });
 
   const steps: string[] = [];

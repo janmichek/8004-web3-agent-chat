@@ -60,14 +60,13 @@ export function getNetworkConfig(network?: NetworkName): NetworkConfig {
 /**
  * Returns the RPC endpoint URL for the active network.
  *
- * Uses the RPC_URL environment variable if set, otherwise falls back
- * to the network's default RPC URL.
+ * Uses the RPC_URL environment variable.
  *
- * @param network - The network name. Defaults to the active network.
+ * @param _network - Reserved for per-network endpoints. Currently unused.
  * @returns The RPC endpoint URL.
  * @throws If RPC_URL is not set.
  */
-export function getRpcUrl(network?: NetworkName): string {
+export function getRpcUrl(_network?: NetworkName): string {
   const rpcUrl = process.env.RPC_URL;
   if (!rpcUrl) {
     throw new Error(

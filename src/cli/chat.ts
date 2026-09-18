@@ -147,7 +147,7 @@ async function main() {
 
         for await (const update of stream) {
           // Each update is { nodeName: nodeOutput }
-          for (const [nodeName, output] of Object.entries(update)) {
+          for (const output of Object.values(update)) {
             const messages = (output as any)?.messages ?? [];
 
             for (const msg of messages) {

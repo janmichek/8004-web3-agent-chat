@@ -83,13 +83,11 @@ export type CreateAgentResponse = {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  })
+  // Merge headers via the Headers API: spreading init.headers into an
+  // object literal silently drops Headers instances and mangles arrays.
+  const headers = new Headers(init?.headers)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  const res = await fetch(path, { ...init, headers })
   // Read as text first: backends/proxies can return non-JSON bodies
   // (plain-text 404s, proxy errors, empty responses). Parsing those with
   // res.json() throws a cryptic "unexpected non-whitespace character

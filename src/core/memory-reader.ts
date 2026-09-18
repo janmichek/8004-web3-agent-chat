@@ -99,8 +99,9 @@ function asString(v: unknown): string {
       })
       .join("\n");
   }
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") return String(v);
   if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
+  return "";
 }
 
 function truncate(s: string, n: number): string {
@@ -440,7 +441,6 @@ export function readAgentMemory(agentName: string): MemorySummary {
   if (simplified.length === 0) {
     parts.push("No messages yet");
   } else {
-    const exchanges = Math.ceil(simplified.length / 2);
     parts.push(`${simplified.length} messages in ${humanCount} exchanges`);
     if (toolCount > 0) parts.push(`${toolCount} tool results`);
     const topTool = Object.entries(toolCallsByName).sort((a, b) => b[1] - a[1])[0];
