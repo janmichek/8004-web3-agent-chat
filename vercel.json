@@ -4,6 +4,9 @@
   "outputDirectory": "frontend/dist",
   "installCommand": "npm install",
   "framework": "vite",
+  "outputFileTracingIncludes": {
+    "api/index.ts": ["node_modules/openai/lib/**/*.js", "node_modules/openai/lib/**/*.mjs"]
+  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
