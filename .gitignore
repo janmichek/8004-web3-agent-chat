@@ -18,6 +18,10 @@ agents/*/agent-config.json
 # Claude Code local settings
 .claude/
 
+# MCP secrets — real API keys, never commit (see *.example templates)
+.cursor/mcp.json
+opencode.local.json
+
 # OS files
 .DS_Store
 Thumbs.db

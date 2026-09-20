@@ -1,6 +1,6 @@
-- [] host repo
+- [] connect mcps https://testnet.8004scan.io/profile and ...
 - [] multichain https://best-practices.8004scan.io/docs/01-agent-metadata-standard.html#q-how-do-i-deploy-and-index-the-same-agent-across-multiple-chains
-- [] OASF
+- [] OASF - not hardcoded
 - [] a2a
 - [] x402
 - [] endpoint vs services
