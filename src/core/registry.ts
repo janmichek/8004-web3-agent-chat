@@ -14,7 +14,7 @@
 import { SDK } from "@blockbyvlog/agent0-sdk";
 import type { RegisterAgentOptions, RegistrationResult } from "./types.js";
 import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
-import { toGatewayUrl } from "./ipfs.js";
+import { toGatewayUrl, uploadJson } from "./ipfs.js";
 
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
@@ -121,18 +121,30 @@ export async function registerAgent(
     };
     const agentId = agent.agentId ?? "unknown";
     const txHash = (handle as unknown as { hash?: string }).hash ?? "unknown";
-    const agentURI =
+    let agentURI =
       mined?.result?.agentURI ?? agent.agentURI ?? "unknown";
 
     console.log(`[registry] Agent registered successfully (IPFS mode).`);
     console.log(`[registry]   Agent ID: ${agentId}`);
-    console.log(`[registry]   Token URI: ${agentURI}`);
     console.log(`[registry]   TX Hash: ${txHash}`);
     console.log(`[registry]   View on 8004scan: https://8004scan.com/agent/${agentId}`);
 
     await bindAgentWallet(agent, walletAddress, agentWalletPrivateKey, needsAgentWallet);
 
-    return { agentId: String(agentId), txHash: String(txHash), agentURI: String(agentURI) };
+    // The SDK's tokenURI file carries only the fixed ERC-8004 schema, so the
+    // Metadata tab on 8004scan never shows custom keys (actions/tools/
+    // updatedAt). Re-pin an enriched file that also carries `metadata` and
+    // point the tokenURI at it.
+    try {
+      agentURI = await pinEnrichedRegistrationFile(sdk, agent, options, updatedAt, config.chainId);
+      console.log(`[registry]   Enriched Token URI: ${agentURI}`);
+    } catch (err) {
+      console.warn(
+        `[registry] Enriched metadata pin failed, keeping SDK URI: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
+    return { agentId: String(agentId), txHash: String(txHash), agentURI: String(agentURI), updatedAt };
   }
 
   // HTTP fallback (no IPFS configured): tokenURI has no pinned metadata,
@@ -155,7 +167,68 @@ export async function registerAgent(
 
   await bindAgentWallet(agent, walletAddress, agentWalletPrivateKey, needsAgentWallet);
 
-  return { agentId: String(agentId), txHash: String(txHash), agentURI: agentHttpUri };
+  return { agentId: String(agentId), txHash: String(txHash), agentURI: agentHttpUri, updatedAt: Math.floor(Date.now() / 1000) };
+}
+
+/**
+ * Re-pin the registration file with a top-level `metadata` section
+ * (actions/tools/updatedAt/...) so 8004scan's Metadata tab — which renders
+ * the tokenURI JSON, not contract storage — actually shows it.
+ *
+ * Unknown top-level fields are ignored by ERC-8004 consumers, and the owner
+ * (already the tx signer here) pays for the extra `setAgentURI` call.
+ *
+ * @returns The new `ipfs://<cid>` URI.
+ */
+async function pinEnrichedRegistrationFile(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sdk: { identityRegistryAddress: () => string },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  agent: { getRegistrationFile: () => any; setAgentURI: (...args: any[]) => Promise<any> },
+  options: RegisterAgentOptions,
+  updatedAt: number,
+  chainId: number,
+): Promise<string> {
+  const file = agent.getRegistrationFile() as {
+    name: string;
+    description: string;
+    image?: string;
+    endpoints?: { type: string; value: string; meta?: Record<string, unknown> }[];
+    trustModels?: string[];
+    active?: boolean;
+    x402support?: boolean;
+    agentId?: string;
+  };
+  const tokenId = Number(String(file.agentId ?? "").split(":").pop());
+  if (!Number.isFinite(tokenId)) throw new Error("Missing agentId, cannot enrich registration file");
+
+  const enriched: Record<string, unknown> = {
+    type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+    name: file.name,
+    description: file.description,
+    services: (file.endpoints ?? []).map((ep) => ({
+      name: ep.type,
+      endpoint: ep.value,
+      ...ep.meta,
+    })),
+    registrations: [
+      {
+        agentId: tokenId,
+        agentRegistry: `eip155:${chainId}:${sdk.identityRegistryAddress()}`,
+      },
+    ],
+    active: file.active ?? true,
+    x402Support: file.x402support ?? false,
+    metadata: { ...options.metadata, updatedAt },
+  };
+  if (file.image) enriched.image = file.image;
+  if (file.trustModels?.length) enriched.supportedTrust = file.trustModels;
+
+  const cid = await uploadJson(enriched, "agent-registration.json");
+  const uri = `ipfs://${cid}`;
+  const handle = (await agent.setAgentURI(uri)) as { waitMined: () => Promise<unknown> } | undefined;
+  if (handle) await handle.waitMined();
+  return uri;
 }
 
 /**

@@ -12,6 +12,8 @@ export type AgentSummary = {
   active: boolean
   endpoints?: { type: string; value: string }[]
   services?: CreateAgentService[]
+  oasfDomains?: string[]
+  oasfSkills?: string[]
 }
 
 export type ReputationSummary = {
@@ -73,6 +75,8 @@ export type CreateAgentRequest = {
   imageUri?: string
   actions?: string[]
   tools?: string[]
+  oasfDomains?: string[]
+  oasfSkills?: string[]
   fundEth?: string
   skipRegister?: boolean
   active?: boolean

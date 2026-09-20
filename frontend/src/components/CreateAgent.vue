@@ -10,9 +10,12 @@ import {
   type CreateAgentStep,
 } from '../api'
 
+import { OASF_DOMAINS, OASF_SCHEMA_URL } from '../oasf'
+
 type Phase =
   | 'env'
   | 'configure'
+  | 'oasf'
   | 'fund'
   | 'creating'
   | 'done'
@@ -33,6 +36,10 @@ const agentName = ref('')
 const agentDescription = ref('')
 const selectedActions = ref<string[]>([])
 const selectedTools = ref<string[]>([])
+const selectedOasfDomains = ref<string[]>([])
+const selectedOasfSkills = ref<string[]>([])
+const oasfSearch = ref('')
+const oasfSchemaUrl = OASF_SCHEMA_URL
 const fundEth = ref('0.002')
 const webEndpoint = ref('https://example.com')
 const emailEndpoint = ref('e@mail.fun')
@@ -128,6 +135,66 @@ const fundValid = computed(() => {
   const n = Number(fundEth.value)
   return Number.isFinite(n) && n >= 0 && n <= 1
 })
+
+const oasfDomains = OASF_DOMAINS
+
+// Single source of truth: selected skills. Domains are always derived,
+// so a domain/skill mismatch is impossible.
+const skillToDomain = new Map<string, string>()
+for (const d of oasfDomains) for (const s of d.skills) skillToDomain.set(s.id, d.id)
+
+const selectedOasfDomains = computed(() => {
+  const ids = new Set<string>()
+  for (const skillId of selectedOasfSkills.value) {
+    const domainId = skillToDomain.get(skillId)
+    if (domainId) ids.add(domainId)
+  }
+  return [...ids]
+})
+
+function domainSkillState(domainId: string): 'none' | 'some' | 'all' {
+  const domain = oasfDomains.find((d) => d.id === domainId)
+  if (!domain) return 'none'
+  const count = domain.skills.filter((s) => selectedOasfSkills.value.includes(s.id)).length
+  if (count === 0) return 'none'
+  return count === domain.skills.length ? 'all' : 'some'
+}
+
+const visibleSkills = computed(() => {
+  const q = oasfSearch.value.trim().toLowerCase()
+  const all = oasfDomains.flatMap((d) =>
+    d.skills.map((s) => ({ ...s, domainId: d.id, domainName: d.name })),
+  )
+  if (!q) return all
+  return all.filter(
+    (s) =>
+      s.name.toLowerCase().includes(q) ||
+      s.id.includes(q) ||
+      s.domainName.toLowerCase().includes(q),
+  )
+})
+
+function toggleOasfDomain(id: string) {
+  const domain = oasfDomains.find((d) => d.id === id)
+  if (!domain) return
+  const allSelected = domain.skills.every((s) => selectedOasfSkills.value.includes(s.id))
+  if (allSelected) {
+    // Deselect: remove all skills of this domain
+    const skillIds = new Set(domain.skills.map((s) => s.id))
+    selectedOasfSkills.value = selectedOasfSkills.value.filter((s) => !skillIds.has(s))
+  } else {
+    // Select: add all skills of this domain
+    for (const s of domain.skills) {
+      if (!selectedOasfSkills.value.includes(s.id)) selectedOasfSkills.value.push(s.id)
+    }
+  }
+}
+
+function toggleOasfSkill(id: string) {
+  const i = selectedOasfSkills.value.indexOf(id)
+  if (i >= 0) selectedOasfSkills.value.splice(i, 1)
+  else selectedOasfSkills.value.push(id)
+}
 
 async function loadCatalog() {
   loadError.value = ''
@@ -236,6 +303,8 @@ async function submitCreate() {
       imageUri: imageUriToSend,
       actions: selectedActions.value,
       tools: selectedTools.value,
+      oasfDomains: selectedOasfDomains.value,
+      oasfSkills: selectedOasfSkills.value,
       fundEth: fundEth.value.trim() || '0.002',
       services,
     })
@@ -444,7 +513,64 @@ function openChat() {
       </ul>
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'env'">← Back</button>
-        <button type="button" class="btn primary" @click="phase = 'fund'">Next →</button>
+        <button type="button" class="btn primary" data-testid="create-configure-continue" @click="phase = 'oasf'">Next →</button>
+      </div>
+    </div>
+
+    <!-- OASF domains & skills (step 3) -->
+    <div v-else-if="phase === 'oasf'" class="body">
+      <p class="step-label">Capabilities — OASF domains &amp; skills <span class="optional">(optional)</span></p>
+      <p class="hint">
+        Pick domains, then skills. Stored on-chain in agent metadata.
+        <a :href="oasfSchemaUrl" target="_blank" rel="noopener noreferrer">OASF schema ↗</a>
+      </p>
+      <p class="step-label">Domains</p>
+      <ul class="checklist domains">
+        <li v-for="d in oasfDomains" :key="`oasf-domain-${d.id}`">
+          <label class="check">
+            <input
+              type="checkbox"
+              :data-testid="`create-oasf-domain-${d.id}`"
+              :checked="selectedOasfDomains.includes(d.id)"
+              @change="toggleOasfDomain(d.id)"
+            />
+            <span>
+              <strong>{{ d.name }} <span class="badge">[{{ d.id }}]</span></strong>
+              <em>{{ d.skills.length }} skills</em>
+            </span>
+          </label>
+        </li>
+      </ul>
+      <p class="step-label">Skills <span class="optional">({{ selectedOasfSkills.length }} selected)</span></p>
+      <label class="field">
+        <input
+          v-model="oasfSearch"
+          type="text"
+          placeholder="Search skills…"
+          spellcheck="false"
+          data-testid="create-oasf-search"
+        />
+      </label>
+      <ul class="checklist">
+        <li v-for="s in visibleSkills" :key="`oasf-skill-${s.id}`">
+          <label class="check">
+            <input
+              type="checkbox"
+              :data-testid="`create-oasf-skill-${s.id}`"
+              :checked="selectedOasfSkills.includes(s.id)"
+              @change="toggleOasfSkill(s.id, s.domainId)"
+            />
+            <span>
+              <strong>{{ s.name }} <span class="badge tool">[{{ s.id }}]</span></strong>
+              <em>{{ s.domainName }}</em>
+            </span>
+          </label>
+        </li>
+      </ul>
+      <p v-if="!visibleSkills.length" class="hint">No skills match your search.</p>
+      <div class="nav">
+        <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
+        <button type="button" class="btn primary" data-testid="create-oasf-continue" @click="phase = 'fund'">Next →</button>
       </div>
     </div>
 
@@ -462,7 +588,7 @@ function openChat() {
         />
       </label>
       <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
+        <button type="button" class="btn ghost" @click="phase = 'oasf'">← Back</button>
         <button
           type="button"
           class="btn primary"
@@ -525,6 +651,10 @@ function openChat() {
         <div>
           <dt>Tools</dt>
           <dd>{{ createdAgent.tools.join(', ') || 'none' }}</dd>
+        </div>
+        <div v-if="(createdAgent.oasfDomains ?? []).length || (createdAgent.oasfSkills ?? []).length">
+          <dt>OASF</dt>
+          <dd>domains: {{ (createdAgent.oasfDomains ?? []).join(', ') || '—' }} · skills: {{ (createdAgent.oasfSkills ?? []).join(', ') || '—' }}</dd>
         </div>
         <div>
           <dt>Status</dt>

@@ -380,6 +380,7 @@ async function main(): Promise<void> {
       // Persist agentId and URI back into the config
       config.agentId = reg.agentId
       config.agentURI = reg.agentURI
+      config.metadata.updatedAt = reg.updatedAt
       config.updatedAt = Math.floor(Date.now() / 1000)
       saveAgentConfig(agentName, config)
       s.stop(`Registered. Agent ID: ${reg.agentId}`)

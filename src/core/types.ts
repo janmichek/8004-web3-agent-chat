@@ -77,6 +77,8 @@ export interface RegistrationResult {
   txHash: string;
   /** On-chain token URI (ipfs://<cid> in IPFS mode, https://... in HTTP mode). */
   agentURI: string;
+  /** Unix timestamp (seconds) pinned as `updatedAt` in on-chain + file metadata. */
+  updatedAt: number;
 }
 
 /** Parsed SKILL.md file from an agent's skills directory. */

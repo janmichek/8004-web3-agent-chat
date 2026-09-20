@@ -152,6 +152,8 @@ function publicAgentSummary(name: string) {
     agentURI: config?.agentURI,
     actions: config?.metadata?.actions ?? [],
     tools: config?.metadata?.tools ?? [],
+    oasfDomains: (config?.metadata?.oasfDomains as string[] | undefined) ?? [],
+    oasfSkills: (config?.metadata?.oasfSkills as string[] | undefined) ?? [],
     active: config?.active ?? true,
     endpoints: config?.endpoints ?? [],
     services: (config?.endpoints ?? []).map((e) => ({ name: e.type, endpoint: e.value })),
@@ -388,6 +390,8 @@ app.post("/api/agents", async (c) => {
     imageUri?: string;
     actions?: string[];
     tools?: string[];
+    oasfDomains?: string[];
+    oasfSkills?: string[];
     fundEth?: string;
     skipRegister?: boolean;
     active?: boolean;
@@ -438,6 +442,19 @@ app.post("/api/agents", async (c) => {
 
   const standaloneTools = selectedTools.filter((t) => !actionToolNames.has(t));
   const allToolNames = [...new Set([...actionToolNames, ...standaloneTools])];
+
+  // OASF domains/skills (optional, stored in metadata + on-chain registration)
+  const oasfDomains = Array.isArray(body.oasfDomains) ? body.oasfDomains : [];
+  const oasfSkills = Array.isArray(body.oasfSkills) ? body.oasfSkills : [];
+  const oasfIdRe = /^[0-9]{1,6}$/;
+  for (const id of [...oasfDomains, ...oasfSkills]) {
+    if (typeof id !== "string" || !oasfIdRe.test(id)) {
+      return c.json({ error: `Invalid OASF id: ${String(id)}` }, 400);
+    }
+  }
+  if (oasfDomains.length > 18 || oasfSkills.length > 200) {
+    return c.json({ error: "Too many OASF domains/skills selected" }, 400);
+  }
 
   const fundEth = (body.fundEth?.trim() || "0.002");
   const fundAmount = Number(fundEth);
@@ -536,6 +553,8 @@ app.post("/api/agents", async (c) => {
     metadata: {
       actions: selectedActions,
       tools: allToolNames,
+      oasfDomains,
+      oasfSkills,
     },
     createdAt: new Date().toISOString(),
     updatedAt: Math.floor(Date.now() / 1000),
@@ -563,11 +582,14 @@ app.post("/api/agents", async (c) => {
         metadata: {
           actions: selectedActions,
           tools: allToolNames,
+          oasfDomains,
+          oasfSkills,
         },
         ...(imageUri ? { image: imageUri } : {}),
       });
       config.agentId = reg.agentId;
       config.agentURI = reg.agentURI;
+      config.metadata.updatedAt = reg.updatedAt;
       config.updatedAt = Math.floor(Date.now() / 1000);
       saveAgentConfig(name, config);
       steps.push({ step: "register", ok: true, detail: String(reg.agentId) });

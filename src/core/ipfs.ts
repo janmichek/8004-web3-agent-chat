@@ -66,6 +66,55 @@ export async function uploadImage(image: IpfsImage): Promise<string> {
   throw new Error("No IPFS backend configured (set PINATA_JWT or IPFS_NODE_URL)");
 }
 
+/**
+ * Upload a JSON document to the configured IPFS backend.
+ * @returns The CID (without gateway prefix).
+ */
+export async function uploadJson(data: unknown, fileName = "agent-registration.json"): Promise<string> {
+  const pinataJwt = process.env.PINATA_JWT?.trim();
+  if (pinataJwt) return uploadJsonToPinata(data, fileName, pinataJwt);
+  const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
+  if (ipfsNodeUrl) return uploadJsonToIpfsNode(data, fileName, ipfsNodeUrl);
+  throw new Error("No IPFS backend configured (set PINATA_JWT or IPFS_NODE_URL)");
+}
+
+async function uploadJsonToPinata(data: unknown, fileName: string, jwt: string): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2));
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: "application/json" }), fileName);
+  // Public so the CID is servable via gateways (and 8004scan).
+  form.append("network", "public");
+  const res = await fetch(PINATA_UPLOAD_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${jwt}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Pinata JSON upload failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as { data?: { cid?: string }; cid?: string };
+  const cid = json.data?.cid ?? json.cid;
+  if (!cid) throw new Error("Pinata upload response did not contain a CID");
+  return cid;
+}
+
+async function uploadJsonToIpfsNode(data: unknown, fileName: string, nodeUrl: string): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2));
+  const form = new FormData();
+  form.append("file", new Blob([bytes], { type: "application/json" }), fileName);
+  const url = `${nodeUrl.replace(/\/$/, "")}/api/v0/add?pin=true`;
+  const res = await fetch(url, { method: "POST", body: form });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`IPFS node JSON upload failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  const text = await res.text();
+  const json = JSON.parse(text.split("\n")[0]) as { Hash?: string };
+  if (!json.Hash) throw new Error("IPFS node upload response did not contain a Hash");
+  return json.Hash;
+}
+
 async function uploadToPinata(image: IpfsImage, jwt: string): Promise<string> {
   const form = new FormData();
   const bytes = new Uint8Array(image.data);
