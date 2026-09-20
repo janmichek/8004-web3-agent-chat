@@ -84,12 +84,14 @@ test.describe('create agent wizard', () => {
     await gotoWithAgent(page)
     await toConfigure(page)
     await page.getByTestId('create-action-transfer-eth').check()
-    await page.getByRole('button', { name: 'Next →' }).last().click() // configure -> fund
-    await expect(page.getByText('Fund & register')).toBeVisible()
+    await page.getByRole('button', { name: 'Next →' }).last().click() // configure -> oasf
+    await expect(page.getByTestId('create-oasf-domain-6')).toBeVisible()
     await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
     await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId('create-dialog')).toContainText('fresh-agent')
     await expect(page.getByTestId('create-dialog')).toContainText('wallet')
+    // funding now lives on the done step
+    await expect(page.getByTestId('create-fund-panel')).toBeVisible()
     expect(created).toHaveLength(1)
     expect(created[0]).toMatchObject({ name: 'my-agent' })
     expect(created[0]).toMatchObject({
@@ -105,22 +107,75 @@ test.describe('create agent wizard', () => {
     await expect(page.getByTestId('agent-select')).toHaveValue('fresh-agent', { timeout: 15000 })
   })
 
-  test('fund amount validation gates creation', async ({ page }) => {
-    await setupOffline(page, {})
+  test('post-creation fund amount validation gates funding', async ({ page }) => {
+    const newAgent = { ...DEMO_AGENT, name: 'fresh-agent' }
+    await setupOffline(page, {
+      create: {
+        ok: true,
+        agent: newAgent,
+        balanceEth: '0',
+        steps: [
+          { step: 'wallet', ok: true },
+          { step: 'config', ok: true },
+          { step: 'register', ok: true, detail: '42' },
+        ],
+      },
+    })
     await gotoWithAgent(page)
     await toConfigure(page)
     await page.getByRole('button', { name: 'Next →' }).last().click()
-    const fundInput = page.locator('input[inputmode="decimal"]').last()
-    const createBtn = page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' })
-    await expect(createBtn).toBeEnabled()
+    await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
+    await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
+    const fundInput = page.getByTestId('create-fund-amount')
+    const masterBtn = page.getByTestId('create-fund-master')
+    const walletBtn = page.getByTestId('create-fund-wallet')
+    await expect(masterBtn).toBeEnabled()
+    await expect(walletBtn).toBeEnabled()
     await fundInput.fill('99')
-    await expect(createBtn).toBeDisabled()
+    await expect(masterBtn).toBeDisabled()
+    await expect(walletBtn).toBeDisabled()
     await fundInput.fill('-1')
-    await expect(createBtn).toBeDisabled()
+    await expect(masterBtn).toBeDisabled()
     await fundInput.fill('abc')
-    await expect(createBtn).toBeDisabled()
+    await expect(masterBtn).toBeDisabled()
     await fundInput.fill('0')
-    await expect(createBtn).toBeEnabled() // 0 = skip funding, still valid
+    await expect(masterBtn).toBeDisabled() // 0 = nothing to fund
+    await fundInput.fill('0.001')
+    await expect(masterBtn).toBeEnabled()
+  })
+
+  test('post-creation master-wallet funding shows tx status', async ({ page }) => {
+    const newAgent = { ...DEMO_AGENT, name: 'fresh-agent' }
+    const funded: unknown[] = []
+    await setupOffline(page, {
+      capture: { fund: funded },
+      create: {
+        ok: true,
+        agent: newAgent,
+        balanceEth: '0',
+        steps: [
+          { step: 'wallet', ok: true },
+          { step: 'config', ok: true },
+          { step: 'register', ok: true, detail: '42' },
+        ],
+      },
+      fund: {
+        ok: true,
+        txHash: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        amountEth: '0.001',
+        to: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    })
+    await gotoWithAgent(page)
+    await toConfigure(page)
+    await page.getByRole('button', { name: 'Next →' }).last().click()
+    await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
+    await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
+    await page.getByTestId('create-fund-amount').fill('0.001')
+    await page.getByTestId('create-fund-master').click()
+    await expect(page.getByTestId('create-fund-status')).toContainText('0xeeeeee')
+    expect(funded).toHaveLength(1)
   })
 
   test('creation failure shows error screen with Back + Retry', async ({ page }) => {
@@ -131,17 +186,17 @@ test.describe('create agent wizard', () => {
     await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
     await expect(page.getByText('Creation failed')).toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId('create-dialog')).toContainText('already exists')
-    // Back returns to fund step
+    // Back returns to the OASF step
     await page.getByRole('button', { name: '← Back' }).click()
-    await expect(page.getByText('Fund & register')).toBeVisible()
+    await expect(page.getByTestId('create-oasf-domain-6')).toBeVisible()
   })
 
-  test('Back buttons navigate configure <-> fund <-> env', async ({ page }) => {
+  test('Back buttons navigate configure <-> oasf <-> env', async ({ page }) => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
     await toConfigure(page)
     await page.getByRole('button', { name: 'Next →' }).last().click()
-    await expect(page.getByText('Fund & register')).toBeVisible()
+    await expect(page.getByTestId('create-oasf-domain-6')).toBeVisible()
     await page.getByRole('button', { name: '← Back' }).click()
     await expect(page.getByTestId('create-action-transfer-eth')).toBeVisible()
     await page.getByRole('button', { name: '← Back' }).click()

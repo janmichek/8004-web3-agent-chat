@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { sendTransaction } from '@wagmi/vue/actions'
+import { parseEther } from 'viem'
 import {
   createAgent,
   fetchCatalog,
+  fundAgent,
   scanUrlForAgent,
   uploadImage,
   type AgentSummary,
   type CatalogResponse,
   type CreateAgentStep,
 } from '../api'
+import { config as wagmiConfig } from '../wagmi'
+import { ensureArbitrumSepolia } from '../chain'
 
 import { OASF_DOMAINS, OASF_SCHEMA_URL } from '../oasf'
 
@@ -16,7 +21,6 @@ type Phase =
   | 'env'
   | 'configure'
   | 'oasf'
-  | 'fund'
   | 'creating'
   | 'done'
   | 'error'
@@ -36,11 +40,14 @@ const agentName = ref('')
 const agentDescription = ref('')
 const selectedActions = ref<string[]>([])
 const selectedTools = ref<string[]>([])
-const selectedOasfDomains = ref<string[]>([])
 const selectedOasfSkills = ref<string[]>([])
 const oasfSearch = ref('')
 const oasfSchemaUrl = OASF_SCHEMA_URL
 const fundEth = ref('0.002')
+const fundBusy = ref<'master' | 'wallet' | null>(null)
+const fundStatus = ref('')
+const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
+const fundTxHash = ref('')
 const webEndpoint = ref('https://example.com')
 const emailEndpoint = ref('e@mail.fun')
 
@@ -131,9 +138,9 @@ const nameValid = computed(() =>
   /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(agentName.value.trim()),
 )
 
-const fundValid = computed(() => {
+const fundAmountValid = computed(() => {
   const n = Number(fundEth.value)
-  return Number.isFinite(n) && n >= 0 && n <= 1
+  return Number.isFinite(n) && n > 0 && n <= 1
 })
 
 const oasfDomains = OASF_DOMAINS
@@ -267,11 +274,13 @@ function goConfigure() {
 }
 
 async function submitCreate() {
-  if (!fundValid.value || busy.value) return
+  if (busy.value) return
   phase.value = 'creating'
   createError.value = ''
   createSteps.value = []
   createdAgent.value = null
+  fundStatus.value = ''
+  fundTxHash.value = ''
   busy.value = true
 
   try {
@@ -305,7 +314,6 @@ async function submitCreate() {
       tools: selectedTools.value,
       oasfDomains: selectedOasfDomains.value,
       oasfSkills: selectedOasfSkills.value,
-      fundEth: fundEth.value.trim() || '0.002',
       services,
     })
     createSteps.value = res.steps
@@ -322,6 +330,58 @@ async function submitCreate() {
 
 function openChat() {
   if (createdAgent.value) emit('created', createdAgent.value)
+}
+
+function bumpBalance(amountEth: string) {
+  const cur = Number(createdBalance.value || '0')
+  const add = Number(amountEth)
+  if (Number.isFinite(cur) && Number.isFinite(add)) {
+    createdBalance.value = String(+(cur + add).toFixed(6))
+  }
+}
+
+/** Fund the freshly created agent from the server master wallet. */
+async function fundFromMaster() {
+  if (!createdAgent.value || !fundAmountValid.value || fundBusy.value) return
+  fundBusy.value = 'master'
+  fundStatusKind.value = 'info'
+  fundStatus.value = 'Sending from master wallet…'
+  try {
+    const res = await fundAgent(createdAgent.value.name, fundEth.value.trim())
+    fundTxHash.value = res.txHash
+    fundStatusKind.value = 'ok'
+    fundStatus.value = `Sent ${res.amountEth} ETH (tx ${res.txHash.slice(0, 10)}…)`
+    bumpBalance(res.amountEth)
+  } catch (err) {
+    fundStatusKind.value = 'error'
+    fundStatus.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    fundBusy.value = null
+  }
+}
+
+/** Fund the freshly created agent from the user's connected wallet (MetaMask signs). */
+async function fundFromWallet() {
+  if (!createdAgent.value?.walletAddress || !fundAmountValid.value || fundBusy.value) return
+  fundBusy.value = 'wallet'
+  fundStatusKind.value = 'info'
+  fundStatus.value = 'Waiting for wallet signature…'
+  try {
+    await ensureArbitrumSepolia()
+    const hash = await sendTransaction(wagmiConfig, {
+      to: createdAgent.value.walletAddress as `0x${string}`,
+      value: parseEther(fundEth.value.trim() as `${number}`),
+    })
+    fundTxHash.value = hash
+    fundStatusKind.value = 'ok'
+    fundStatus.value = `Sent ${fundEth.value.trim()} ETH (tx ${hash.slice(0, 10)}…)`
+    bumpBalance(fundEth.value.trim())
+  } catch (err) {
+    fundStatusKind.value = 'error'
+    fundStatus.value = err instanceof Error ? (err.message.split('\n')[0] || err.message) : String(err)
+  } finally {
+    fundBusy.value = null
+  }
 }
 </script>
 
@@ -527,11 +587,12 @@ function openChat() {
       <p class="step-label">Domains</p>
       <ul class="checklist domains">
         <li v-for="d in oasfDomains" :key="`oasf-domain-${d.id}`">
-          <label class="check">
+          <label class="check" :class="{ partial: domainSkillState(d.id) === 'some' }">
             <input
               type="checkbox"
               :data-testid="`create-oasf-domain-${d.id}`"
-              :checked="selectedOasfDomains.includes(d.id)"
+              :checked="domainSkillState(d.id) !== 'none'"
+              :indeterminate="domainSkillState(d.id) === 'some'"
               @change="toggleOasfDomain(d.id)"
             />
             <span>
@@ -558,7 +619,7 @@ function openChat() {
               type="checkbox"
               :data-testid="`create-oasf-skill-${s.id}`"
               :checked="selectedOasfSkills.includes(s.id)"
-              @change="toggleOasfSkill(s.id, s.domainId)"
+              @change="toggleOasfSkill(s.id)"
             />
             <span>
               <strong>{{ s.name }} <span class="badge tool">[{{ s.id }}]</span></strong>
@@ -570,29 +631,11 @@ function openChat() {
       <p v-if="!visibleSkills.length" class="hint">No skills match your search.</p>
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
-        <button type="button" class="btn primary" data-testid="create-oasf-continue" @click="phase = 'fund'">Next →</button>
-      </div>
-    </div>
-
-    <!-- Fund + register -->
-    <div v-else-if="phase === 'fund'" class="body">
-      <p class="step-label">Fund &amp; register</p>
-      <label class="field">
-        <span>ETH to fund agent</span>
-        <input
-          v-model="fundEth"
-          type="text"
-          inputmode="decimal"
-          placeholder="0.002"
-          spellcheck="false"
-        />
-      </label>
-      <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'oasf'">← Back</button>
         <button
           type="button"
           class="btn primary"
-          :disabled="!fundValid || busy"
+          data-testid="create-agent-submit"
+          :disabled="busy"
           @click="submitCreate"
         >
           Create agent
@@ -603,7 +646,7 @@ function openChat() {
     <!-- Creating -->
     <div v-else-if="phase === 'creating'" class="body">
       <p class="step-label">Creating “{{ agentName }}”…</p>
-      <p class="hint creating-pulse">Image → wallet → fund → config → register</p>
+      <p class="hint creating-pulse">Image → wallet → config → register</p>
     </div>
 
     <!-- Done -->
@@ -672,6 +715,44 @@ function openChat() {
           <template v-if="s.detail"> · {{ s.detail }}</template>
         </li>
       </ul>
+      <div class="fund-panel" data-testid="create-fund-panel">
+        <p class="step-label">Fund agent wallet <span class="optional">(optional)</span></p>
+        <label class="field">
+          <span>Amount (ETH)</span>
+          <input
+            v-model="fundEth"
+            type="text"
+            inputmode="decimal"
+            placeholder="0.002"
+            spellcheck="false"
+            data-testid="create-fund-amount"
+            :disabled="fundBusy !== null"
+          />
+        </label>
+        <div class="fund-actions">
+          <button
+            type="button"
+            class="btn ghost"
+            data-testid="create-fund-master"
+            :disabled="!fundAmountValid || fundBusy !== null"
+            @click="fundFromMaster"
+          >
+            {{ fundBusy === 'master' ? 'Sending…' : 'Fund from Master wallet' }}
+          </button>
+          <button
+            type="button"
+            class="btn primary"
+            data-testid="create-fund-wallet"
+            :disabled="!fundAmountValid || fundBusy !== null"
+            @click="fundFromWallet"
+          >
+            {{ fundBusy === 'wallet' ? 'Waiting…' : 'Fund from connected wallet' }}
+          </button>
+        </div>
+        <p v-if="fundStatus" class="hint" :class="fundStatusKind" data-testid="create-fund-status">
+          {{ fundStatus }}
+        </p>
+      </div>
       <div class="nav">
         <button type="button" class="btn ghost" @click="emit('cancel')">Close</button>
         <button type="button" class="btn primary" @click="openChat">Open chat</button>
@@ -683,7 +764,7 @@ function openChat() {
       <p class="step-label">Creation failed</p>
       <p class="banner">{{ createError }}</p>
       <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'fund'">← Back</button>
+        <button type="button" class="btn ghost" @click="phase = 'oasf'">← Back</button>
         <button type="button" class="btn primary" @click="submitCreate">Retry</button>
       </div>
     </div>
@@ -919,6 +1000,30 @@ function openChat() {
   color: var(--muted);
 }
 
+.hint.ok {
+  color: #6ecf8e;
+}
+
+.hint.error {
+  color: #ffb4b0;
+}
+
+.fund-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+}
+
+.fund-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .menu {
   display: flex;
   flex-direction: column;
@@ -989,6 +1094,10 @@ function openChat() {
 .check.pale {
   opacity: 0.55;
   /* pale like disabled, but still interactive */
+}
+
+.check.partial {
+  border-style: dashed;
 }
 
 .check strong {

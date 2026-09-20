@@ -456,7 +456,10 @@ app.post("/api/agents", async (c) => {
     return c.json({ error: "Too many OASF domains/skills selected" }, 400);
   }
 
-  const fundEth = (body.fundEth?.trim() || "0.002");
+  // Funding happens post-creation from the done step (master or connected
+  // wallet), so creation itself does not fund. fundEth stays accepted for
+  // API/CLI backward compatibility when explicitly passed.
+  const fundEth = (body.fundEth?.trim() || "0");
   const fundAmount = Number(fundEth);
   if (!Number.isFinite(fundAmount) || fundAmount < 0 || fundAmount > 1) {
     return c.json({ error: "fundEth must be a number between 0 and 1" }, 400);
@@ -534,7 +537,7 @@ app.post("/api/agents", async (c) => {
       steps.push({ step: "fund", ok: false, detail: msg });
     }
   } else {
-    steps.push({ step: "fund", ok: true, detail: "skipped (0 ETH)" });
+    steps.push({ step: "fund", ok: true, detail: "skipped — fund after creation" });
   }
 
   // --- Persist config ---
