@@ -81,6 +81,7 @@ export type CreateAgentRequest = {
   skipRegister?: boolean
   active?: boolean
   services?: CreateAgentService[]
+  mcpEndpoint?: string
 }
 
 export type CreateAgentStep = {

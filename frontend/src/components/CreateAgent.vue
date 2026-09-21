@@ -50,6 +50,14 @@ const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
 const fundTxHash = ref('')
 const webEndpoint = ref('https://example.com')
 const emailEndpoint = ref('e@mail.fun')
+const mcpEndpoint = ref('')
+
+const hasSelectedCapabilities = computed(
+  () => selectedActions.value.length > 0 || selectedTools.value.length > 0,
+)
+const mcpMissingWarning = computed(
+  () => hasSelectedCapabilities.value && !mcpEndpoint.value.trim(),
+)
 
 // Optional agent image (step 1): chosen via file picker or drag & drop,
 // kept locally for preview and uploaded to IPFS at creation time,
@@ -304,6 +312,7 @@ async function submitCreate() {
     const services = [
       { name: 'web', endpoint: webEndpoint.value.trim() },
       { name: 'email', endpoint: emailEndpoint.value.trim() },
+      { name: 'mcp', endpoint: mcpEndpoint.value.trim() },
     ].filter((s) => s.endpoint.length > 0)
 
     const res = await createAgent({
@@ -464,6 +473,20 @@ async function fundFromWallet() {
           data-testid="create-email-endpoint"
         />
       </label>
+      <label class="field">
+        <span>MCP endpoint <span class="optional">(optional — advertises tools on 8004scan)</span></span>
+        <input
+          v-model="mcpEndpoint"
+          type="text"
+          placeholder="https://your-host/mcp"
+          spellcheck="false"
+          data-testid="create-mcp-endpoint"
+        />
+      </label>
+      <p v-if="mcpMissingWarning" class="hint" data-testid="create-mcp-warning">
+        You selected actions/tools but no MCP endpoint — they will run locally in chat only,
+        not appear under Services → MCP on 8004scan. Add an https://…/mcp URL to advertise them.
+      </p>
       <p class="step-label">Image <span class="optional">(optional)</span></p>
       <div
         v-if="!imageFile"
@@ -539,6 +562,14 @@ async function fundFromWallet() {
     <!-- Configure (step 2) — flat tools & actions -->
     <div v-else-if="phase === 'configure'" class="body">
       <p class="step-label">Configure your agent — tools &amp; actions</p>
+      <p class="hint">
+        Selected tools run locally in chat. To advertise them over MCP on 8004scan
+        (Services → MCP), set the MCP endpoint in step 1.
+      </p>
+      <p v-if="mcpMissingWarning" class="hint" data-testid="create-mcp-warning-configure">
+        No MCP endpoint set — your selection won't appear on 8004scan. Go back to step 1
+        and add an https://…/mcp URL.
+      </p>
       <ul class="checklist">
         <!-- Actions -->
         <li v-for="a in catalog?.actions ?? []" :key="`action-${a.name}`">

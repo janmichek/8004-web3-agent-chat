@@ -223,6 +223,37 @@ test.describe('create agent wizard', () => {
       ],
     })
   })
+
+  test('mcp endpoint is advertised as a service when set', async ({ page }) => {
+    const created: unknown[] = []
+    await setupOffline(page, { capture: { create: created } })
+    await gotoWithAgent(page)
+    await openCreateDialog(page)
+    await expect(page.getByTestId('create-mcp-endpoint')).toHaveValue('')
+    await page.getByTestId('create-mcp-endpoint').fill('https://my-host/mcp')
+    await page.getByTestId('create-name-input').fill('my-agent')
+    await page.getByTestId('create-name-continue').click()
+    await expect(page.getByTestId('create-action-transfer-eth')).toBeVisible()
+    await page.getByTestId('create-action-transfer-eth').check()
+    await page.getByRole('button', { name: 'Next →' }).last().click()
+    await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
+    await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
+    expect(created[0]).toMatchObject({
+      services: [
+        { name: 'web', endpoint: 'https://example.com' },
+        { name: 'email', endpoint: 'e@mail.fun' },
+        { name: 'mcp', endpoint: 'https://my-host/mcp' },
+      ],
+    })
+  })
+
+  test('warns when tools selected but no mcp endpoint set', async ({ page }) => {
+    await setupOffline(page, {})
+    await gotoWithAgent(page)
+    await toConfigure(page)
+    await page.getByTestId('create-action-transfer-eth').check()
+    await expect(page.getByTestId('create-mcp-warning-configure')).toContainText('No MCP endpoint')
+  })
 })
 
 test.describe('create agent — step 1 image & description', () => {

@@ -396,6 +396,7 @@ app.post("/api/agents", async (c) => {
     skipRegister?: boolean;
     active?: boolean;
     services?: { name?: string; endpoint?: string }[];
+    mcpEndpoint?: string;
   };
   try {
     body = await c.req.json();
@@ -474,10 +475,20 @@ app.post("/api/agents", async (c) => {
   if (!Array.isArray(rawServices)) {
     return c.json({ error: "services must be an array" }, 400);
   }
+  // Shorthand: `mcpEndpoint: "https://host/mcp"` appends an mcp service
+  // unless services already declares one (case-insensitive).
+  const mcpEndpoint = body.mcpEndpoint?.trim();
+  if (mcpEndpoint) {
+    const hasMcp = rawServices.some(
+      (s) => typeof s?.name === "string" && s.name.trim().toLowerCase() === "mcp",
+    );
+    if (!hasMcp) rawServices.push({ name: "mcp", endpoint: mcpEndpoint });
+  }
   if (rawServices.length > 20) {
     return c.json({ error: "services must have at most 20 entries" }, 400);
   }
   const services: { name: string; endpoint: string }[] = [];
+  const seenServiceNames = new Set<string>();
   for (const entry of rawServices) {
     const svcName = entry?.name?.trim();
     const svcEndpoint = entry?.endpoint?.trim();
@@ -486,6 +497,18 @@ app.post("/api/agents", async (c) => {
     }
     if (svcName.length > 64 || svcEndpoint.length > 500) {
       return c.json({ error: "service name (max 64) or endpoint (max 500) too long" }, 400);
+    }
+    const lower = svcName.toLowerCase();
+    if (seenServiceNames.has(lower)) {
+      return c.json({ error: `duplicate service: ${svcName}` }, 400);
+    }
+    seenServiceNames.add(lower);
+    // MCP/A2A/web endpoints must be https URLs so 8004scan can verify them.
+    // Email keeps its legacy free-form value (e@mail.fun).
+    if (lower === "mcp" || lower === "a2a" || lower === "web") {
+      if (!/^https:\/\/.+/i.test(svcEndpoint)) {
+        return c.json({ error: `${svcName} endpoint must be an https:// URL` }, 400);
+      }
     }
     services.push({ name: svcName, endpoint: svcEndpoint });
   }

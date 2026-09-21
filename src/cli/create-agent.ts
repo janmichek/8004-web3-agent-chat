@@ -305,6 +305,37 @@ async function main(): Promise<void> {
   // --- Action selection ---
   const state = await actionSelectionLoop()
 
+  // --- MCP endpoint (optional — advertises selected tools on 8004scan Services → MCP) ---
+  const mcpFromFlag = getFlag("mcp-endpoint")
+  let mcpEndpoint: string
+  if (mcpFromFlag !== undefined) {
+    mcpEndpoint = mcpFromFlag.trim()
+  } else {
+    const hasCapabilities = state.actions.length > 0 || state.tools.length > 0
+    const mcpResult = await p.text({
+      message: "MCP endpoint (optional — https://…/mcp to advertise tools on 8004scan)",
+      placeholder: "https://your-host/mcp",
+      initialValue: "",
+      validate: (v) => {
+        const t = v?.trim() ?? ""
+        if (!t) return undefined
+        return /^https:\/\/.+/.test(t) ? undefined : "Must be an https:// URL"
+      },
+    })
+    if (p.isCancel(mcpResult)) { p.cancel("Cancelled."); process.exit(0) }
+    mcpEndpoint = (mcpResult as string | undefined)?.trim() ?? ""
+    if (!mcpEndpoint && hasCapabilities) {
+      p.log.warn("No MCP endpoint — actions/tools will run locally in chat only, not on 8004scan.")
+    }
+  }
+  if (mcpEndpoint && !/^https:\/\/.+/.test(mcpEndpoint)) {
+    p.cancel("Invalid --mcp-endpoint: must be an https:// URL")
+    process.exit(1)
+  }
+  const endpoints: AgentConfig["endpoints"] = mcpEndpoint
+    ? [{ type: "MCP", value: mcpEndpoint }]
+    : []
+
   // --- Create wallet ---
   const s = p.spinner()
   s.start(`Creating agent "${agentName}"...`)
@@ -347,7 +378,7 @@ async function main(): Promise<void> {
     description: `Agent ${agentName}`,
     walletAddress: agentWallet.address,
     walletChainId: getChainId(),
-    endpoints: [],
+    endpoints,
     trustModels: [],
     owners: [masterWallet.address],
     operators: [agentWallet.address],
@@ -372,6 +403,7 @@ async function main(): Promise<void> {
         privateKey: masterWallet.privateKey,
         walletAddress: agentWallet.address,
         agentWalletPrivateKey: agentWallet.privateKey,
+        endpoints,
         metadata: {
           actions: state.actions,
           tools: [...new Set([...state.actionToolNames, ...state.tools])],
@@ -409,6 +441,7 @@ async function main(): Promise<void> {
     `Balance  : ${ethers.formatEther(agentBalance)} ETH\n` +
     `Actions  : ${state.actions.join(", ") || "none"}\n` +
     `Tools    : ${allToolNames.join(", ") || "none"}\n` +
+    `MCP      : ${mcpEndpoint || "not advertised (no MCP endpoint)"}\n` +
     `Owner    : ${masterWallet.address}`,
     "Agent Created (ERC-8004)",
   )
