@@ -26,8 +26,10 @@ function agentEnvSuffix(agentName: string): string {
 /**
  * Resolve agent wallet env var names.
  * AGENT_<SUFFIX>_PRIVATE_KEY takes precedence over file.
+ * Exported so the API layer can tell the user which env var to set
+ * after an ephemeral (non-persisted) wallet is generated on Vercel.
  */
-function getAgentWalletEnvVars(agentName: string): string[] {
+export function getAgentWalletEnvVars(agentName: string): string[] {
   const suffix = agentEnvSuffix(agentName);
   return [`AGENT_${suffix}_PRIVATE_KEY`, `AGENT_PRIVATE_KEY`];
 }
@@ -37,6 +39,9 @@ function getAgentWalletEnvVars(agentName: string): string[] {
  *
  * - On first run, generates a cryptographically random private key and persists it.
  * - On subsequent runs, loads the existing wallet without overwriting.
+ * - On Vercel, generation is allowed but ephemeral: AGENTS_DIR is /tmp/agents,
+ *   so the key survives only on this instance. Callers must return the private
+ *   key once so the user can save it as AGENT_<SUFFIX>_PRIVATE_KEY.
  *
  * WARNING: agents/<name>/wallet.json contains a raw private key.
  * It MUST be listed in .gitignore and NEVER committed to version control.
@@ -77,14 +82,11 @@ export function getOrCreateAgentWallet(options: WalletOptions): WalletData {
     }
   }
 
-  // 3) On Vercel, never generate random — wallet must be provided via env
-  if (process.env.VERCEL) {
-    throw new Error(
-      `Wallet for agent "${agentName}" not found. Set ${getAgentWalletEnvVars(agentName)[0]} in Vercel env vars.`
-    );
-  }
-
-  // 4) Local dev: generate and persist
+  // 3) Generate and persist.
+  // On Vercel AGENTS_DIR is /tmp/agents (ephemeral per instance) — the wallet
+  // works for this request (fund + register + chat) but is lost on cold start
+  // or redeploy unless the user saves the private key to Vercel env vars.
+  // Callers detect this via getAgentWalletEnvVars() and surface the key once.
   const agentDir = path.join(AGENTS_DIR, agentName);
   const walletPath = path.join(agentDir, "wallet.json");
   const wallet = ethers.Wallet.createRandom();
@@ -92,10 +94,23 @@ export function getOrCreateAgentWallet(options: WalletOptions): WalletData {
     address: wallet.address,
     privateKey: wallet.privateKey,
   };
-  fs.mkdirSync(agentDir, { recursive: true });
-  fs.writeFileSync(walletPath, JSON.stringify(data, null, 2), "utf-8");
-  console.log(`[wallet] Created new wallet for agent "${agentName}": ${data.address}`);
-  console.log(`[wallet] WARNING: agents/${agentName}/wallet.json contains a private key. Never commit this file.`);
+  try {
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(walletPath, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err) {
+    // /tmp writes can fail under memory pressure — still return the wallet so
+    // fund/register in the same request can proceed; persistence is best-effort.
+    console.warn(`[wallet] Failed to persist wallet for agent "${agentName}":`, err);
+  }
+  if (process.env.VERCEL) {
+    console.log(`[wallet] Created EPHEMERAL wallet for agent "${agentName}": ${data.address}`);
+    console.log(
+      `[wallet] WARNING: on Vercel this key lives only in /tmp. Save it as ${getAgentWalletEnvVars(agentName)[0]} in Vercel env vars or it will be lost.`
+    );
+  } else {
+    console.log(`[wallet] Created new wallet for agent "${agentName}": ${data.address}`);
+    console.log(`[wallet] WARNING: agents/${agentName}/wallet.json contains a private key. Never commit this file.`);
+  }
   return data;
 }
 

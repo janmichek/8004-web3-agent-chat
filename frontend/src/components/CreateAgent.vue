@@ -122,6 +122,11 @@ function removeImage() {
 const createSteps = ref<CreateAgentStep[]>([])
 const createdAgent = ref<AgentSummary | null>(null)
 const createdBalance = ref('')
+const createdPrivateKey = ref('')
+const createdPrivateKeyEnvVar = ref('')
+const createdEphemeralWarning = ref('')
+const privateKeyVisible = ref(false)
+const privateKeyCopied = ref(false)
 
 const createdWalletScanUrl = computed(() => {
   const address = createdAgent.value?.walletAddress
@@ -328,6 +333,11 @@ async function submitCreate() {
   createError.value = ''
   createSteps.value = []
   createdAgent.value = null
+  createdPrivateKey.value = ''
+  createdPrivateKeyEnvVar.value = ''
+  createdEphemeralWarning.value = ''
+  privateKeyVisible.value = false
+  privateKeyCopied.value = false
   fundStatus.value = ''
   fundTxHash.value = ''
   busy.value = true
@@ -369,6 +379,9 @@ async function submitCreate() {
     createSteps.value = res.steps
     createdAgent.value = res.agent
     createdBalance.value = res.balanceEth
+    createdPrivateKey.value = res.privateKey ?? ''
+    createdPrivateKeyEnvVar.value = res.privateKeyEnvVar ?? ''
+    createdEphemeralWarning.value = res.ephemeralWarning ?? ''
     phase.value = 'done'
   } catch (err) {
     createError.value = err instanceof Error ? err.message : String(err)
@@ -380,6 +393,18 @@ async function submitCreate() {
 
 function openChat() {
   if (createdAgent.value) emit('created', createdAgent.value)
+}
+
+async function copyPrivateKey() {
+  if (!createdPrivateKey.value) return
+  try {
+    await navigator.clipboard.writeText(createdPrivateKey.value)
+    privateKeyCopied.value = true
+    setTimeout(() => (privateKeyCopied.value = false), 2000)
+  } catch {
+    // Clipboard API unavailable (non-secure context) — user can select manually.
+    privateKeyCopied.value = false
+  }
 }
 
 function bumpBalance(amountEth: string) {
@@ -736,6 +761,37 @@ async function fundFromWallet() {
     <!-- Done -->
     <div v-else-if="phase === 'done' && createdAgent" class="body">
       <p class="step-label">Agent created</p>
+      <div
+        v-if="createdPrivateKey"
+        class="ephemeral-key"
+        data-testid="create-ephemeral-key"
+      >
+        <p class="ephemeral-title">⚠️ Save this private key now — shown only once</p>
+        <p v-if="createdEphemeralWarning" class="hint">{{ createdEphemeralWarning }}</p>
+        <p v-if="createdPrivateKeyEnvVar" class="hint mono">
+          Vercel → Settings → Environment Variables: {{ createdPrivateKeyEnvVar }}
+        </p>
+        <div class="key-row">
+          <code class="mono key-value" data-testid="create-private-key-value">{{
+            privateKeyVisible ? createdPrivateKey : '•'.repeat(48)
+          }}</code>
+          <button
+            type="button"
+            class="btn ghost small"
+            @click="privateKeyVisible = !privateKeyVisible"
+          >
+            {{ privateKeyVisible ? 'Hide' : 'Show' }}
+          </button>
+          <button
+            type="button"
+            class="btn ghost small"
+            data-testid="create-private-key-copy"
+            @click="copyPrivateKey"
+          >
+            {{ privateKeyCopied ? 'Copied!' : 'Copy' }}
+          </button>
+        </div>
+      </div>
       <dl class="env">
         <div>
           <dt>Name</dt>
@@ -1289,6 +1345,46 @@ async function fundFromWallet() {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
+.ephemeral-key {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  border: 1px solid color-mix(in oklab, #c44 45%, var(--border));
+  border-radius: 0.5rem;
+  background: color-mix(in oklab, #c44 12%, var(--surface));
+}
+
+.ephemeral-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffb4b0;
+}
+
+.ephemeral-key .hint.mono {
+  word-break: break-all;
+}
+
+.key-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.key-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  word-break: break-all;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--bg);
+  color: var(--ink);
 }
 
 .steps .fail {

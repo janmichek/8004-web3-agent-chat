@@ -16,6 +16,7 @@ import { getLLM } from "../core/llm.js";
 import {
   AGENTS_DIR,
   fundAgentWallet,
+  getAgentWalletEnvVars,
   getMasterWalletBalance,
   getMasterWallet,
   getOrCreateAgentWallet,
@@ -674,12 +675,27 @@ app.post("/api/agents", async (c) => {
     /* ignore */
   }
 
+  // On Vercel the wallet+config live in /tmp (ephemeral). If no env var backs
+  // this agent, return the private key ONCE so the user can save it as
+  // AGENT_<SUFFIX>_PRIVATE_KEY in Vercel env vars before the instance recycles.
+  const walletEnvVar = getAgentWalletEnvVars(name)[0]!;
+  const ephemeral =
+    Boolean(process.env.VERCEL) && !process.env[walletEnvVar];
+
   return c.json({
     ok: true,
     agent: publicAgentSummary(name),
     balanceEth,
     fundTxHash,
     steps,
+    ...(ephemeral
+      ? {
+          ephemeral: true,
+          privateKey: agentWallet.privateKey,
+          privateKeyEnvVar: walletEnvVar,
+          ephemeralWarning: `Save this private key as ${walletEnvVar} in Vercel env vars now — the /tmp wallet is lost on cold start/redeploy and the agent will stop working.`,
+        }
+      : {}),
   }, 201);
 });
 

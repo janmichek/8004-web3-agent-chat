@@ -96,6 +96,10 @@ export type CreateAgentResponse = {
   balanceEth: string
   fundTxHash?: string
   steps: CreateAgentStep[]
+  ephemeral?: boolean
+  privateKey?: string
+  privateKeyEnvVar?: string
+  ephemeralWarning?: string
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

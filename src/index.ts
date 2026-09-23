@@ -9,6 +9,7 @@ export type { LLMProvider } from "./core/llm.js";
 export {
   AGENTS_DIR,
   getOrCreateAgentWallet,
+  getAgentWalletEnvVars,
   getMasterWallet,
   getMasterWalletBalance,
   fundAgentWallet,
