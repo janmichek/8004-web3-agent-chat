@@ -142,20 +142,6 @@ async function loadAgents() {
   try {
     const data = await fetchAgents()
     agents.value = data.agents
-    // Optimistic retention: on Vercel without KV the backend is ephemeral
-    // per-instance, so a just-created agent may be missing from this
-    // instance's list. Keep showing it instead of dropping to agents[0]
-    // (which looks like "disappears from the list" / "Agent not found").
-    const keep: AgentSummary[] = []
-    if (props.agent?.name) keep.push(props.agent)
-    if (props.selectName && !keep.some((a) => a.name === props.selectName)) {
-      keep.push({ name: props.selectName } as AgentSummary)
-    }
-    for (const k of keep) {
-      if (!agents.value.some((a) => a.name === k.name)) {
-        agents.value = [...agents.value, k]
-      }
-    }
     if (props.selectName && agents.value.some((a) => a.name === props.selectName)) {
       selected.value = props.selectName
     } else if (!selected.value && agents.value[0]) {

@@ -41,12 +41,6 @@ import {
 } from "../core/config.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
 import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
-import {
-  persistAgentToStore,
-  listStoredAgents,
-  hydrateAgentFromStore,
-  deleteAgentFromStore,
-} from "../core/agent-store.js";
 import { registerAgent } from "../core/registry.js";
 import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemory } from "../core/memory-reader.js";
@@ -233,28 +227,16 @@ function listExistingAgentsSync(): string[] {
 }
 
 async function listExistingAgents(): Promise<string[]> {
-  const names = new Set(listExistingAgentsSync());
-  // Merge KV-persisted agents (cold instances with empty /tmp)
-  for (const n of await listStoredAgents()) names.add(n);
-  return [...names];
+  return listExistingAgentsSync();
 }
 
 /**
- * Ensure a KV-persisted agent is hydrated to /tmp so the synchronous
- * filesystem paths below keep working on cold serverless instances.
- * Returns true when the agent exists (after hydration if needed).
- *
- * NOTE: hydration must happen *before* any sync config/wallet read —
- * the KV index merge alone is not enough, since it would report the
- * agent as existing while /tmp is still empty, and
- * getOrCreateAgentWallet would then generate the WRONG wallet.
+ * Check the agent exists on this instance's filesystem or env vars.
+ * Cold Vercel instances heal via POST /api/agents/:name/restore
+ * (browser-held backup + retry in the frontend), not via shared storage.
  */
 async function ensureAgentLoaded(name: string): Promise<boolean> {
-  // Fast path: present on local filesystem or env vars.
-  if (listExistingAgentsSync().includes(name)) return true;
-  // Cold instance: hydrate from KV (writes /tmp files), then re-check.
-  await hydrateAgentFromStore(name);
-  return (await listExistingAgents()).includes(name);
+  return listExistingAgentsSync().includes(name);
 }
 
 async function publicAgentSummary(name: string) {
@@ -817,11 +799,6 @@ app.post("/api/agents", async (c) => {
     return c.json({ error: `Failed to save config: ${msg}`, steps }, 500);
   }
 
-  // --- Persist to KV (seamless across serverless instances) ---
-  // Best-effort: no-op when KV is not bound. Re-saved after registration
-  // below so agentId/agentURI are included.
-  await persistAgentToStore(name, config, agentWallet);
-
   // --- Register ---
   if (!skipRegister) {
     try {
@@ -855,9 +832,6 @@ app.post("/api/agents", async (c) => {
     steps.push({ step: "register", ok: true, detail: "skipped" });
   }
 
-  // Re-persist after registration so agentId/agentURI survive cold starts.
-  await persistAgentToStore(name, config, agentWallet);
-
   let balanceEth = "0";
   try {
     const bal = await getProvider().getBalance(agentWallet.address);
@@ -866,13 +840,11 @@ app.post("/api/agents", async (c) => {
     /* ignore */
   }
 
-  // Without KV or an env var backing this agent, the wallet+config live only
-  // in /tmp (ephemeral). Return the private key ONCE so the user can save it
-  // as AGENT_<SUFFIX>_PRIVATE_KEY in Vercel env vars before a cold start.
-  // With KV bound the agent is seamless — no manual step needed.
+  // Without an env var backing this agent, the wallet+config live only
+  // in /tmp (ephemeral). Return the private key ONCE so the browser can
+  // keep a local backup and heal cold instances via /restore.
   const walletEnvVar = getAgentWalletEnvVars(name)[0]!;
-  const ephemeral =
-    Boolean(process.env.VERCEL) && !process.env[walletEnvVar] && !process.env.KV_REST_API_URL;
+  const ephemeral = Boolean(process.env.VERCEL) && !process.env[walletEnvVar];
 
   return c.json({
     ok: true,
@@ -905,14 +877,14 @@ app.get("/api/agents/:name", async (c) => {
 /**
  * Heal a cold serverless instance from a browser-held backup.
  *
- * Without KV bound, agent files live only in /tmp on the instance that
- * created them. The create response returns the full config + private key
- * once (ephemeral mode); the frontend stores them in localStorage and
- * replays them here when it hits 404, so chat/fund/memory keep working.
+ * On Vercel without shared storage, agent files live only in /tmp on the
+ * instance that created them. The create response returns the full config +
+ * private key once (ephemeral mode); the frontend stores them in
+ * localStorage and replays them here when it hits 404, so chat/fund/memory
+ * keep working.
  *
  * Auth = proof of private-key ownership: the key must derive
- * config.walletAddress, and config.name must match the URL. The key IS
- * ownership of the agent, so anyone holding it may restore it.
+ * config.walletAddress, and config.name must match the URL.
  */
 app.post("/api/agents/:name/restore", async (c) => {
   const name = c.req.param("name");
@@ -954,10 +926,6 @@ app.post("/api/agents/:name/restore", async (c) => {
       "utf-8",
     );
     saveAgentConfig(name, { ...config, name });
-    await persistAgentToStore(name, config, {
-      address: config.walletAddress,
-      privateKey,
-    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Restore failed: ${msg}` }, 500);
@@ -970,14 +938,13 @@ app.delete("/api/agents/:name", async (c) => {
   if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
-  if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE && !process.env.KV_REST_API_URL) {
+  if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE) {
     return c.json(
       { error: "Agent deletion is disabled on Vercel (ephemeral filesystem). Delete env vars manually." },
       403,
     );
   }
   const removed = deleteAgentConfig(name);
-  await deleteAgentFromStore(name);
   if (!removed) {
     return c.json({ error: "Agent not found" }, 404);
   }

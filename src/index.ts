@@ -37,13 +37,6 @@ export type { Action, Skill } from "./actions/types.js";
 export { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName, getToolByName, getStandaloneToolInstance } from "./core/action-registry.js";
 export type { ActionEntry, ToolEntry } from "./core/action-registry.js";
 export { saveAgentConfig, loadAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "./core/agent-config.js";
-export {
-  persistAgentToStore,
-  listStoredAgents,
-  hydrateAgentFromStore,
-  deleteAgentFromStore,
-  isStoreEnabled,
-} from "./core/agent-store.js";
 export type { AgentConfig, Endpoint, EndpointType } from "./core/agent-config.js";
 
 export type {
