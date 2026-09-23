@@ -207,7 +207,7 @@ async function pinEnrichedRegistrationFile(
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: file.name,
     description: file.description,
-    services: buildEnrichedServices(file.endpoints ?? [], options.metadata),
+    services: await buildEnrichedServices(file.endpoints ?? [], options.metadata),
     registrations: [
       {
         agentId: tokenId,
@@ -236,10 +236,10 @@ async function pinEnrichedRegistrationFile(
  * `skills` as numeric-string IDs and `domains` as snake_case slugs — numeric
  * domain IDs stored in `metadata.oasfDomains` alone are not rendered.
  */
-function buildEnrichedServices(
+async function buildEnrichedServices(
   endpoints: { type: string; value: string; meta?: Record<string, unknown> }[],
   metadata: Record<string, unknown> | undefined,
-): Record<string, unknown>[] {
+): Promise<Record<string, unknown>[]> {
   const services: Record<string, unknown>[] = endpoints.map((ep) => ({
     name: ep.type,
     endpoint: ep.value,
@@ -265,7 +265,7 @@ function buildEnrichedServices(
       oasfEndpoint = httpsEndpoint;
     }
   }
-  services.push(buildOasfService(domains, skills, oasfEndpoint));
+  services.push(await buildOasfService(domains, skills, oasfEndpoint));
   return services;
 }
 

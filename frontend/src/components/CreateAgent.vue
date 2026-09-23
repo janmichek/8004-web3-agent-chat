@@ -15,7 +15,7 @@ import {
 import { config as wagmiConfig } from '../wagmi'
 import { ensureArbitrumSepolia } from '../chain'
 
-import { OASF_DOMAINS, OASF_SCHEMA_URL, oasfDomainSlug } from '../oasf'
+import { OASF_SCHEMA_URL, fetchOasfDomains, type OasfDomain } from '../oasf'
 
 type Phase =
   | 'env'
@@ -153,24 +153,51 @@ const fundAmountValid = computed(() => {
   return Number.isFinite(n) && n > 0 && n <= 1
 })
 
-const oasfDomains = OASF_DOMAINS
+const oasfDomains = ref<OasfDomain[]>([])
+const oasfLoading = ref(false)
+const oasfError = ref('')
+
+async function loadOasf() {
+  oasfLoading.value = true
+  oasfError.value = ''
+  try {
+    oasfDomains.value = await fetchOasfDomains()
+  } catch (err) {
+    oasfError.value = err instanceof Error ? err.message : 'Failed to load OASF taxonomy'
+  } finally {
+    oasfLoading.value = false
+  }
+}
 
 // Single source of truth: selected skills. Domains are always derived,
 // so a domain/skill mismatch is impossible.
-const skillToDomain = new Map<string, string>()
-for (const d of oasfDomains) for (const s of d.skills) skillToDomain.set(s.id, d.id)
+const skillToDomain = computed(() => {
+  const map = new Map<string, string>()
+  for (const d of oasfDomains.value) for (const s of d.skills) map.set(s.id, d.id)
+  return map
+})
 
 const selectedOasfDomains = computed(() => {
   const ids = new Set<string>()
   for (const skillId of selectedOasfSkills.value) {
-    const domainId = skillToDomain.get(skillId)
+    const domainId = skillToDomain.value.get(skillId)
     if (domainId) ids.add(domainId)
   }
   return [...ids]
 })
 
+const oasfDomainSlugs = computed(() => {
+  const map = new Map<string, string>()
+  for (const d of oasfDomains.value) map.set(d.id, d.slug)
+  return map
+})
+
+function oasfDomainSlug(id: string): string {
+  return oasfDomainSlugs.value.get(id) ?? id
+}
+
 function domainSkillState(domainId: string): 'none' | 'some' | 'all' {
-  const domain = oasfDomains.find((d) => d.id === domainId)
+  const domain = oasfDomains.value.find((d) => d.id === domainId)
   if (!domain) return 'none'
   const count = domain.skills.filter((s) => selectedOasfSkills.value.includes(s.id)).length
   if (count === 0) return 'none'
@@ -179,8 +206,8 @@ function domainSkillState(domainId: string): 'none' | 'some' | 'all' {
 
 const visibleDomains = computed(() => {
   const q = oasfSearch.value.trim().toLowerCase()
-  if (!q) return oasfDomains
-  return oasfDomains.filter(
+  if (!q) return oasfDomains.value
+  return oasfDomains.value.filter(
     (d) =>
       d.name.toLowerCase().includes(q) ||
       d.id.includes(q) ||
@@ -190,7 +217,7 @@ const visibleDomains = computed(() => {
 
 const visibleSkills = computed(() => {
   const q = oasfSearch.value.trim().toLowerCase()
-  const all = oasfDomains.flatMap((d) =>
+  const all = oasfDomains.value.flatMap((d) =>
     d.skills.map((s) => ({ ...s, domainId: d.id, domainName: d.name })),
   )
   if (!q) return all
@@ -203,7 +230,7 @@ const visibleSkills = computed(() => {
 })
 
 function toggleOasfDomain(id: string) {
-  const domain = oasfDomains.find((d) => d.id === id)
+  const domain = oasfDomains.value.find((d) => d.id === id)
   if (!domain) return
   const allSelected = domain.skills.every((s) => selectedOasfSkills.value.includes(s.id))
   if (allSelected) {
@@ -236,6 +263,7 @@ async function loadCatalog() {
 
 onMounted(() => {
   void loadCatalog()
+  void loadOasf()
 })
 
 // Mutual exclusivity: transfer-eth bundles send_eth + get_token_balance
@@ -637,7 +665,12 @@ async function fundFromWallet() {
           data-testid="create-oasf-search"
         />
       </label>
-      <div class="oasf-grid">
+      <p v-if="oasfLoading" class="hint" data-testid="create-oasf-loading">Loading OASF taxonomy…</p>
+      <p v-else-if="oasfError" class="banner" data-testid="create-oasf-error">
+        {{ oasfError }}
+        <button type="button" class="btn ghost" @click="loadOasf">Retry</button>
+      </p>
+      <div v-else class="oasf-grid">
         <div class="oasf-col">
           <p class="step-label">Skills <span class="optional">({{ selectedOasfSkills.length }} selected)</span></p>
           <ul class="checklist">

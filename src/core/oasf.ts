@@ -1,10 +1,16 @@
 /**
- * OASF (Open Agentic Schema Framework) taxonomy snapshot for the backend.
+ * OASF (Open Agentic Schema Framework) taxonomy — fetched live, never hardcoded.
  *
- * Mirrors `frontend/src/oasf.ts`. 8004scan renders the OASF card from the
- * `services` array entry named `oasf`, where:
+ * Source: https://schema.oasf.outshift.com/api/1.1.0/skill_categories
+ * Docs:   https://schema.oasf.outshift.com/doc
+ *
+ * 8004scan renders the OASF card from the `services` array entry named
+ * `oasf`, where:
  * - `skills` are numeric-string skill IDs (e.g. "1001"), and
- * - `domains` are snake_case slugs (e.g. "agent_management") — NOT numeric IDs.
+ * - `domains` are snake_case slugs (e.g. "software_engineering") — NOT numeric IDs.
+ *
+ * Domain IDs (e.g. "6") are translated to slugs via the live taxonomy.
+ * Unknown IDs pass through unchanged so future taxonomy additions don't break.
  *
  * @module oasf
  */
@@ -12,34 +18,55 @@
 /** OASF schema version pinned by this codebase. */
 export const OASF_VERSION = "1.1.0";
 
-/** Numeric domain ID → snake_case slug shown on 8004scan. */
-export const OASF_DOMAIN_SLUGS: Record<string, string> = {
-  "1": "language_processing",
-  "2": "computer_vision",
-  "3": "audio_speech_processing",
-  "4": "3d_generation",
-  "5": "multimodal_processing",
-  "6": "software_engineering",
-  "7": "ai_ml_engineering",
-  "8": "data_engineering_and_analytics",
-  "9": "devops_and_cloud_infrastructure",
-  "10": "cybersecurity",
-  "11": "content_writing_and_marketing",
-  "12": "business_and_professional",
-  "13": "research_knowledge_and_productivity",
-  "14": "science_and_specialized_domains",
-  "15": "reasoning_and_planning",
-  "16": "mathematical_reasoning",
-  "17": "tool_use_and_automation",
-  "18": "governance_compliance_and_ethics",
+/** Base URL of the OASF schema server. */
+export const OASF_SCHEMA_URL = "https://schema.oasf.outshift.com/";
+
+/** Live taxonomy endpoint (skill categories = domains + skills tree). */
+export const OASF_TAXONOMY_URL = `${OASF_SCHEMA_URL}api/${OASF_VERSION}/skill_categories`;
+
+type OasfApiNode = {
+  id: number | string;
+  name?: string;
+  caption?: string;
+  classes?: Record<string, OasfApiNode>;
 };
 
+let cachedSlugs: Record<string, string> | null = null;
+let cacheExpiresAt = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1h
+
 /**
- * Translate numeric domain IDs to the snake_case slugs 8004scan expects.
- * Unknown IDs pass through unchanged so future taxonomy additions don't break.
+ * Fetch the live domain ID → slug map from the OASF schema server.
+ * Results are cached in-memory for an hour.
  */
-export function oasfDomainSlugs(ids: string[]): string[] {
-  return ids.map((id) => OASF_DOMAIN_SLUGS[id] ?? id);
+export async function fetchOasfDomainSlugs(): Promise<Record<string, string>> {
+  if (cachedSlugs && Date.now() < cacheExpiresAt) return cachedSlugs;
+  const res = await fetch(OASF_TAXONOMY_URL);
+  if (!res.ok) {
+    throw new Error(`OASF taxonomy fetch failed (${res.status})`);
+  }
+  const data = (await res.json()) as Record<string, OasfApiNode>;
+  const slugs: Record<string, string> = {};
+  for (const node of Object.values(data)) {
+    slugs[String(node.id)] = String(node.name ?? node.id);
+  }
+  cachedSlugs = slugs;
+  cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+  return slugs;
+}
+
+/**
+ * Translate numeric domain IDs to the snake_case slugs 8004scan expects,
+ * using the live OASF taxonomy. Falls back to passing IDs through unchanged
+ * if the schema server is unreachable.
+ */
+export async function oasfDomainSlugs(ids: string[]): Promise<string[]> {
+  try {
+    const slugs = await fetchOasfDomainSlugs();
+    return ids.map((id) => slugs[id] ?? id);
+  } catch {
+    return [...ids];
+  }
 }
 
 /**
@@ -47,21 +74,21 @@ export function oasfDomainSlugs(ids: string[]): string[] {
  * `services` array, matching the shape 8004scan renders
  * (`endpoint` / `version` / `skills` / `domains`).
  *
- * @param domains Numeric domain IDs (translated to slugs internally).
+ * @param domains Numeric domain IDs (translated to slugs internally via live taxonomy).
  * @param skills Numeric skill IDs (passed through as-is).
  * @param endpoint Public https base for the OASF descriptor. 8004scan does
  *   not health-check `oasf` services, so this is display metadata.
  */
-export function buildOasfService(
+export async function buildOasfService(
   domains: string[],
   skills: string[],
   endpoint: string,
-): { name: string; endpoint: string; version: string; skills: string[]; domains: string[] } {
+): Promise<{ name: string; endpoint: string; version: string; skills: string[]; domains: string[] }> {
   return {
     name: "oasf",
     endpoint,
     version: OASF_VERSION,
     skills: [...skills],
-    domains: oasfDomainSlugs(domains),
+    domains: await oasfDomainSlugs(domains),
   };
 }

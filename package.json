@@ -35,6 +35,7 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:offline": "playwright test --grep-invert @onchain",
+    "test:e2e:matrix": "PLAYWRIGHT_MATRIX=all playwright test --grep-invert @onchain",
     "test:e2e:onchain": "PLAYWRIGHT_ONCHAIN=1 playwright test --grep @onchain",
     "test:e2e:ui": "playwright test --ui"
   },

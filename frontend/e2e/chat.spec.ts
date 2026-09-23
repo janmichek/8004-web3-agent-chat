@@ -144,7 +144,8 @@ test.describe('chat composer + thread', () => {
   test('disables send for empty input and while busy', async ({ page }) => {
     await setupOffline(page, {
       chat: async (route: Route) => {
-        await new Promise((r) => setTimeout(r, 800))
+        // 1200ms keeps the busy indicator observable even on slow CI runners.
+        await new Promise((r) => setTimeout(r, 1200))
         await route.fulfill({
           status: 200,
           contentType: 'application/json',

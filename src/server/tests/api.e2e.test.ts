@@ -175,4 +175,63 @@ describe("API offline e2e", () => {
     if (saved) vi.stubEnv("RPC_URL", saved);
     else vi.unstubAllEnvs();
   });
+
+  it("DELETE /api/agents/:name 404s for unknown agent", async () => {
+    const res = await app.request("/api/agents/ghost-agent-xyz", { method: "DELETE" });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/agents validates OASF ids + fundEth range before side effects", async () => {
+    const badOasf = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "oasf-probe-agent", oasfDomains: ["not-a-number"] }),
+    });
+    expect(badOasf.status).toBe(400);
+
+    const badFund = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "oasf-probe-agent", fundEth: "5" }),
+    });
+    expect(badFund.status).toBe(400);
+  });
+
+  it("POST /api/upload/image validates backend + payload without pinning", async () => {
+    // No IPFS backend -> deterministic 503 (clear env overrides from the dev .env).
+    vi.stubEnv("PINATA_JWT", "");
+    vi.stubEnv("IPFS_NODE_URL", "");
+    const noBackend = await app.request("/api/upload/image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(noBackend.status).toBe(503);
+
+    // With a (fake) backend configured, payload validation runs before any pin.
+    vi.stubEnv("PINATA_JWT", "test-jwt");
+    const notMultipart = await app.request("/api/upload/image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(notMultipart.status).toBe(400);
+
+    const emptyForm = new FormData();
+    const missingFile = await app.request("/api/upload/image", {
+      method: "POST",
+      body: emptyForm,
+    });
+    expect(missingFile.status).toBe(400);
+
+    const badType = new FormData();
+    badType.append("file", new File(["hello"], "notes.txt", { type: "text/plain" }));
+    const badTypeRes = await app.request("/api/upload/image", {
+      method: "POST",
+      body: badType,
+    });
+    expect(badTypeRes.status).toBe(400);
+
+    vi.stubEnv("PINATA_JWT", "");
+  });
 });
