@@ -99,6 +99,42 @@ function mcpAuthOk(c: { req: { header: (name: string) => string | undefined } })
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** JSON-RPC methods that only discover capabilities — safe without auth. */
+const MCP_OPEN_METHODS = new Set([
+  "initialize",
+  "ping",
+  "tools/list",
+  "resources/list",
+  "resources/templates/list",
+  "prompts/list",
+]);
+
+/**
+ * Decide whether a POST to /api/mcp executes something (→ Bearer required)
+ * or is pure discovery (→ open so 8004scan / MCP clients can handshake).
+ * Unknown / unparsable bodies fail closed (auth required).
+ */
+async function mcpPostNeedsAuth(c: McpContext): Promise<boolean> {
+  if (c.req.method !== "POST") return true;
+  let body: unknown;
+  try {
+    body = await c.req.raw.clone().json();
+  } catch {
+    return true; // unparsable → fail closed
+  }
+  const messages = Array.isArray(body) ? body : [body];
+  if (messages.length === 0) return true;
+  for (const m of messages) {
+    if (typeof m !== "object" || m === null) return true;
+    const method = (m as { method?: unknown }).method;
+    if (typeof method !== "string") return true; // response/error → not a discovery call
+    if (method.startsWith("notifications/")) continue;
+    if (MCP_OPEN_METHODS.has(method)) continue;
+    return true; // tools/call and everything else → auth
+  }
+  return false;
+}
+
 let mcpHandlerCache: ((req: Request) => Promise<Response>) | null = null;
 async function getMcpHandler(
   allowedTools?: string[],
@@ -385,7 +421,9 @@ app.use(
 // `Accept: text/event-stream`), while real MCP clients use POST. The SDK's
 // transport returns 406 for that GET, which shows as "Unhealthy" on 8004scan.
 // So: answer GET with a minimal 200 JSON descriptor (no tool list — avoids
-// recon), require Bearer auth + rate-limit on every non-GET.
+// recon). Discovery POSTs (initialize / notifications / ping / */list) are
+// open so verifiers can handshake; anything that executes (tools/call and
+// everything else) requires Bearer auth + rate-limit.
 type McpContext = {
   req: {
     raw: Request;
@@ -405,22 +443,27 @@ async function handleMcp(c: McpContext) {
         transport: "streamable-http",
         endpoint: "/api/mcp",
         auth: "bearer",
-        usage: "POST JSON-RPC with Authorization: Bearer $MCP_AUTH_TOKEN and Accept: application/json, text/event-stream",
+        usage: "Discovery (initialize, tools/list) is open; tools/call requires Authorization: Bearer $MCP_AUTH_TOKEN with Accept: application/json, text/event-stream",
       },
       { status: 200, headers: { "access-control-allow-origin": "*" } },
     );
   }
-  if (!process.env.MCP_AUTH_TOKEN?.trim()) {
-    return c.json(
-      { error: "MCP is not configured (missing MCP_AUTH_TOKEN)" },
-      503,
-    );
-  }
-  if (!checkMcpRateLimit(getMcpClientIp(c))) {
-    return c.json({ error: "rate limited, try again later" }, 429);
-  }
-  if (!mcpAuthOk(c)) {
-    return c.json({ error: "unauthorized" }, 401);
+  // Discovery methods anyone may call (handshake + capability listing).
+  // Everything else executes or reads data → gated behind Bearer auth.
+  const needsAuth = await mcpPostNeedsAuth(c);
+  if (needsAuth) {
+    if (!process.env.MCP_AUTH_TOKEN?.trim()) {
+      return c.json(
+        { error: "MCP is not configured (missing MCP_AUTH_TOKEN)" },
+        503,
+      );
+    }
+    if (!checkMcpRateLimit(getMcpClientIp(c))) {
+      return c.json({ error: "rate limited, try again later" }, 429);
+    }
+    if (!mcpAuthOk(c)) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
   }
   // Optional per-agent scope: POST /api/mcp?agent=my-agent serves only that
   // agent's creation-time `metadata.tools` allowlist. Unknown agent → 404
