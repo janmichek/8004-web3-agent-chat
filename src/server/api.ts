@@ -316,10 +316,6 @@ async function runChat(agentName: string, message: string): Promise<{
     "",
     `## Your Capabilities\n\n${capabilitySummary}`,
     skillContext,
-    "## Rules",
-    "- Call each tool at most once per request unless its result is an error you can fix.",
-    "- As soon as a tool gives you the answer (balance, hash, ABI, ...), stop calling tools and reply to the user.",
-    "- After send_eth returns a transaction hash, the transfer is done: report it, do not verify or re-check.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -335,72 +331,42 @@ async function runChat(agentName: string, message: string): Promise<{
   const events: ChatEvent[] = [];
   let reply = "";
 
-  // A tool round-trip costs ~2 graph steps (agent + tool node), so a plain
-  // balance-check → send → answer flow already needs ~5. 8 blew up on any
-  // model hesitation with a raw "recursion limit" error.
-  const RECURSION_LIMIT = 25;
+  const stream = await agent.stream(
+    { messages: [{ role: "user", content: message }] },
+    { configurable: { thread_id: agentName }, recursionLimit: 8, streamMode: "updates" },
+  );
 
-  try {
-    const stream = await agent.stream(
-      { messages: [{ role: "user", content: message }] },
-      { configurable: { thread_id: agentName }, recursionLimit: RECURSION_LIMIT, streamMode: "updates" },
-    );
+  for await (const update of stream) {
+    for (const output of Object.values(update)) {
+      const messages = (output as { messages?: unknown[] })?.messages ?? [];
+      for (const msg of messages) {
+        const m = msg as {
+          _getType?: () => string;
+          content?: unknown;
+          tool_calls?: { name: string; args: unknown }[];
+        };
+        const role = m._getType?.() ?? "unknown";
+        const content =
+          typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
 
-    for await (const update of stream) {
-      for (const output of Object.values(update)) {
-        const messages = (output as { messages?: unknown[] })?.messages ?? [];
-        for (const msg of messages) {
-          const m = msg as {
-            _getType?: () => string;
-            content?: unknown;
-            tool_calls?: { name: string; args: unknown }[];
-          };
-          const role = m._getType?.() ?? "unknown";
-          const content =
-            typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
-
-          if (role === "ai") {
-            const calls = m.tool_calls ?? [];
-            for (const tc of calls) {
-              events.push({ type: "tool_call", name: tc.name, args: tc.args });
-            }
-            if (content.trim()) {
-              events.push({ type: "message", content: content.trim() });
-              reply = content.trim();
-            }
-          } else if (role === "tool") {
-            events.push({ type: "tool_result", content: content.slice(0, 2000) });
+        if (role === "ai") {
+          const calls = m.tool_calls ?? [];
+          for (const tc of calls) {
+            events.push({ type: "tool_call", name: tc.name, args: tc.args });
           }
+          if (content.trim()) {
+            events.push({ type: "message", content: content.trim() });
+            reply = content.trim();
+          }
+        } else if (role === "tool") {
+          events.push({ type: "tool_result", content: content.slice(0, 2000) });
         }
       }
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!/recursion/i.test(msg)) throw err;
-    // Ran out of steps: salvage what happened instead of surfacing the
-    // raw graph error. A transfer may well have gone through — surface
-    // its hash so the user (and the frontend's tx-link detection) sees it.
-    const hash = lastTxHash(events);
-    reply = hash
-      ? `Sent! Transaction hash: ${hash}`
-      : "I ran out of steps before finishing — the network may be slow or the request needs breaking down. Please try again or simplify the request.";
-    events.push({ type: "message", content: reply });
   }
 
   flush();
   return { reply: reply || "(no response)", events };
-}
-
-/** Find a mined-tx-looking hash in tool results (not an Error: line). */
-function lastTxHash(events: ChatEvent[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
-    if (e.type !== "tool_result") continue;
-    if (/^\s*Error:/i.test(e.content)) continue;
-    const m = e.content.match(/\b(0x[a-fA-F0-9]{64})\b/);
-    if (m?.[1]) return m[1];
-  }
-  return null;
 }
 
 export const app = new Hono();

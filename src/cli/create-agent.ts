@@ -228,7 +228,7 @@ async function startChat(
       try {
         const stream = await agent.stream(
           { messages: [{ role: "user", content: trimmed }] },
-          { configurable: { thread_id: threadId }, recursionLimit: 25, streamMode: "updates" },
+          { configurable: { thread_id: threadId }, recursionLimit: 8, streamMode: "updates" },
         )
 
         for await (const update of stream) {
