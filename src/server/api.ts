@@ -321,15 +321,33 @@ app.use(
 );
 
 // --- MCP: expose tools over Streamable HTTP at /api/mcp (and /mcp for legacy) ---
-// 8004scan verifies `services[].endpoint` by fetching the MCP URL, so this must be reachable.
-app.all("/api/mcp", async (c) => {
+// 8004scan verifies `services[].endpoint` with a plain GET health check (no
+// `Accept: text/event-stream`), while real MCP clients use POST. The SDK's
+// transport returns 406 for that GET, which shows as "Unhealthy" on 8004scan.
+// So: answer GET with a 200 JSON descriptor, pass everything else to the transport.
+async function handleMcp(c: { req: { raw: Request; method: string } }) {
+  if (c.req.method === "GET") {
+    const { getMcpServer } = await import("../mcp/server.js");
+    const server = getMcpServer();
+    const tools = Object.keys((server as unknown as { _registeredTools?: object })._registeredTools ?? {});
+    return Response.json(
+      {
+        name: "web3agent",
+        version: "0.1.0",
+        protocol: "mcp",
+        transport: "streamable-http",
+        endpoint: "/api/mcp",
+        tools: tools.length > 0 ? tools : ["send_eth","get_token_balance","fetch_contract_abi","call_contract","give_feedback","get_reputation","search_agents","get_agent","get_agent_feedbacks"],
+        usage: "POST JSON-RPC with Accept: application/json, text/event-stream",
+      },
+      { status: 200, headers: { "access-control-allow-origin": "*" } },
+    );
+  }
   const handler = await getMcpHandler();
   return handler(c.req.raw);
-});
-app.all("/mcp", async (c) => {
-  const handler = await getMcpHandler();
-  return handler(c.req.raw);
-});
+}
+app.all("/api/mcp", async (c) => handleMcp(c));
+app.all("/mcp", async (c) => handleMcp(c));
 
 // Return JSON (not Hono's default plain-text "404 Not Found") so the
 // frontend's res.json() never chokes on unknown routes with a cryptic

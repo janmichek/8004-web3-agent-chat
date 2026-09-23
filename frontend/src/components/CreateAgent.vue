@@ -1297,6 +1297,9 @@ async function fundFromWallet() {
 }
 
 .nav {
+  position: sticky;
+  bottom: -1.25rem;
+  z-index: 1;
   display: flex;
   align-items: stretch;
   justify-content: space-between;
