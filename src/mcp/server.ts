@@ -25,6 +25,7 @@
  */
 
 import * as http from "node:http"
+import { timingSafeEqual } from "node:crypto"
 import dotenv from "dotenv"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
@@ -260,19 +261,54 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   })
 }
 
+function mcpHttpAuthOk(req: http.IncomingMessage): boolean {
+  const expected = process.env.MCP_AUTH_TOKEN?.trim()
+  if (!expected) return false // fail closed — set MCP_AUTH_TOKEN
+  const got = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim()
+  if (!got || got.length !== expected.length) return false
+  return timingSafeEqual(Buffer.from(got), Buffer.from(expected))
+}
+
 async function runHttp(): Promise<void> {
   const port = Number(process.env.MCP_PORT || 8788)
   const agentName = resolveAgentName()
   const allowlist = agentName ? await getAgentToolAllowlist(agentName) : undefined
+  if (!process.env.MCP_AUTH_TOKEN?.trim()) {
+    console.error("[mcp] MCP_AUTH_TOKEN is not set — POST /mcp will return 503 (fail closed)")
+  }
   const srv = http.createServer(async (req, res) => {
-    if (req.url !== "/mcp") {
+    const url = (req.url ?? "").split("?")[0]
+    if (url !== "/mcp") {
       res.writeHead(404, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ error: "Not found, use POST /mcp" }))
+      return
+    }
+    if (req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(
+        JSON.stringify({
+          name: "web3agent",
+          protocol: "mcp",
+          transport: "streamable-http",
+          endpoint: "/mcp",
+          auth: "bearer",
+        }),
+      )
       return
     }
     if (req.method !== "POST") {
       res.writeHead(405, { "Content-Type": "application/json" })
       res.end(JSON.stringify({ error: "Use POST /mcp for MCP requests" }))
+      return
+    }
+    if (!process.env.MCP_AUTH_TOKEN?.trim()) {
+      res.writeHead(503, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: "MCP is not configured (missing MCP_AUTH_TOKEN)" }))
+      return
+    }
+    if (!mcpHttpAuthOk(req)) {
+      res.writeHead(401, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ error: "unauthorized" }))
       return
     }
     const server = getMcpServer(allowlist)

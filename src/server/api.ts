@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -55,18 +56,61 @@ dotenv.config();
 
 const PORT = Number(process.env.API_PORT || 8787);
 
-// --- MCP (stateless, all tools) ------------------------------------------------
+// --- MCP (stateless, Bearer-authenticated) -------------------------------------
 // Served at /api/mcp and /mcp so `${origin}/api/mcp` (prefilled in wizard) is verifiable on 8004scan.
 // Uses WebStandard transport so it works on Vercel (Web Fetch) and local Hono (Node) alike.
-let mcpHandler: ((req: Request) => Promise<Response>) | null = null;
-async function getMcpHandler(): Promise<(req: Request) => Promise<Response>> {
-  if (mcpHandler) return mcpHandler;
+// Security: GET returns a minimal public descriptor (no tool list) for the
+// 8004scan health check. Every POST (initialize / tools/list / tools/call)
+// requires `Authorization: Bearer $MCP_AUTH_TOKEN`. Fails closed when the
+// token is not configured. Optional `?agent=<name>` scopes the server to that
+// agent's `metadata.tools` allowlist.
+const MCP_RATE_WINDOW_MS = Number(process.env.MCP_RATE_WINDOW_MS || 60_000);
+const MCP_RATE_MAX = Number(process.env.MCP_RATE_MAX || 60);
+const mcpRateHits = new Map<string, number[]>();
+
+function getMcpClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
+  return (
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip")?.trim() ||
+    "unknown"
+  );
+}
+
+function checkMcpRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const hits = (mcpRateHits.get(ip) ?? []).filter((t) => now - t < MCP_RATE_WINDOW_MS);
+  hits.push(now);
+  mcpRateHits.set(ip, hits);
+  // Prevent unbounded growth across many IPs (serverless instance memory).
+  if (mcpRateHits.size > 1000) {
+    const oldest = [...mcpRateHits.keys()].slice(0, mcpRateHits.size - 1000);
+    for (const k of oldest) mcpRateHits.delete(k);
+  }
+  return hits.length <= MCP_RATE_MAX;
+}
+
+function mcpAuthOk(c: { req: { header: (name: string) => string | undefined } }): boolean {
+  const expected = process.env.MCP_AUTH_TOKEN?.trim();
+  if (!expected) return false; // fail closed — set MCP_AUTH_TOKEN
+  const got = c.req.header("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
+  if (!got) return false;
+  const a = Buffer.from(got);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+let mcpHandlerCache: ((req: Request) => Promise<Response>) | null = null;
+async function getMcpHandler(
+  allowedTools?: string[],
+): Promise<(req: Request) => Promise<Response>> {
+  // Unscoped handler is cached; per-agent scoped handlers are built per request.
+  if (!allowedTools && mcpHandlerCache) return mcpHandlerCache;
   const { WebStandardStreamableHTTPServerTransport } = await import(
     "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
   );
   const { getMcpServer } = await import("../mcp/server.js");
-  mcpHandler = async (req: Request) => {
-    const server = getMcpServer();
+  const handler = async (req: Request) => {
+    const server = getMcpServer(allowedTools);
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined, // stateless — fresh per request
     });
@@ -76,7 +120,8 @@ async function getMcpHandler(): Promise<(req: Request) => Promise<Response>> {
     // The transport will be GC'd after the stream ends.
     return transport.handleRequest(req);
   };
-  return mcpHandler;
+  if (!allowedTools) mcpHandlerCache = handler;
+  return handler;
 }
 
 type ChatEvent =
@@ -310,12 +355,27 @@ export const app = new Hono();
 
 const isVercel = !!process.env.VERCEL;
 
+function resolveCorsOrigin(): string | string[] {
+  const configured = process.env.CORS_ORIGIN?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (configured && configured.length > 0) return configured;
+  return isVercel ? "*" : ["http://localhost:5173", "http://127.0.0.1:5173"];
+}
+
 app.use(
   "*",
   cors({
-    origin: isVercel ? "*" : ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: resolveCorsOrigin(),
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Accept", "mcp-session-id", "mcp-protocol-version", "Last-Event-ID"],
+    allowHeaders: [
+      "Content-Type",
+      "Accept",
+      "Authorization",
+      "mcp-session-id",
+      "mcp-protocol-version",
+      "Last-Event-ID",
+    ],
     exposeHeaders: ["mcp-session-id"],
   }),
 );
@@ -324,12 +384,19 @@ app.use(
 // 8004scan verifies `services[].endpoint` with a plain GET health check (no
 // `Accept: text/event-stream`), while real MCP clients use POST. The SDK's
 // transport returns 406 for that GET, which shows as "Unhealthy" on 8004scan.
-// So: answer GET with a 200 JSON descriptor, pass everything else to the transport.
-async function handleMcp(c: { req: { raw: Request; method: string } }) {
+// So: answer GET with a minimal 200 JSON descriptor (no tool list — avoids
+// recon), require Bearer auth + rate-limit on every non-GET.
+type McpContext = {
+  req: {
+    raw: Request;
+    method: string;
+    header: (name: string) => string | undefined;
+    query: (name: string) => string | undefined;
+  };
+  json: (data: unknown, status?: number) => Response;
+};
+async function handleMcp(c: McpContext) {
   if (c.req.method === "GET") {
-    const { getMcpServer } = await import("../mcp/server.js");
-    const server = getMcpServer();
-    const tools = Object.keys((server as unknown as { _registeredTools?: object })._registeredTools ?? {});
     return Response.json(
       {
         name: "web3agent",
@@ -337,13 +404,36 @@ async function handleMcp(c: { req: { raw: Request; method: string } }) {
         protocol: "mcp",
         transport: "streamable-http",
         endpoint: "/api/mcp",
-        tools: tools.length > 0 ? tools : ["send_eth","get_token_balance","fetch_contract_abi","call_contract","give_feedback","get_reputation","search_agents","get_agent","get_agent_feedbacks"],
-        usage: "POST JSON-RPC with Accept: application/json, text/event-stream",
+        auth: "bearer",
+        usage: "POST JSON-RPC with Authorization: Bearer $MCP_AUTH_TOKEN and Accept: application/json, text/event-stream",
       },
       { status: 200, headers: { "access-control-allow-origin": "*" } },
     );
   }
-  const handler = await getMcpHandler();
+  if (!process.env.MCP_AUTH_TOKEN?.trim()) {
+    return c.json(
+      { error: "MCP is not configured (missing MCP_AUTH_TOKEN)" },
+      503,
+    );
+  }
+  if (!checkMcpRateLimit(getMcpClientIp(c))) {
+    return c.json({ error: "rate limited, try again later" }, 429);
+  }
+  if (!mcpAuthOk(c)) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  // Optional per-agent scope: POST /api/mcp?agent=my-agent serves only that
+  // agent's creation-time `metadata.tools` allowlist. Unknown agent → 404
+  // instead of falling back to all tools.
+  const agentName = c.req.query("agent")?.trim();
+  let allowedTools: string[] | undefined;
+  if (agentName) {
+    const { getAgentToolAllowlist } = await import("../mcp/server.js");
+    const allowlist = await getAgentToolAllowlist(agentName);
+    if (!allowlist) return c.json({ error: `Unknown agent: ${agentName}` }, 404);
+    allowedTools = allowlist;
+  }
+  const handler = await getMcpHandler(allowedTools);
   return handler(c.req.raw);
 }
 app.all("/api/mcp", async (c) => handleMcp(c));
