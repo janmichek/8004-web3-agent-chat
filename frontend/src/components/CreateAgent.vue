@@ -50,7 +50,9 @@ const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
 const fundTxHash = ref('')
 const webEndpoint = ref('https://example.com')
 const emailEndpoint = ref('e@mail.fun')
-const mcpEndpoint = ref('')
+const mcpEndpoint = ref(
+  typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : '',
+)
 
 const hasSelectedCapabilities = computed(
   () => selectedActions.value.length > 0 || selectedTools.value.length > 0,
@@ -478,14 +480,14 @@ async function fundFromWallet() {
         <input
           v-model="mcpEndpoint"
           type="text"
-          placeholder="https://your-host/mcp"
+          placeholder="https://your-host/api/mcp"
           spellcheck="false"
           data-testid="create-mcp-endpoint"
         />
       </label>
       <p v-if="mcpMissingWarning" class="hint" data-testid="create-mcp-warning">
         You selected actions/tools but no MCP endpoint — they will run locally in chat only,
-        not appear under Services → MCP on 8004scan. Add an https://…/mcp URL to advertise them.
+        not appear under Services → MCP on 8004scan. Add an https://…/api/mcp URL to advertise them.
       </p>
       <p class="step-label">Image <span class="optional">(optional)</span></p>
       <div
@@ -568,7 +570,7 @@ async function fundFromWallet() {
       </p>
       <p v-if="mcpMissingWarning" class="hint" data-testid="create-mcp-warning-configure">
         No MCP endpoint set — your selection won't appear on 8004scan. Go back to step 1
-        and add an https://…/mcp URL.
+        and add an https://…/api/mcp URL.
       </p>
       <ul class="checklist">
         <!-- Actions -->

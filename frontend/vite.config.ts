@@ -10,6 +10,10 @@ export default defineConfig({
         target: `http://localhost:${process.env.API_PORT || 8787}`,
         changeOrigin: true,
       },
+      '/mcp': {
+        target: `http://localhost:${process.env.API_PORT || 8787}`,
+        changeOrigin: true,
+      },
     },
   },
 })

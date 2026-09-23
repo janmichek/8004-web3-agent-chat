@@ -48,6 +48,30 @@ dotenv.config();
 
 const PORT = Number(process.env.API_PORT || 8787);
 
+// --- MCP (stateless, all tools) ------------------------------------------------
+// Served at /api/mcp and /mcp so `${origin}/api/mcp` (prefilled in wizard) is verifiable on 8004scan.
+// Uses WebStandard transport so it works on Vercel (Web Fetch) and local Hono (Node) alike.
+let mcpHandler: ((req: Request) => Promise<Response>) | null = null;
+async function getMcpHandler(): Promise<(req: Request) => Promise<Response>> {
+  if (mcpHandler) return mcpHandler;
+  const { WebStandardStreamableHTTPServerTransport } = await import(
+    "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
+  );
+  const { getMcpServer } = await import("../mcp/server.js");
+  mcpHandler = async (req: Request) => {
+    const server = getMcpServer();
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined, // stateless — fresh per request
+    });
+    await server.connect(transport);
+    // Stateless: new transport per request; do not close here — the
+    // Response's SSE stream stays open until the client disconnects.
+    // The transport will be GC'd after the stream ends.
+    return transport.handleRequest(req);
+  };
+  return mcpHandler;
+}
+
 type ChatEvent =
   | { type: "tool_call"; name: string; args: unknown }
   | { type: "tool_result"; content: string }
@@ -259,9 +283,21 @@ app.use(
   cors({
     origin: isVercel ? "*" : ["http://localhost:5173", "http://127.0.0.1:5173"],
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
+    allowHeaders: ["Content-Type", "Accept", "mcp-session-id", "mcp-protocol-version", "Last-Event-ID"],
+    exposeHeaders: ["mcp-session-id"],
   }),
 );
+
+// --- MCP: expose tools over Streamable HTTP at /api/mcp (and /mcp for legacy) ---
+// 8004scan verifies `services[].endpoint` by fetching the MCP URL, so this must be reachable.
+app.all("/api/mcp", async (c) => {
+  const handler = await getMcpHandler();
+  return handler(c.req.raw);
+});
+app.all("/mcp", async (c) => {
+  const handler = await getMcpHandler();
+  return handler(c.req.raw);
+});
 
 // Return JSON (not Hono's default plain-text "404 Not Found") so the
 // frontend's res.json() never chokes on unknown routes with a cryptic
@@ -504,9 +540,12 @@ app.post("/api/agents", async (c) => {
     }
     seenServiceNames.add(lower);
     // MCP/A2A/web endpoints must be https URLs so 8004scan can verify them.
-    // Email keeps its legacy free-form value (e@mail.fun).
+    // Email keeps its legacy free-form value (e@mail.fun). Allow http for
+    // localhost/127.0.0.1 so local dev (`http://localhost:5173/api/mcp`) can be advertised.
     if (lower === "mcp" || lower === "a2a" || lower === "web") {
-      if (!/^https:\/\/.+/i.test(svcEndpoint)) {
+      const isHttps = /^https:\/\/.+/i.test(svcEndpoint);
+      const isLocalHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/.+/i.test(svcEndpoint);
+      if (!isHttps && !isLocalHttp) {
         return c.json({ error: `${svcName} endpoint must be an https:// URL` }, 400);
       }
     }
