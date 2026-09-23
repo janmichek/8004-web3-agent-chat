@@ -142,12 +142,21 @@ async function loadAgents() {
   try {
     const data = await fetchAgents()
     agents.value = data.agents
-    if (props.selectName && data.agents.some((a) => a.name === props.selectName)) {
+    // Optimistic retention: on Vercel without KV the backend is ephemeral
+    // per-instance, so a just-created agent may be missing from this
+    // instance's list. Keep showing it instead of dropping to agents[0]
+    // (which looks like "disappears from the list" / "Agent not found").
+    for (const keep of [props.agent, props.selectName && { name: props.selectName } as AgentSummary]) {
+      if (keep?.name && !agents.value.some((a) => a.name === keep.name)) {
+        agents.value = [...agents.value, keep as AgentSummary]
+      }
+    }
+    if (props.selectName && agents.value.some((a) => a.name === props.selectName)) {
       selected.value = props.selectName
-    } else if (!selected.value && data.agents[0]) {
-      selected.value = data.agents[0].name
-    } else if (selected.value && !data.agents.some((a) => a.name === selected.value)) {
-      selected.value = data.agents[0]?.name ?? ''
+    } else if (!selected.value && agents.value[0]) {
+      selected.value = agents.value[0].name
+    } else if (selected.value && !agents.value.some((a) => a.name === selected.value)) {
+      selected.value = agents.value[0]?.name ?? ''
     }
   } catch (err) {
     loadError.value =
