@@ -40,6 +40,12 @@ import {
 } from "../core/config.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
 import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
+import {
+  persistAgentToStore,
+  listStoredAgents,
+  hydrateAgentFromStore,
+  deleteAgentFromStore,
+} from "../core/agent-store.js";
 import { registerAgent } from "../core/registry.js";
 import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemory } from "../core/memory-reader.js";
@@ -123,7 +129,7 @@ function listEnvAgents(): string[] {
   return [...agents];
 }
 
-function listExistingAgents(): string[] {
+function listExistingAgentsSync(): string[] {
   const fromFs = new Set<string>();
   const dirsToScan = [AGENTS_DIR];
   if (process.env.VERCEL) dirsToScan.push(path.resolve(process.cwd(), "agents"));
@@ -145,7 +151,32 @@ function listExistingAgents(): string[] {
   return [...fromFs];
 }
 
-function publicAgentSummary(name: string) {
+async function listExistingAgents(): Promise<string[]> {
+  const names = new Set(listExistingAgentsSync());
+  // Merge KV-persisted agents (cold instances with empty /tmp)
+  for (const n of await listStoredAgents()) names.add(n);
+  return [...names];
+}
+
+/**
+ * Ensure a KV-persisted agent is hydrated to /tmp so the synchronous
+ * filesystem paths below keep working on cold serverless instances.
+ * Returns true when the agent exists (after hydration if needed).
+ *
+ * NOTE: hydration must happen *before* any sync config/wallet read —
+ * the KV index merge alone is not enough, since it would report the
+ * agent as existing while /tmp is still empty, and
+ * getOrCreateAgentWallet would then generate the WRONG wallet.
+ */
+async function ensureAgentLoaded(name: string): Promise<boolean> {
+  // Fast path: present on local filesystem or env vars.
+  if (listExistingAgentsSync().includes(name)) return true;
+  // Cold instance: hydrate from KV (writes /tmp files), then re-check.
+  await hydrateAgentFromStore(name);
+  return (await listExistingAgents()).includes(name);
+}
+
+async function publicAgentSummary(name: string) {
   const config = loadAgentConfig(name);
   let walletAddress: string | undefined = config?.walletAddress;
   // Try env private key first
@@ -382,8 +413,9 @@ app.get("/api/catalog", async (c) => {
   });
 });
 
-app.get("/api/agents", (c) => {
-  const agents = listExistingAgents().map(publicAgentSummary);
+app.get("/api/agents", async (c) => {
+  const names = await listExistingAgents();
+  const agents = await Promise.all(names.map(publicAgentSummary));
   return c.json({ agents });
 });
 
@@ -450,7 +482,7 @@ app.post("/api/agents", async (c) => {
       error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
     }, 400);
   }
-  if (listExistingAgents().includes(name)) {
+  if ((await listExistingAgents()).includes(name)) {
     return c.json({ error: `Agent "${name}" already exists` }, 409);
   }
 
@@ -634,6 +666,11 @@ app.post("/api/agents", async (c) => {
     return c.json({ error: `Failed to save config: ${msg}`, steps }, 500);
   }
 
+  // --- Persist to KV (seamless across serverless instances) ---
+  // Best-effort: no-op when KV is not bound. Re-saved after registration
+  // below so agentId/agentURI are included.
+  await persistAgentToStore(name, config, agentWallet);
+
   // --- Register ---
   if (!skipRegister) {
     try {
@@ -667,6 +704,9 @@ app.post("/api/agents", async (c) => {
     steps.push({ step: "register", ok: true, detail: "skipped" });
   }
 
+  // Re-persist after registration so agentId/agentURI survive cold starts.
+  await persistAgentToStore(name, config, agentWallet);
+
   let balanceEth = "0";
   try {
     const bal = await getProvider().getBalance(agentWallet.address);
@@ -675,16 +715,17 @@ app.post("/api/agents", async (c) => {
     /* ignore */
   }
 
-  // On Vercel the wallet+config live in /tmp (ephemeral). If no env var backs
-  // this agent, return the private key ONCE so the user can save it as
-  // AGENT_<SUFFIX>_PRIVATE_KEY in Vercel env vars before the instance recycles.
+  // Without KV or an env var backing this agent, the wallet+config live only
+  // in /tmp (ephemeral). Return the private key ONCE so the user can save it
+  // as AGENT_<SUFFIX>_PRIVATE_KEY in Vercel env vars before a cold start.
+  // With KV bound the agent is seamless — no manual step needed.
   const walletEnvVar = getAgentWalletEnvVars(name)[0]!;
   const ephemeral =
-    Boolean(process.env.VERCEL) && !process.env[walletEnvVar];
+    Boolean(process.env.VERCEL) && !process.env[walletEnvVar] && !process.env.KV_REST_API_URL;
 
   return c.json({
     ok: true,
-    agent: publicAgentSummary(name),
+    agent: await publicAgentSummary(name),
     balanceEth,
     fundTxHash,
     steps,
@@ -699,26 +740,27 @@ app.post("/api/agents", async (c) => {
   }, 201);
 });
 
-app.get("/api/agents/:name", (c) => {
+app.get("/api/agents/:name", async (c) => {
   const name = c.req.param("name");
-  if (!listExistingAgents().includes(name)) {
+  if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
-  return c.json({ agent: publicAgentSummary(name) });
+  return c.json({ agent: await publicAgentSummary(name) });
 });
 
-app.delete("/api/agents/:name", (c) => {
+app.delete("/api/agents/:name", async (c) => {
   const name = c.req.param("name");
-  if (!listExistingAgents().includes(name)) {
+  if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
-  if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE) {
+  if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE && !process.env.KV_REST_API_URL) {
     return c.json(
       { error: "Agent deletion is disabled on Vercel (ephemeral filesystem). Delete env vars manually." },
       403,
     );
   }
   const removed = deleteAgentConfig(name);
+  await deleteAgentFromStore(name);
   if (!removed) {
     return c.json({ error: "Agent not found" }, 404);
   }
@@ -727,11 +769,11 @@ app.delete("/api/agents/:name", (c) => {
 
 app.post("/api/agents/:name/fund", async (c) => {
   const name = c.req.param("name");
-  if (!listExistingAgents().includes(name)) {
+  if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
 
-  const summary = publicAgentSummary(name);
+  const summary = await publicAgentSummary(name);
   if (!summary.walletAddress) {
     return c.json({ error: "Agent has no wallet address" }, 400);
   }
@@ -767,9 +809,9 @@ app.post("/api/agents/:name/fund", async (c) => {
   }
 });
 
-app.get("/api/agents/:name/memory", (c) => {
+app.get("/api/agents/:name/memory", async (c) => {
   const name = c.req.param("name");
-  if (!listExistingAgents().includes(name)) {
+  if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
   try {
@@ -783,7 +825,7 @@ app.get("/api/agents/:name/memory", (c) => {
 
 app.post("/api/agents/:name/chat", async (c) => {
   const name = c.req.param("name");
-  if (!listExistingAgents().includes(name)) {
+  if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
 
@@ -810,7 +852,7 @@ app.post("/api/agents/:name/chat", async (c) => {
 
 app.post("/api/agents/:name/feedback", async (c) => {
   const name = c.req.param("name");
-  if (!listExistingAgents().includes(name)) {
+  if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
 
@@ -828,7 +870,7 @@ app.post("/api/agents/:name/feedback", async (c) => {
   }
 
   // Default target: the agent's own registered agentId.
-  const summary = publicAgentSummary(name);
+  const summary = await publicAgentSummary(name);
   const agentId = body.agentId?.trim() || summary.agentId;
   if (!agentId) {
     return c.json({ error: "agentId is required" }, 400);
