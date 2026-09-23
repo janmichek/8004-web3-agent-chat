@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, unref, watch } from 'vue'
 import { useBalance } from '@wagmi/vue'
 import { formatEther, isAddress, type Address } from 'viem'
-import { fetchAgents, fetchHealth, fetchReputation, fundAgent, deleteAgent, type AgentSummary } from '../api'
+import { fetchAgents, fetchHealth, fetchReputation, fundAgent, deleteAgent, deleteAgentBackup, type AgentSummary } from '../api'
 
 const props = defineProps<{
   selectName?: string | null
@@ -146,9 +146,14 @@ async function loadAgents() {
     // per-instance, so a just-created agent may be missing from this
     // instance's list. Keep showing it instead of dropping to agents[0]
     // (which looks like "disappears from the list" / "Agent not found").
-    for (const keep of [props.agent, props.selectName && { name: props.selectName } as AgentSummary]) {
-      if (keep?.name && !agents.value.some((a) => a.name === keep.name)) {
-        agents.value = [...agents.value, keep as AgentSummary]
+    const keep: AgentSummary[] = []
+    if (props.agent?.name) keep.push(props.agent)
+    if (props.selectName && !keep.some((a) => a.name === props.selectName)) {
+      keep.push({ name: props.selectName } as AgentSummary)
+    }
+    for (const k of keep) {
+      if (!agents.value.some((a) => a.name === k.name)) {
+        agents.value = [...agents.value, k]
       }
     }
     if (props.selectName && agents.value.some((a) => a.name === props.selectName)) {
@@ -199,6 +204,7 @@ async function removeAgent() {
   deleteStatusText.value = `Deleting "${name}"…`
   try {
     await deleteAgent(name)
+    deleteAgentBackup(name)
     deleteConfirm.value = false
     deleteStatusText.value = ''
     emit('deleted', name)

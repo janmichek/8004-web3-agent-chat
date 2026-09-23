@@ -885,6 +885,9 @@ app.post("/api/agents", async (c) => {
           ephemeral: true,
           privateKey: agentWallet.privateKey,
           privateKeyEnvVar: walletEnvVar,
+          // Full config so the browser can keep a local backup and heal
+          // cold serverless instances via POST /api/agents/:name/restore.
+          config,
           ephemeralWarning: `Save this private key as ${walletEnvVar} in Vercel env vars now — the /tmp wallet is lost on cold start/redeploy and the agent will stop working.`,
         }
       : {}),
@@ -897,6 +900,69 @@ app.get("/api/agents/:name", async (c) => {
     return c.json({ error: "Agent not found" }, 404);
   }
   return c.json({ agent: await publicAgentSummary(name) });
+});
+
+/**
+ * Heal a cold serverless instance from a browser-held backup.
+ *
+ * Without KV bound, agent files live only in /tmp on the instance that
+ * created them. The create response returns the full config + private key
+ * once (ephemeral mode); the frontend stores them in localStorage and
+ * replays them here when it hits 404, so chat/fund/memory keep working.
+ *
+ * Auth = proof of private-key ownership: the key must derive
+ * config.walletAddress, and config.name must match the URL. The key IS
+ * ownership of the agent, so anyone holding it may restore it.
+ */
+app.post("/api/agents/:name/restore", async (c) => {
+  const name = c.req.param("name");
+  let body: { config?: AgentConfig; privateKey?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+  const config = body.config;
+  const privateKey = body.privateKey?.trim();
+  if (!config || typeof config !== "object" || !privateKey) {
+    return c.json({ error: "config and privateKey are required" }, 400);
+  }
+  if (config.name !== name) {
+    return c.json({ error: "config.name must match the URL" }, 400);
+  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(name)) {
+    return c.json({ error: "invalid agent name" }, 400);
+  }
+  if (!config.walletAddress || !ethers.isAddress(config.walletAddress)) {
+    return c.json({ error: "config.walletAddress is invalid" }, 400);
+  }
+  let derived: string;
+  try {
+    derived = new ethers.Wallet(privateKey).address;
+  } catch {
+    return c.json({ error: "privateKey is invalid" }, 400);
+  }
+  if (derived.toLowerCase() !== config.walletAddress.toLowerCase()) {
+    return c.json({ error: "privateKey does not match config.walletAddress" }, 403);
+  }
+  try {
+    const agentDir = path.join(AGENTS_DIR, name);
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, "wallet.json"),
+      JSON.stringify({ address: config.walletAddress, privateKey }, null, 2),
+      "utf-8",
+    );
+    saveAgentConfig(name, { ...config, name });
+    await persistAgentToStore(name, config, {
+      address: config.walletAddress,
+      privateKey,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: `Restore failed: ${msg}` }, 500);
+  }
+  return c.json({ ok: true, agent: await publicAgentSummary(name) });
 });
 
 app.delete("/api/agents/:name", async (c) => {

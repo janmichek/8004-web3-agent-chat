@@ -6,6 +6,7 @@ import {
   createAgent,
   fetchCatalog,
   fundAgent,
+  saveAgentBackup,
   scanUrlForAgent,
   uploadImage,
   type AgentSummary,
@@ -382,6 +383,11 @@ async function submitCreate() {
     createdPrivateKey.value = res.privateKey ?? ''
     createdPrivateKeyEnvVar.value = res.privateKeyEnvVar ?? ''
     createdEphemeralWarning.value = res.ephemeralWarning ?? ''
+    // Keep a browser backup of ephemeral agents so cold serverless
+    // instances can be healed transparently (restore-and-retry on 404).
+    if (res.privateKey && res.config) {
+      saveAgentBackup(res.agent.name, res.config, res.privateKey)
+    }
     phase.value = 'done'
   } catch (err) {
     createError.value = err instanceof Error ? err.message : String(err)

@@ -99,10 +99,72 @@ export type CreateAgentResponse = {
   ephemeral?: boolean
   privateKey?: string
   privateKeyEnvVar?: string
+  /** Full agent config — present in ephemeral mode so the browser can back it up. */
+  config?: Record<string, unknown>
   ephemeralWarning?: string
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/** Browser-held backup of an ephemeral agent (config + private key). */
+export type AgentBackup = {
+  config: Record<string, unknown>
+  privateKey: string
+  savedAt: string
+}
+
+const BACKUP_KEY = 'web3agent:backups:v1'
+
+function readBackups(): Record<string, AgentBackup> {
+  try {
+    const raw = localStorage.getItem(BACKUP_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, AgentBackup>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Persist an ephemeral agent's config + key so cold instances can be healed. */
+export function saveAgentBackup(name: string, config: Record<string, unknown>, privateKey: string) {
+  try {
+    const all = readBackups()
+    all[name] = { config, privateKey, savedAt: new Date().toISOString() }
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(all))
+  } catch {
+    /* storage full or unavailable — backup is best-effort */
+  }
+}
+
+export function loadAgentBackup(name: string): AgentBackup | null {
+  return readBackups()[name] ?? null
+}
+
+export function deleteAgentBackup(name: string) {
+  try {
+    const all = readBackups()
+    delete all[name]
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(all))
+  } catch {
+    /* ignore */
+  }
+}
+
+async function restoreAgent(name: string): Promise<boolean> {
+  const backup = loadAgentBackup(name)
+  if (!backup) return false
+  try {
+    const res = await fetch(`/api/agents/${encodeURIComponent(name)}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: backup.config, privateKey: backup.privateKey }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit, retryRestore = true): Promise<T> {
   // Merge headers via the Headers API: spreading init.headers into an
   // object literal silently drops Headers instances and mangles arrays.
   const headers = new Headers(init?.headers)
@@ -126,6 +188,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
   }
   if (!res.ok) {
+    // Cold serverless instance forgot this agent but the browser holds a
+    // backup (ephemeral mode): heal the instance, then retry once.
+    // Skipped for the restore endpoint itself to avoid recursion.
+    const agentMatch = path.match(/^\/api\/agents\/([^/]+)\/.+/)
+    if (retryRestore && res.status === 404 && agentMatch && !path.endsWith('/restore')) {
+      const agentName = decodeURIComponent(agentMatch[1] ?? '')
+      if (agentName && (await restoreAgent(agentName))) {
+        return request<T>(path, init, false)
+      }
+    }
     throw new Error(data?.error || `Request failed (${res.status})`)
   }
   return data as T

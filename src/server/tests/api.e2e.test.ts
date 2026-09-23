@@ -234,4 +234,51 @@ describe("API offline e2e", () => {
 
     vi.stubEnv("PINATA_JWT", "");
   });
+
+  it("POST /api/agents/:name/restore heals from a key-backed backup", async () => {
+    const { ethers } = await import("ethers");
+    const key = ethers.Wallet.createRandom();
+    const goodConfig = {
+      name: "restored-agent",
+      description: "Agent restored-agent",
+      walletAddress: key.address,
+      walletChainId: 421614,
+      endpoints: [],
+      trustModels: [],
+      owners: [],
+      operators: [],
+      active: true,
+      x402support: false,
+      metadata: { actions: [], tools: [] },
+      createdAt: new Date().toISOString(),
+      updatedAt: 0,
+    };
+
+    // Wrong key must not overwrite.
+    const wrongKey = ethers.Wallet.createRandom().privateKey;
+    const forbidden = await app.request("/api/agents/restored-agent/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: goodConfig, privateKey: wrongKey }),
+    });
+    expect(forbidden.status).toBe(403);
+
+    // Name mismatch rejected.
+    const mismatch = await app.request("/api/agents/other-name/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: goodConfig, privateKey: key.privateKey }),
+    });
+    expect(mismatch.status).toBe(400);
+
+    // Happy path restores the wallet + config.
+    const ok = await app.request("/api/agents/restored-agent/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config: goodConfig, privateKey: key.privateKey }),
+    });
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { ok: boolean; agent: { name: string } };
+    expect(body.ok).toBe(true);
+  });
 });
