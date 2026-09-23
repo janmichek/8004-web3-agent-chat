@@ -12,6 +12,35 @@ export type OasfDomain = { id: string; name: string; skills: OasfSkill[] };
 export const OASF_SCHEMA_URL = 'https://schema.oasf.outshift.com/';
 export const OASF_VERSION = '1.1.0';
 
+/**
+ * Numeric domain ID → snake_case slug as rendered on 8004scan.
+ * Mirrors `src/core/oasf.ts` — keep the two in sync.
+ */
+export const OASF_DOMAIN_SLUGS: Record<string, string> = {
+  '1': 'language_processing',
+  '2': 'computer_vision',
+  '3': 'audio_speech_processing',
+  '4': '3d_generation',
+  '5': 'multimodal_processing',
+  '6': 'software_engineering',
+  '7': 'ai_ml_engineering',
+  '8': 'data_engineering_and_analytics',
+  '9': 'devops_and_cloud_infrastructure',
+  '10': 'cybersecurity',
+  '11': 'content_writing_and_marketing',
+  '12': 'business_and_professional',
+  '13': 'research_knowledge_and_productivity',
+  '14': 'science_and_specialized_domains',
+  '15': 'reasoning_and_planning',
+  '16': 'mathematical_reasoning',
+  '17': 'tool_use_and_automation',
+  '18': 'governance_compliance_and_ethics',
+};
+
+export function oasfDomainSlug(id: string): string {
+  return OASF_DOMAIN_SLUGS[id] ?? id;
+}
+
 export const OASF_DOMAINS: OasfDomain[] = [
   {
     id: '1',

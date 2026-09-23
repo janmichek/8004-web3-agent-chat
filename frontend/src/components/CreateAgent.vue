@@ -15,7 +15,7 @@ import {
 import { config as wagmiConfig } from '../wagmi'
 import { ensureArbitrumSepolia } from '../chain'
 
-import { OASF_DOMAINS, OASF_SCHEMA_URL } from '../oasf'
+import { OASF_DOMAINS, OASF_SCHEMA_URL, oasfDomainSlug } from '../oasf'
 
 type Phase =
   | 'env'
@@ -176,6 +176,17 @@ function domainSkillState(domainId: string): 'none' | 'some' | 'all' {
   if (count === 0) return 'none'
   return count === domain.skills.length ? 'all' : 'some'
 }
+
+const visibleDomains = computed(() => {
+  const q = oasfSearch.value.trim().toLowerCase()
+  if (!q) return oasfDomains
+  return oasfDomains.filter(
+    (d) =>
+      d.name.toLowerCase().includes(q) ||
+      d.id.includes(q) ||
+      d.skills.some((s) => s.name.toLowerCase().includes(q) || s.id.includes(q)),
+  )
+})
 
 const visibleSkills = computed(() => {
   const q = oasfSearch.value.trim().toLowerCase()
@@ -617,51 +628,58 @@ async function fundFromWallet() {
         Pick domains, then skills. Stored on-chain in agent metadata.
         <a :href="oasfSchemaUrl" target="_blank" rel="noopener noreferrer">OASF schema ↗</a>
       </p>
-      <p class="step-label">Domains</p>
-      <ul class="checklist domains">
-        <li v-for="d in oasfDomains" :key="`oasf-domain-${d.id}`">
-          <label class="check" :class="{ partial: domainSkillState(d.id) === 'some' }">
-            <input
-              type="checkbox"
-              :data-testid="`create-oasf-domain-${d.id}`"
-              :checked="domainSkillState(d.id) !== 'none'"
-              :indeterminate="domainSkillState(d.id) === 'some'"
-              @change="toggleOasfDomain(d.id)"
-            />
-            <span>
-              <strong>{{ d.name }} <span class="badge">[{{ d.id }}]</span></strong>
-              <em>{{ d.skills.length }} skills</em>
-            </span>
-          </label>
-        </li>
-      </ul>
-      <p class="step-label">Skills <span class="optional">({{ selectedOasfSkills.length }} selected)</span></p>
       <label class="field">
         <input
           v-model="oasfSearch"
           type="text"
-          placeholder="Search skills…"
+          placeholder="Search domains & skills…"
           spellcheck="false"
           data-testid="create-oasf-search"
         />
       </label>
-      <ul class="checklist">
-        <li v-for="s in visibleSkills" :key="`oasf-skill-${s.id}`">
-          <label class="check">
-            <input
-              type="checkbox"
-              :data-testid="`create-oasf-skill-${s.id}`"
-              :checked="selectedOasfSkills.includes(s.id)"
-              @change="toggleOasfSkill(s.id)"
-            />
-            <span>
-              <strong>{{ s.name }} <span class="badge tool">[{{ s.id }}]</span></strong>
-              <em>{{ s.domainName }}</em>
-            </span>
-          </label>
-        </li>
-      </ul>
-      <p v-if="!visibleSkills.length" class="hint">No skills match your search.</p>
+      <div class="oasf-grid">
+        <div class="oasf-col">
+          <p class="step-label">Skills <span class="optional">({{ selectedOasfSkills.length }} selected)</span></p>
+          <ul class="checklist">
+            <li v-for="s in visibleSkills" :key="`oasf-skill-${s.id}`">
+              <label class="check">
+                <input
+                  type="checkbox"
+                  :data-testid="`create-oasf-skill-${s.id}`"
+                  :checked="selectedOasfSkills.includes(s.id)"
+                  @change="toggleOasfSkill(s.id)"
+                />
+                <span>
+                  <strong>{{ s.name }} <span class="badge tool">[{{ s.id }}]</span></strong>
+                  <em>{{ s.domainName }}</em>
+                </span>
+              </label>
+            </li>
+          </ul>
+          <p v-if="!visibleSkills.length" class="hint">No skills match your search.</p>
+        </div>
+        <div class="oasf-col">
+          <p class="step-label">Domains</p>
+          <ul class="checklist domains">
+            <li v-for="d in visibleDomains" :key="`oasf-domain-${d.id}`">
+              <label class="check" :class="{ partial: domainSkillState(d.id) === 'some' }">
+                <input
+                  type="checkbox"
+                  :data-testid="`create-oasf-domain-${d.id}`"
+                  :checked="domainSkillState(d.id) !== 'none'"
+                  :indeterminate="domainSkillState(d.id) === 'some'"
+                  @change="toggleOasfDomain(d.id)"
+                />
+                <span>
+                  <strong>{{ d.name }} <span class="badge">[{{ d.id }}]</span></strong>
+                  <em>{{ d.skills.length }} skills</em>
+                </span>
+              </label>
+            </li>
+          </ul>
+          <p v-if="!visibleDomains.length" class="hint">No domains match your search.</p>
+        </div>
+      </div>
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
         <button
@@ -730,7 +748,7 @@ async function fundFromWallet() {
         </div>
         <div v-if="(createdAgent.oasfDomains ?? []).length || (createdAgent.oasfSkills ?? []).length">
           <dt>OASF</dt>
-          <dd>domains: {{ (createdAgent.oasfDomains ?? []).join(', ') || '—' }} · skills: {{ (createdAgent.oasfSkills ?? []).join(', ') || '—' }}</dd>
+          <dd>domains: {{ (createdAgent.oasfDomains ?? []).map(oasfDomainSlug).join(', ') || '—' }} · skills: {{ (createdAgent.oasfSkills ?? []).join(', ') || '—' }}</dd>
         </div>
         <div>
           <dt>Status</dt>
@@ -1106,6 +1124,26 @@ async function fundFromWallet() {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+}
+
+.oasf-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.oasf-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .oasf-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .check {

@@ -15,6 +15,7 @@ import { SDK } from "@blockbyvlog/agent0-sdk";
 import type { RegisterAgentOptions, RegistrationResult } from "./types.js";
 import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
 import { toGatewayUrl, uploadJson } from "./ipfs.js";
+import { buildOasfService } from "./oasf.js";
 
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
@@ -206,11 +207,7 @@ async function pinEnrichedRegistrationFile(
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: file.name,
     description: file.description,
-    services: (file.endpoints ?? []).map((ep) => ({
-      name: ep.type,
-      endpoint: ep.value,
-      ...ep.meta,
-    })),
+    services: buildEnrichedServices(file.endpoints ?? [], options.metadata),
     registrations: [
       {
         agentId: tokenId,
@@ -229,6 +226,47 @@ async function pinEnrichedRegistrationFile(
   const handle = (await agent.setAgentURI(uri)) as { waitMined: () => Promise<unknown> } | undefined;
   if (handle) await handle.waitMined();
   return uri;
+}
+
+/**
+ * Map registration endpoints to the ERC-8004 `services` array, appending an
+ * `oasf` service entry when OASF domains/skills are present in metadata.
+ *
+ * 8004scan renders its OASF card from `services[].name === "oasf"` with
+ * `skills` as numeric-string IDs and `domains` as snake_case slugs — numeric
+ * domain IDs stored in `metadata.oasfDomains` alone are not rendered.
+ */
+function buildEnrichedServices(
+  endpoints: { type: string; value: string; meta?: Record<string, unknown> }[],
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown>[] {
+  const services: Record<string, unknown>[] = endpoints.map((ep) => ({
+    name: ep.type,
+    endpoint: ep.value,
+    ...ep.meta,
+  }));
+  const domains = Array.isArray(metadata?.oasfDomains)
+    ? (metadata.oasfDomains as unknown[]).filter((d): d is string => typeof d === "string")
+    : [];
+  const skills = Array.isArray(metadata?.oasfSkills)
+    ? (metadata.oasfSkills as unknown[]).filter((s): s is string => typeof s === "string")
+    : [];
+  if (domains.length === 0 && skills.length === 0) return services;
+  if (services.some((s) => String(s.name).toLowerCase() === "oasf")) return services;
+
+  // 8004scan does not health-check `oasf` services, so anchor the descriptor
+  // URL on the agent's first public https endpoint (origin + /oasf).
+  const httpsEndpoint = endpoints.find((ep) => /^https:\/\/.+/i.test(ep.value))?.value;
+  let oasfEndpoint = "https://example.com/oasf";
+  if (httpsEndpoint) {
+    try {
+      oasfEndpoint = `${new URL(httpsEndpoint).origin}/oasf`;
+    } catch {
+      oasfEndpoint = httpsEndpoint;
+    }
+  }
+  services.push(buildOasfService(domains, skills, oasfEndpoint));
+  return services;
 }
 
 /**
