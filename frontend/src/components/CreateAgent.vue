@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { sendTransaction } from '@wagmi/vue/actions'
+import { useConfig } from '@wagmi/vue'
 import { parseEther } from 'viem'
 import {
   createAgent,
@@ -13,7 +14,6 @@ import {
   type CatalogResponse,
   type CreateAgentStep,
 } from '../api'
-import { config as wagmiConfig } from '../wagmi'
 import { ensureArbitrumSepolia } from '../chain'
 
 import { OASF_SCHEMA_URL, fetchOasfDomains, type OasfDomain } from '../oasf'
@@ -31,6 +31,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
+const wagmiConfig = useConfig()
 const phase = ref<Phase>('env')
 const catalog = ref<CatalogResponse | null>(null)
 const loadError = ref('')
@@ -448,7 +449,7 @@ async function fundFromWallet() {
   fundStatusKind.value = 'info'
   fundStatus.value = 'Waiting for wallet signature…'
   try {
-    await ensureArbitrumSepolia()
+    await ensureArbitrumSepolia(wagmiConfig)
     const hash = await sendTransaction(wagmiConfig, {
       to: createdAgent.value.walletAddress as `0x${string}`,
       value: parseEther(fundEth.value.trim() as `${number}`),

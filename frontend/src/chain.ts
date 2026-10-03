@@ -1,7 +1,7 @@
-import { getWalletClient, switchChain } from '@wagmi/vue/actions'
+import { getAccount, getWalletClient, switchChain } from '@wagmi/vue/actions'
 import { arbitrumSepolia } from '@wagmi/vue/chains'
+import type { Config } from '@wagmi/vue'
 import type { Hex } from 'viem'
-import { config } from './wagmi'
 
 const ARB_SEPOLIA_HEX = `0x${arbitrumSepolia.id.toString(16)}` as Hex
 
@@ -40,41 +40,46 @@ async function addArbitrumSepolia(): Promise<void> {
 }
 
 /**
- * Ensure the injected wallet is on Arbitrum Sepolia before sending.
- * Adds the chain if missing, then verifies eth_chainId.
+ * Ensure the connected wallet is on Arbitrum Sepolia before sending.
+ * Adds the chain if missing (injected wallets), then verifies chain id.
  */
-export async function ensureArbitrumSepolia(): Promise<void> {
+export async function ensureArbitrumSepolia(config: Config): Promise<void> {
+  if (getAccount(config).chainId === arbitrumSepolia.id) return
+
   const current = await getInjectedChainId()
   if (current === arbitrumSepolia.id) return
 
   try {
     await switchChain(config, { chainId: arbitrumSepolia.id })
   } catch {
-    await addArbitrumSepolia()
     try {
+      await addArbitrumSepolia()
       await switchChain(config, { chainId: arbitrumSepolia.id })
     } catch {
       // wallet_addEthereumChain often switches already
     }
   }
 
-  // Prefer wallet client switch if still wrong
-  let after = await getInjectedChainId()
+  let after = getAccount(config).chainId ?? (await getInjectedChainId())
   if (after !== arbitrumSepolia.id) {
     const client = await getWalletClient(config)
     if (client) {
       try {
         await client.switchChain({ id: arbitrumSepolia.id })
       } catch {
-        await addArbitrumSepolia()
+        try {
+          await addArbitrumSepolia()
+        } catch {
+          // social / embedded wallets may not support wallet_addEthereumChain
+        }
       }
     }
-    after = await getInjectedChainId()
+    after = getAccount(config).chainId ?? (await getInjectedChainId())
   }
 
   if (after !== arbitrumSepolia.id) {
     throw new Error(
-      `Wallet is still on chain ${after ?? '?'}. Switch MetaMask to Arbitrum Sepolia (421614), then retry.`,
+      `Wallet is still on chain ${after ?? '?'}. Switch to Arbitrum Sepolia (421614), then retry.`,
     )
   }
 }
@@ -84,5 +89,7 @@ declare global {
     ethereum?: {
       request: (args: { method: string; params?: unknown[] }) => Promise<unknown>
     }
+    Buffer: typeof Buffer
+    process: typeof process
   }
 }

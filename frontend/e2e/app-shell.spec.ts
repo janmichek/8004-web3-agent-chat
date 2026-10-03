@@ -3,12 +3,12 @@ import type { Route } from '@playwright/test'
 import { gotoWithAgent, openConversations, openCreateDialog, setupOffline } from './helpers'
 
 test.describe('app shell', () => {
-  test('brand header + connect wallet CTA render when disconnected', async ({ page }) => {
+  test('brand header + sign-in CTA render when disconnected', async ({ page }) => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
     await expect(page.getByText('Web3 Agent Chat')).toBeVisible()
     await expect(page.getByText('Arbitrum · ERC-8004')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Connect wallet/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Sign in/ })).toBeVisible()
   })
 
   test('conversations drawer toggles aria-expanded + visibility', async ({ page }) => {

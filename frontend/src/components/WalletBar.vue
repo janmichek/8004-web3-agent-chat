@@ -1,14 +1,27 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, unref, watch } from 'vue'
-import { useAccount, useBalance, useConnect, useDisconnect, useSwitchChain } from '@wagmi/vue'
+import { useAccount, useBalance, useConfig, useSwitchChain } from '@wagmi/vue'
 import { arbitrum, arbitrumSepolia } from '@wagmi/vue/chains'
+import { useWeb3Auth, useWeb3AuthConnect, useWeb3AuthDisconnect } from '@web3auth/modal/vue'
 import { formatEther } from 'viem'
 import { ensureArbitrumSepolia, getInjectedChainId } from '../chain'
 
-const { address, isConnected, status, chainId: accountChainId } = useAccount()
-const { connectors, connect, isPending } = useConnect()
-const { disconnect } = useDisconnect()
+const wagmiConfig = useConfig()
+const { address, chainId: accountChainId } = useAccount()
+const { isInitialized, initError } = useWeb3Auth()
+const {
+  connect,
+  isConnected,
+  loading: connectLoading,
+  error: connectError,
+} = useWeb3AuthConnect()
+const { disconnect, loading: disconnectLoading } = useWeb3AuthDisconnect()
 const { switchChain } = useSwitchChain()
+
+const signInDisabled = computed(
+  () => connectLoading.value || !isInitialized.value || !!initError.value,
+)
+const authError = computed(() => initError.value ?? connectError.value)
 
 const walletChainId = ref<number | undefined>(undefined)
 const switching = ref(false)
@@ -61,15 +74,18 @@ const ethDisplay = computed(() => {
   return `${Number(formatEther(d.value)).toPrecision(5)} ETH`
 })
 
-function connectWallet() {
-  const connector = connectors[0]
-  if (connector) connect({ connector })
+async function onSignIn() {
+  await connect()
+}
+
+async function onSignOut() {
+  await disconnect()
 }
 
 async function onSwitchClick() {
   switching.value = true
   try {
-    await ensureArbitrumSepolia()
+    await ensureArbitrumSepolia(wagmiConfig)
     await refreshWalletChain()
   } catch {
     switchChain({ chainId: arbitrumSepolia.id })
@@ -102,17 +118,34 @@ async function onSwitchClick() {
         </button>
         <span class="addr mono">{{ shortAddress }}</span>
         <span v-if="ethDisplay" class="balance mono">{{ ethDisplay }}</span>
-        <button type="button" class="btn ghost" @click="disconnect()">Disconnect</button>
+        <button
+          type="button"
+          class="btn ghost"
+          :disabled="disconnectLoading"
+          @click="onSignOut"
+        >
+          {{ disconnectLoading ? 'Signing out…' : 'Sign out' }}
+        </button>
       </template>
-      <button
-        v-else
-        type="button"
-        class="btn primary"
-        :disabled="isPending || status === 'connecting'"
-        @click="connectWallet"
-      >
-        {{ isPending || status === 'connecting' ? 'Connecting…' : 'Connect wallet' }}
-      </button>
+      <template v-else>
+        <button
+          type="button"
+          class="btn primary"
+          :disabled="signInDisabled"
+          @click="onSignIn"
+        >
+          {{
+            connectLoading
+              ? 'Signing in…'
+              : initError
+                ? 'Sign in unavailable'
+                : !isInitialized
+                  ? 'Preparing…'
+                  : 'Sign in'
+          }}
+        </button>
+        <p v-if="authError" class="auth-error">{{ authError.message }}</p>
+      </template>
     </div>
   </header>
 </template>
@@ -206,6 +239,13 @@ async function onSwitchClick() {
 .chip.warn {
   border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
   color: var(--warn);
+}
+
+.auth-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--danger, #c0392b);
+  max-width: 16rem;
 }
 
 @media (max-width: 640px) {
