@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
+import { Web3AuthProvider } from '@web3auth/modal/vue'
+import { WagmiProvider } from '@web3auth/modal/vue/wagmi'
 import WalletBar from './components/WalletBar.vue'
 import AgentPicker from './components/AgentPicker.vue'
 import AgentMemory from './components/AgentMemory.vue'
 import AgentStats from './components/AgentStats.vue'
 import AgentChat from './components/AgentChat.vue'
 import CreateAgent from './components/CreateAgent.vue'
+import web3AuthContextConfig from './web3authContext'
 import type { AgentSummary, MemorySession } from './api'
 
 function networkSlug(chainId: number): string {
@@ -94,68 +97,72 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 </script>
 
 <template>
-  <div class="shell">
-    <WalletBar />
+  <Web3AuthProvider :config="web3AuthContextConfig">
+    <WagmiProvider>
+      <div class="shell">
+        <WalletBar />
 
-    <main class="layout">
-      <aside class="side">
-        <AgentPicker
-          :select-name="pendingSelect"
-          :agent="selectedAgent"
-          :scan-id="scanId"
-          :scan-url="scanUrl"
-          :refresh-key="refreshKey"
-          @select="onSelect"
-          @create="showCreate = true"
-          @funded="onFunded"
-          @deleted="onDeleted"
-        />
-
-        <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
-      </aside>
-
-      <div class="main">
-        <div class="main-toolbar">
-          <button
-            type="button"
-            class="btn ghost convo-btn"
-            :aria-expanded="showConvos ? 'true' : 'false'"
-            :aria-pressed="showConvos ? 'true' : 'false'"
-            @click="toggleConvos"
-          >
-            <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
-            Conversations
-          </button>
-        </div>
-
-        <div class="main-body">
-          <div v-show="showConvos" class="convos">
-            <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" @new-chat="onNewChat" />
-          </div>
-
-          <div class="chat-col">
-            <AgentChat
+        <main class="layout">
+          <aside class="side">
+            <AgentPicker
+              :select-name="pendingSelect"
               :agent="selectedAgent"
-              :recalled-session="recalledSession"
-              @chat="onMemoryChat"
+              :scan-id="scanId"
+              :scan-url="scanUrl"
+              :refresh-key="refreshKey"
+              @select="onSelect"
+              @create="showCreate = true"
+              @funded="onFunded"
+              @deleted="onDeleted"
             />
-          </div>
-        </div>
-      </div>
-    </main>
 
-    <Teleport to="body">
-      <div
-        v-if="showCreate"
-        class="dialog-backdrop"
-        @click.self="showCreate = false"
-      >
-        <div class="dialog" role="dialog" aria-modal="true" aria-label="Create agent">
-          <CreateAgent @created="onCreated" @cancel="showCreate = false" />
-        </div>
+            <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
+          </aside>
+
+          <div class="main">
+            <div class="main-toolbar">
+              <button
+                type="button"
+                class="btn ghost convo-btn"
+                :aria-expanded="showConvos ? 'true' : 'false'"
+                :aria-pressed="showConvos ? 'true' : 'false'"
+                @click="toggleConvos"
+              >
+                <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
+                Conversations
+              </button>
+            </div>
+
+            <div class="main-body">
+              <div v-show="showConvos" class="convos">
+                <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" @new-chat="onNewChat" />
+              </div>
+
+              <div class="chat-col">
+                <AgentChat
+                  :agent="selectedAgent"
+                  :recalled-session="recalledSession"
+                  @chat="onMemoryChat"
+                />
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <Teleport to="body">
+          <div
+            v-if="showCreate"
+            class="dialog-backdrop"
+            @click.self="showCreate = false"
+          >
+            <div class="dialog" role="dialog" aria-modal="true" aria-label="Create agent">
+              <CreateAgent @created="onCreated" @cancel="showCreate = false" />
+            </div>
+          </div>
+        </Teleport>
       </div>
-    </Teleport>
-  </div>
+    </WagmiProvider>
+  </Web3AuthProvider>
 </template>
 
 <style scoped>
