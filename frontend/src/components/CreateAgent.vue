@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { sendTransaction } from '@wagmi/vue/actions'
+import { getAccount, sendTransaction } from '@wagmi/vue/actions'
 import { useConfig } from '@wagmi/vue'
 import { parseEther } from 'viem'
 import {
@@ -14,7 +14,8 @@ import {
   type CatalogResponse,
   type CreateAgentStep,
 } from '../api'
-import { ensureArbitrumSepolia } from '../chain'
+import { ensureArbitrumSepolia, prepareNativeTransfer } from '../chain'
+import { friendlyFundError, isRpcRateLimit } from '../rpc-errors'
 
 import { OASF_SCHEMA_URL, fetchOasfDomains, type OasfDomain } from '../oasf'
 
@@ -54,6 +55,9 @@ const webEndpoint = ref('https://example.com')
 const emailEndpoint = ref('e@mail.fun')
 const mcpEndpoint = ref(
   typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : '',
+)
+const a2aEndpoint = ref(
+  typeof window !== 'undefined' ? `${window.location.origin}/api/a2a` : '',
 )
 
 const hasSelectedCapabilities = computed(
@@ -366,6 +370,7 @@ async function submitCreate() {
       { name: 'web', endpoint: webEndpoint.value.trim() },
       { name: 'email', endpoint: emailEndpoint.value.trim() },
       { name: 'mcp', endpoint: mcpEndpoint.value.trim() },
+      { name: 'A2A', endpoint: a2aEndpoint.value.trim() },
     ].filter((s) => s.endpoint.length > 0)
 
     const res = await createAgent({
@@ -377,6 +382,7 @@ async function submitCreate() {
       oasfDomains: selectedOasfDomains.value,
       oasfSkills: selectedOasfSkills.value,
       services,
+      x402support: true,
     })
     createSteps.value = res.steps
     createdAgent.value = res.agent
@@ -436,10 +442,27 @@ async function fundFromMaster() {
     bumpBalance(res.amountEth)
   } catch (err) {
     fundStatusKind.value = 'error'
-    fundStatus.value = err instanceof Error ? err.message : String(err)
+    fundStatus.value = friendlyFundError(err)
   } finally {
     fundBusy.value = null
   }
+}
+
+async function sendPreparedWithRetry(
+  prepared: Awaited<ReturnType<typeof prepareNativeTransfer>>,
+): Promise<`0x${string}`> {
+  const attempts = 3
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await sendTransaction(wagmiConfig, prepared)
+    } catch (err) {
+      if (!isRpcRateLimit(err) || i === attempts - 1) throw err
+      fundStatusKind.value = 'info'
+      fundStatus.value = `RPC busy, retrying (${i + 2}/${attempts})…`
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)))
+    }
+  }
+  throw new Error('Transfer failed')
 }
 
 /** Fund the freshly created agent from the user's connected wallet (MetaMask signs). */
@@ -447,20 +470,30 @@ async function fundFromWallet() {
   if (!createdAgent.value?.walletAddress || !fundAmountValid.value || fundBusy.value) return
   fundBusy.value = 'wallet'
   fundStatusKind.value = 'info'
-  fundStatus.value = 'Waiting for wallet signature…'
+  fundStatus.value = 'Preparing transaction…'
   try {
     await ensureArbitrumSepolia(wagmiConfig)
-    const hash = await sendTransaction(wagmiConfig, {
-      to: createdAgent.value.walletAddress as `0x${string}`,
-      value: parseEther(fundEth.value.trim() as `${number}`),
+    const account = getAccount(wagmiConfig)
+    if (!account.address) throw new Error('Connect a wallet first')
+
+    const to = createdAgent.value.walletAddress as `0x${string}`
+    const value = parseEther(fundEth.value.trim() as `${number}`)
+    // Gas/nonce via /api/rpc (Alchemy) — avoids public rollup RPC rate limits.
+    const prepared = await prepareNativeTransfer({
+      account: account.address,
+      to,
+      value,
     })
+
+    fundStatus.value = 'Waiting for wallet signature…'
+    const hash = await sendPreparedWithRetry(prepared)
     fundTxHash.value = hash
     fundStatusKind.value = 'ok'
     fundStatus.value = `Sent ${fundEth.value.trim()} ETH (tx ${hash.slice(0, 10)}…)`
     bumpBalance(fundEth.value.trim())
   } catch (err) {
     fundStatusKind.value = 'error'
-    fundStatus.value = err instanceof Error ? (err.message.split('\n')[0] || err.message) : String(err)
+    fundStatus.value = friendlyFundError(err)
   } finally {
     fundBusy.value = null
   }
@@ -559,6 +592,20 @@ async function fundFromWallet() {
       <p v-if="mcpMissingWarning" class="hint" data-testid="create-mcp-warning">
         You selected actions/tools but no MCP endpoint — they will run locally in chat only,
         not appear under Services → MCP on 8004scan. Add an https://…/api/mcp URL to advertise them.
+      </p>
+      <label class="field">
+        <span>A2A endpoint <span class="optional">(optional — agent-to-agent + x402 on 8004scan)</span></span>
+        <input
+          v-model="a2aEndpoint"
+          type="text"
+          placeholder="https://your-host/api/a2a"
+          spellcheck="false"
+          data-testid="create-a2a-endpoint"
+        />
+      </label>
+      <p class="hint">
+        Prefills to this app’s /api/a2a; registration stores the well-known Agent Card
+        URL so it shows under Services → A2A on 8004scan.
       </p>
       <p class="step-label">Image <span class="optional">(optional)</span></p>
       <div

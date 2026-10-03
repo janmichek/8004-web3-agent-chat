@@ -15,7 +15,7 @@ import { SDK } from "@blockbyvlog/agent0-sdk";
 import type { RegisterAgentOptions, RegistrationResult } from "./types.js";
 import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
 import { toGatewayUrl, uploadJson } from "./ipfs.js";
-import { buildOasfService } from "./oasf.js";
+import { buildRegistrationServices } from "./registration-services.js";
 
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
@@ -103,12 +103,45 @@ export async function registerAgent(
   const updatedAt = Math.floor(Date.now() / 1000);
   agent.setMetadata({ ...options.metadata, updatedAt });
   if (options.endpoints && options.endpoints.length > 0) {
+    // Normalize known protocol names to SDK EndpointType casing (MCP/A2A/...).
+    const normalized = options.endpoints.map((e) => {
+      const lower = e.type.toLowerCase();
+      const type =
+        lower === "mcp" ? "MCP"
+        : lower === "a2a" ? "A2A"
+        : lower === "ens" ? "ENS"
+        : lower === "oasf" ? "OASF"
+        : e.type;
+      return { ...e, type };
+    });
     const file = agent.getRegistrationFile() as unknown as {
       endpoints?: { type: string; value: string }[];
     };
-    file.endpoints = options.endpoints as never;
+    file.endpoints = normalized as never;
+    // Prefer SDK helpers so A2A/MCP land in the typed registration file.
+    const a2a = normalized.find((e) => e.type === "A2A");
+    if (a2a?.value) {
+      try {
+        await agent.setA2A(a2a.value, "0.3.0", false);
+      } catch (err) {
+        console.warn(
+          `[registry] setA2A failed, keeping endpoints[] entry: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    const mcp = normalized.find((e) => e.type === "MCP");
+    if (mcp?.value) {
+      try {
+        await agent.setMCP(mcp.value, "2025-06-18", false);
+      } catch (err) {
+        console.warn(
+          `[registry] setMCP failed, keeping endpoints[] entry: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
   agent.setActive(options.active !== false);
+  agent.setX402Support(Boolean(options.x402support));
 
   if (useIpfs) {
     // IPFS mode: tokenURI becomes ipfs://<cid> with full metadata JSON.
@@ -203,11 +236,20 @@ async function pinEnrichedRegistrationFile(
   const tokenId = Number(String(file.agentId ?? "").split(":").pop());
   if (!Number.isFinite(tokenId)) throw new Error("Missing agentId, cannot enrich registration file");
 
+  const x402Support = Boolean(options.x402support ?? file.x402support);
+  const services = await buildRegistrationServices({
+    endpoints: file.endpoints ?? options.endpoints ?? [],
+    metadata: options.metadata,
+    walletAddress: options.walletAddress,
+    chainId,
+    x402support: x402Support,
+  });
+  const a2aService = services.find((s) => String(s.name) === "A2A");
   const enriched: Record<string, unknown> = {
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: file.name,
     description: file.description,
-    services: await buildEnrichedServices(file.endpoints ?? [], options.metadata),
+    services,
     registrations: [
       {
         agentId: tokenId,
@@ -215,58 +257,31 @@ async function pinEnrichedRegistrationFile(
       },
     ],
     active: file.active ?? true,
-    x402Support: file.x402support ?? false,
-    metadata: { ...options.metadata, updatedAt },
+    // 8004scan Services / x402 badges read this top-level flag (not metadata.x402).
+    x402Support,
+    metadata: {
+      ...options.metadata,
+      updatedAt,
+      x402Support,
+      ...(a2aService?.endpoint ? { a2aEndpoint: a2aService.endpoint } : {}),
+      ...(options.walletAddress
+        ? { agentWallet: `eip155:${chainId}:${options.walletAddress}` }
+        : {}),
+    },
   };
   if (file.image) enriched.image = file.image;
-  if (file.trustModels?.length) enriched.supportedTrust = file.trustModels;
+  if (file.trustModels?.length) {
+    enriched.supportedTrust = file.trustModels;
+  } else {
+    // Reputation is always available via ERC-8004 Reputation Registry.
+    enriched.supportedTrust = ["reputation"];
+  }
 
   const cid = await uploadJson(enriched, "agent-registration.json");
   const uri = `ipfs://${cid}`;
   const handle = (await agent.setAgentURI(uri)) as { waitMined: () => Promise<unknown> } | undefined;
   if (handle) await handle.waitMined();
   return uri;
-}
-
-/**
- * Map registration endpoints to the ERC-8004 `services` array, appending an
- * `oasf` service entry when OASF domains/skills are present in metadata.
- *
- * 8004scan renders its OASF card from `services[].name === "oasf"` with
- * `skills` as numeric-string IDs and `domains` as snake_case slugs — numeric
- * domain IDs stored in `metadata.oasfDomains` alone are not rendered.
- */
-async function buildEnrichedServices(
-  endpoints: { type: string; value: string; meta?: Record<string, unknown> }[],
-  metadata: Record<string, unknown> | undefined,
-): Promise<Record<string, unknown>[]> {
-  const services: Record<string, unknown>[] = endpoints.map((ep) => ({
-    name: ep.type,
-    endpoint: ep.value,
-    ...ep.meta,
-  }));
-  const domains = Array.isArray(metadata?.oasfDomains)
-    ? (metadata.oasfDomains as unknown[]).filter((d): d is string => typeof d === "string")
-    : [];
-  const skills = Array.isArray(metadata?.oasfSkills)
-    ? (metadata.oasfSkills as unknown[]).filter((s): s is string => typeof s === "string")
-    : [];
-  if (domains.length === 0 && skills.length === 0) return services;
-  if (services.some((s) => String(s.name).toLowerCase() === "oasf")) return services;
-
-  // 8004scan does not health-check `oasf` services, so anchor the descriptor
-  // URL on the agent's first public https endpoint (origin + /oasf).
-  const httpsEndpoint = endpoints.find((ep) => /^https:\/\/.+/i.test(ep.value))?.value;
-  let oasfEndpoint = "https://example.com/oasf";
-  if (httpsEndpoint) {
-    try {
-      oasfEndpoint = `${new URL(httpsEndpoint).origin}/oasf`;
-    } catch {
-      oasfEndpoint = httpsEndpoint;
-    }
-  }
-  services.push(await buildOasfService(domains, skills, oasfEndpoint));
-  return services;
 }
 
 /**

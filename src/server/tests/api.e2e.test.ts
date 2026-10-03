@@ -281,4 +281,64 @@ describe("API offline e2e", () => {
     const body = (await ok.json()) as { ok: boolean; agent: { name: string } };
     expect(body.ok).toBe(true);
   });
+
+  it("GET /.well-known/agent-card.json + /api/a2a health", async () => {
+    const cardRes = await app.request("/.well-known/agent-card.json");
+    expect(cardRes.status).toBe(200);
+    const card = (await cardRes.json()) as {
+      name: string;
+      url: string;
+      capabilities: { extensions?: { uri: string }[] };
+    };
+    expect(card.name).toBeTruthy();
+    expect(card.url).toContain("/api/a2a");
+
+    const health = await app.request("/api/a2a");
+    expect(health.status).toBe(200);
+    const body = (await health.json()) as { protocol: string; x402support: boolean };
+    expect(body.protocol).toBe("a2a");
+    expect(typeof body.x402support).toBe("boolean");
+  });
+
+  it("POST /api/a2a JSON-RPC message/send without extension fails when x402 on", async () => {
+    // Force a fresh default server with x402 enabled (cache key includes A2A_X402).
+    vi.stubEnv("A2A_X402", "1");
+    const res = await app.request("/api/a2a", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "message/send",
+        params: {
+          message: {
+            kind: "message",
+            role: "user",
+            parts: [{ kind: "text", text: "charge me" }],
+          },
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      result: { status: { state: string; message: { metadata: Record<string, string> } } };
+    };
+    expect(body.result.status.state).toBe("failed");
+    expect(body.result.status.message.metadata["x402.payment.error"]).toBe(
+      "EXTENSION_NOT_ACTIVATED",
+    );
+  });
+
+  it("POST /api/agents rejects bad a2a endpoint URL", async () => {
+    const res = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "a2a-bad-url-agent",
+        skipRegister: true,
+        a2aEndpoint: "ftp://not-allowed/a2a",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
 });

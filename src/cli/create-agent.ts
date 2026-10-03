@@ -5,6 +5,7 @@
  *   npm run create-agent
  *   npm run create-agent -- --name my-agent
  *   npm run create-agent -- --name my-agent --skip-register
+ *   npm run create-agent -- --name paid --a2a-endpoint https://host/api/a2a --x402
  */
 
 import * as readline from "node:readline"
@@ -25,6 +26,7 @@ import { ACTION_REGISTRY, TOOL_REGISTRY } from "../core/action-registry.js"
 import { saveAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "../core/agent-config.js"
 import type { AgentConfig } from "../core/agent-config.js"
 import { getChainId, getNetworkNameByChainId } from "../core/config.js"
+import { normalizeA2AEndpoint } from "../core/registration-services.js"
 import type { Skill } from "../actions/types.js"
 
 dotenv.config()
@@ -45,6 +47,7 @@ function hasFlag(name: string): boolean {
 }
 
 const skipRegister = hasFlag("skip-register")
+const x402FromFlag = hasFlag("x402")
 
 // ---------------------------------------------------------------------------
 // Selection state
@@ -305,7 +308,10 @@ async function main(): Promise<void> {
   // --- Action selection ---
   const state = await actionSelectionLoop()
 
-  // --- MCP endpoint (optional — advertises selected tools on 8004scan Services → MCP) ---
+  // --- MCP / A2A endpoints (optional — advertised on 8004scan Services) ---
+  const httpsOrLocal = (v: string) =>
+    /^https:\/\/.+/i.test(v) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/.+/i.test(v)
+
   const mcpFromFlag = getFlag("mcp-endpoint")
   let mcpEndpoint: string
   if (mcpFromFlag !== undefined) {
@@ -319,7 +325,7 @@ async function main(): Promise<void> {
       validate: (v) => {
         const t = v?.trim() ?? ""
         if (!t) return undefined
-        return /^https:\/\/.+/.test(t) ? undefined : "Must be an https:// URL"
+        return httpsOrLocal(t) ? undefined : "Must be an https:// URL (or http://localhost/...)"
       },
     })
     if (p.isCancel(mcpResult)) { p.cancel("Cancelled."); process.exit(0) }
@@ -328,13 +334,51 @@ async function main(): Promise<void> {
       p.log.warn("No MCP endpoint — actions/tools will run locally in chat only, not on 8004scan.")
     }
   }
-  if (mcpEndpoint && !/^https:\/\/.+/.test(mcpEndpoint)) {
-    p.cancel("Invalid --mcp-endpoint: must be an https:// URL")
+  if (mcpEndpoint && !httpsOrLocal(mcpEndpoint)) {
+    p.cancel("Invalid --mcp-endpoint: must be an https:// URL (or http://localhost/...)")
     process.exit(1)
   }
-  const endpoints: AgentConfig["endpoints"] = mcpEndpoint
-    ? [{ type: "MCP", value: mcpEndpoint }]
-    : []
+
+  const a2aFromFlag = getFlag("a2a-endpoint")
+  let a2aEndpoint: string
+  if (a2aFromFlag !== undefined) {
+    a2aEndpoint = a2aFromFlag.trim()
+  } else {
+    const a2aResult = await p.text({
+      message: "A2A endpoint (optional — https://…/api/a2a for agent-to-agent + x402)",
+      placeholder: "https://your-host/api/a2a",
+      initialValue: "",
+      validate: (v) => {
+        const t = v?.trim() ?? ""
+        if (!t) return undefined
+        return httpsOrLocal(t) ? undefined : "Must be an https:// URL (or http://localhost/...)"
+      },
+    })
+    if (p.isCancel(a2aResult)) { p.cancel("Cancelled."); process.exit(0) }
+    a2aEndpoint = (a2aResult as string | undefined)?.trim() ?? ""
+  }
+  if (a2aEndpoint && !httpsOrLocal(a2aEndpoint)) {
+    p.cancel("Invalid --a2a-endpoint: must be an https:// URL (or http://localhost/...)")
+    process.exit(1)
+  }
+
+  let x402support = x402FromFlag
+  if (!x402FromFlag && a2aEndpoint) {
+    const x402Result = await p.confirm({
+      message: "Enable x402 payments on the A2A endpoint? (mock facilitator locally)",
+      initialValue: true,
+    })
+    if (p.isCancel(x402Result)) { p.cancel("Cancelled."); process.exit(0) }
+    x402support = Boolean(x402Result)
+  } else if (x402FromFlag && !a2aEndpoint) {
+    p.log.warn("--x402 set without --a2a-endpoint; x402support will still be declared on-chain.")
+  }
+
+  const endpoints: AgentConfig["endpoints"] = []
+  if (mcpEndpoint) endpoints.push({ type: "MCP", value: mcpEndpoint })
+  if (a2aEndpoint) {
+    endpoints.push({ type: "A2A", value: normalizeA2AEndpoint(a2aEndpoint) })
+  }
 
   // --- Create wallet ---
   const s = p.spinner()
@@ -383,7 +427,7 @@ async function main(): Promise<void> {
     owners: [masterWallet.address],
     operators: [agentWallet.address],
     active: true,
-    x402support: false,
+    x402support,
     metadata: {
       actions: state.actions,
       tools: [...new Set([...state.actionToolNames, ...state.tools])],
@@ -404,6 +448,7 @@ async function main(): Promise<void> {
         walletAddress: agentWallet.address,
         agentWalletPrivateKey: agentWallet.privateKey,
         endpoints,
+        x402support,
         metadata: {
           actions: state.actions,
           tools: [...new Set([...state.actionToolNames, ...state.tools])],
@@ -441,7 +486,9 @@ async function main(): Promise<void> {
     `Balance  : ${ethers.formatEther(agentBalance)} ETH\n` +
     `Actions  : ${state.actions.join(", ") || "none"}\n` +
     `Tools    : ${allToolNames.join(", ") || "none"}\n` +
-    `MCP      : ${mcpEndpoint || "not advertised (no MCP endpoint)"}\n` +
+    `MCP      : ${mcpEndpoint || "not advertised"}\n` +
+    `A2A      : ${a2aEndpoint || "not advertised"}\n` +
+    `x402     : ${x402support ? "enabled (mock facilitator locally)" : "disabled"}\n` +
     `Owner    : ${masterWallet.address}`,
     "Agent Created (ERC-8004)",
   )

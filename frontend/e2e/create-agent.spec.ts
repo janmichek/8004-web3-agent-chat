@@ -94,12 +94,13 @@ test.describe('create agent wizard', () => {
     await expect(page.getByTestId('create-fund-panel')).toBeVisible()
     expect(created).toHaveLength(1)
     expect(created[0]).toMatchObject({ name: 'my-agent' })
-    // MCP is prefilled as ${origin}/api/mcp — should be advertised alongside web/email
+    // MCP + A2A are prefilled as ${origin}/api/{mcp,a2a} — advertised alongside web/email
     expect(created[0]).toMatchObject({
       services: expect.arrayContaining([
         { name: 'web', endpoint: 'https://example.com' },
         { name: 'email', endpoint: 'e@mail.fun' },
         { name: 'mcp', endpoint: expect.stringMatching(/\/api\/mcp$/) },
+        { name: 'A2A', endpoint: expect.stringMatching(/\/api\/a2a$/) },
       ]),
     })
 
@@ -212,9 +213,11 @@ test.describe('create agent wizard', () => {
     await openCreateDialog(page)
     await expect(page.getByTestId('create-web-endpoint')).toHaveValue('https://example.com')
     await expect(page.getByTestId('create-email-endpoint')).toHaveValue('e@mail.fun')
-    // MCP is prefilled as ${origin}/api/mcp — clear it to test web/email-only payload
+    // MCP/A2A are prefilled — clear them to test web/email-only payload
     await expect(page.getByTestId('create-mcp-endpoint')).toHaveValue(/\/api\/mcp$/)
+    await expect(page.getByTestId('create-a2a-endpoint')).toHaveValue(/\/api\/a2a$/)
     await page.getByTestId('create-mcp-endpoint').fill('')
+    await page.getByTestId('create-a2a-endpoint').fill('')
     await page.getByTestId('create-name-input').fill('my-agent')
     await page.getByTestId('create-name-continue').click()
     await expect(page.getByTestId('create-action-transfer-eth')).toBeVisible()
@@ -229,14 +232,16 @@ test.describe('create agent wizard', () => {
     })
   })
 
-  test('mcp endpoint is advertised as a service when set', async ({ page }) => {
+  test('mcp and a2a endpoints are advertised as services when set', async ({ page }) => {
     const created: unknown[] = []
     await setupOffline(page, { capture: { create: created } })
     await gotoWithAgent(page)
     await openCreateDialog(page)
-    // MCP is prefilled — verify then override with custom host
+    // MCP/A2A are prefilled — verify then override with custom hosts
     await expect(page.getByTestId('create-mcp-endpoint')).toHaveValue(/\/api\/mcp$/)
+    await expect(page.getByTestId('create-a2a-endpoint')).toHaveValue(/\/api\/a2a$/)
     await page.getByTestId('create-mcp-endpoint').fill('https://my-host/mcp')
+    await page.getByTestId('create-a2a-endpoint').fill('https://my-host/api/a2a')
     await page.getByTestId('create-name-input').fill('my-agent')
     await page.getByTestId('create-name-continue').click()
     await expect(page.getByTestId('create-action-transfer-eth')).toBeVisible()
@@ -249,6 +254,7 @@ test.describe('create agent wizard', () => {
         { name: 'web', endpoint: 'https://example.com' },
         { name: 'email', endpoint: 'e@mail.fun' },
         { name: 'mcp', endpoint: 'https://my-host/mcp' },
+        { name: 'A2A', endpoint: 'https://my-host/api/a2a' },
       ],
     })
   })
@@ -340,6 +346,7 @@ test.describe('create agent — step 1 image & description', () => {
         { name: 'web', endpoint: 'https://example.com' },
         { name: 'email', endpoint: 'e@mail.fun' },
         { name: 'mcp', endpoint: expect.stringMatching(/\/api\/mcp$/) },
+        { name: 'A2A', endpoint: expect.stringMatching(/\/api\/a2a$/) },
       ]),
     })
   })

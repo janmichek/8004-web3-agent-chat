@@ -45,6 +45,11 @@ import { registerAgent } from "../core/registry.js";
 import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemory } from "../core/memory-reader.js";
 import type { Skill } from "../actions/types.js";
+import { A2AServer, createA2AServer, X402_EXTENSION_URI } from "../a2a/index.js";
+import {
+  canonicalizeServiceName,
+  normalizeA2AEndpoint,
+} from "../core/registration-services.js";
 
 dotenv.config();
 
@@ -274,8 +279,14 @@ async function publicAgentSummary(name: string) {
     oasfDomains: (config?.metadata?.oasfDomains as string[] | undefined) ?? [],
     oasfSkills: (config?.metadata?.oasfSkills as string[] | undefined) ?? [],
     active: config?.active ?? true,
+    x402support: config?.x402support ?? false,
     endpoints: config?.endpoints ?? [],
-    services: (config?.endpoints ?? []).map((e) => ({ name: e.type, endpoint: e.value })),
+    services: (config?.endpoints ?? []).map((e) => {
+      const name = canonicalizeServiceName(e.type);
+      const endpoint =
+        name === "A2A" ? normalizeA2AEndpoint(e.value) : e.value;
+      return { name, endpoint };
+    }),
   };
 }
 
@@ -498,6 +509,109 @@ async function handleMcp(c: McpContext) {
 app.all("/api/mcp", async (c) => handleMcp(c));
 app.all("/mcp", async (c) => handleMcp(c));
 
+// --- A2A + x402 (mock facilitator) -------------------------------------------
+// Agent Card at /.well-known/agent-card.json; JSON-RPC at /api/a2a.
+// Optional ?agent=<name> scopes card/skills/x402 to that agent's config.
+const a2aServerCache = new Map<string, A2AServer>();
+
+function requestPublicBaseUrl(c: { req: { url: string; header: (n: string) => string | undefined } }): string {
+  const proto = c.req.header("x-forwarded-proto") || "http";
+  const host = c.req.header("x-forwarded-host") || c.req.header("host") || `localhost:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+function defaultA2AConfig(): AgentConfig {
+  return {
+    name: "web3agent",
+    description: "web3agent A2A endpoint",
+    walletAddress: process.env.A2A_PAY_TO?.trim() || undefined,
+    endpoints: [],
+    trustModels: [],
+    owners: [],
+    operators: [],
+    active: true,
+    x402support: process.env.A2A_X402 !== "0",
+    metadata: { actions: [], tools: [] },
+    createdAt: new Date().toISOString(),
+    updatedAt: Math.floor(Date.now() / 1000),
+  };
+}
+
+function resolveA2AServer(c: {
+  req: { url: string; header: (n: string) => string | undefined; query: (n: string) => string | undefined };
+}): { server: A2AServer } | { error: Response } {
+  const agentName = c.req.query("agent")?.trim();
+  const base = requestPublicBaseUrl(c);
+  if (agentName) {
+    const config = loadAgentConfig(agentName);
+    if (!config) {
+      return { error: Response.json({ error: `Unknown agent: ${agentName}` }, { status: 404 }) };
+    }
+    const cacheKey = `${agentName}:${base}:${config.x402support}:${config.updatedAt}`;
+    let server = a2aServerCache.get(cacheKey);
+    if (!server) {
+      server = createA2AServer({ publicBaseUrl: base, config });
+      a2aServerCache.set(cacheKey, server);
+    }
+    return { server };
+  }
+  const x402On = process.env.A2A_X402 !== "0";
+  const cacheKey = `__default__:${base}:x402=${x402On}`;
+  let server = a2aServerCache.get(cacheKey);
+  if (!server) {
+    server = createA2AServer({ publicBaseUrl: base, config: defaultA2AConfig() });
+    a2aServerCache.set(cacheKey, server);
+  }
+  return { server };
+}
+
+app.get("/.well-known/agent-card.json", async (c) => {
+  const resolved = resolveA2AServer(c);
+  if ("error" in resolved) return resolved.error;
+  return c.json(resolved.server.buildAgentCard());
+});
+
+async function handleA2A(c: {
+  req: {
+    method: string;
+    url: string;
+    header: (n: string) => string | undefined;
+    query: (n: string) => string | undefined;
+    json: () => Promise<unknown>;
+  };
+  json: (data: unknown, status?: number) => Response;
+}) {
+  const resolved = resolveA2AServer(c);
+  if ("error" in resolved) return resolved.error;
+  const { server } = resolved;
+
+  if (c.req.method === "GET") {
+    return c.json(server.healthDescriptor());
+  }
+  if (c.req.method !== "POST") {
+    return c.json({ error: "Use GET for health/card or POST for JSON-RPC" }, 405);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400);
+  }
+
+  const extensionHeader =
+    c.req.header("x-a2a-extensions") || c.req.header("X-A2A-Extensions");
+  const response = await server.handleJsonRpc(body, { extensionHeader });
+  // JSON-RPC always HTTP 200 with error object for protocol errors; use 400 only for parse.
+  return c.json(response);
+}
+
+app.all("/api/a2a", async (c) => handleA2A(c));
+app.all("/a2a", async (c) => handleA2A(c));
+
+// Expose extension URI for clients / tests.
+app.get("/api/a2a/extension", (c) => c.json({ uri: X402_EXTENSION_URI }));
+
 // Return JSON (not Hono's default plain-text "404 Not Found") so the
 // frontend's res.json() never chokes on unknown routes with a cryptic
 // "unexpected non-whitespace character after JSON data" error.
@@ -633,6 +747,8 @@ app.post("/api/agents", async (c) => {
     active?: boolean;
     services?: { name?: string; endpoint?: string }[];
     mcpEndpoint?: string;
+    a2aEndpoint?: string;
+    x402support?: boolean;
   };
   try {
     body = await c.req.json();
@@ -711,8 +827,7 @@ app.post("/api/agents", async (c) => {
   if (!Array.isArray(rawServices)) {
     return c.json({ error: "services must be an array" }, 400);
   }
-  // Shorthand: `mcpEndpoint: "https://host/mcp"` appends an mcp service
-  // unless services already declares one (case-insensitive).
+  // Shorthand: `mcpEndpoint` / `a2aEndpoint` append services unless already declared.
   const mcpEndpoint = body.mcpEndpoint?.trim();
   if (mcpEndpoint) {
     const hasMcp = rawServices.some(
@@ -720,6 +835,19 @@ app.post("/api/agents", async (c) => {
     );
     if (!hasMcp) rawServices.push({ name: "mcp", endpoint: mcpEndpoint });
   }
+  const a2aEndpoint = body.a2aEndpoint?.trim();
+  if (a2aEndpoint) {
+    const hasA2a = rawServices.some(
+      (s) => typeof s?.name === "string" && s.name.trim().toLowerCase() === "a2a",
+    );
+    if (!hasA2a) {
+      rawServices.push({
+        name: "A2A",
+        endpoint: normalizeA2AEndpoint(a2aEndpoint),
+      });
+    }
+  }
+  const x402support = Boolean(body.x402support);
   if (rawServices.length > 20) {
     return c.json({ error: "services must have at most 20 entries" }, 400);
   }
@@ -734,24 +862,33 @@ app.post("/api/agents", async (c) => {
     if (svcName.length > 64 || svcEndpoint.length > 500) {
       return c.json({ error: "service name (max 64) or endpoint (max 500) too long" }, 400);
     }
-    const lower = svcName.toLowerCase();
+    const canonicalName = canonicalizeServiceName(svcName);
+    const lower = canonicalName.toLowerCase();
     if (seenServiceNames.has(lower)) {
       return c.json({ error: `duplicate service: ${svcName}` }, 400);
     }
     seenServiceNames.add(lower);
+    let resolvedEndpoint =
+      lower === "a2a" ? normalizeA2AEndpoint(svcEndpoint) : svcEndpoint;
     // MCP/A2A/web endpoints must be https URLs so 8004scan can verify them.
     // Email keeps its legacy free-form value (e@mail.fun). Allow http for
     // localhost/127.0.0.1 so local dev (`http://localhost:5173/api/mcp`) can be advertised.
     if (lower === "mcp" || lower === "a2a" || lower === "web") {
-      const isHttps = /^https:\/\/.+/i.test(svcEndpoint);
-      const isLocalHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/.+/i.test(svcEndpoint);
+      const isHttps = /^https:\/\/.+/i.test(resolvedEndpoint);
+      const isLocalHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(
+        resolvedEndpoint,
+      );
       if (!isHttps && !isLocalHttp) {
-        return c.json({ error: `${svcName} endpoint must be an https:// URL` }, 400);
+        return c.json({ error: `${canonicalName} endpoint must be an https:// URL` }, 400);
       }
     }
-    services.push({ name: svcName, endpoint: svcEndpoint });
+    services.push({ name: canonicalName, endpoint: resolvedEndpoint });
   }
-  const endpoints = services.map((s) => ({ type: s.name, value: s.endpoint })) as AgentConfig["endpoints"];
+  // Persist A2A/MCP with SDK casing so registration enrichment matches 8004scan.
+  const endpoints = services.map((s) => ({
+    type: s.name,
+    value: s.endpoint,
+  })) as AgentConfig["endpoints"];
   const description = body.description?.trim() || `Agent ${name}`;
   let imageUri = body.imageUri?.trim();
   if (imageUri && !/^(https?:\/\/|ipfs:\/\/)/i.test(imageUri)) {
@@ -814,7 +951,7 @@ app.post("/api/agents", async (c) => {
     owners: [masterWallet.address],
     operators: [agentWallet.address],
     active,
-    x402support: false,
+    x402support,
     metadata: {
       actions: selectedActions,
       tools: allToolNames,
@@ -844,6 +981,7 @@ app.post("/api/agents", async (c) => {
         agentWalletPrivateKey: agentWallet.privateKey,
         active,
         endpoints,
+        x402support,
         metadata: {
           actions: selectedActions,
           tools: allToolNames,

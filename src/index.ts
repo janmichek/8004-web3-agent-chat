@@ -38,6 +38,20 @@ export { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName, getToolByName, getStan
 export type { ActionEntry, ToolEntry } from "./core/action-registry.js";
 export { saveAgentConfig, loadAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "./core/agent-config.js";
 export type { AgentConfig, Endpoint, EndpointType } from "./core/agent-config.js";
+export {
+  A2AServer,
+  createA2AServer,
+  MockFacilitatorClient,
+  buildMockPaymentPayload,
+  X402_EXTENSION_URI,
+  buildPaymentRequirements,
+} from "./a2a/index.js";
+export type { A2AServerOptions, AgentCard, PaymentPayload, PaymentRequirements } from "./a2a/index.js";
+export {
+  buildRegistrationServices,
+  canonicalizeServiceName,
+  normalizeA2AEndpoint,
+} from "./core/registration-services.js";
 
 export type {
   NetworkName,

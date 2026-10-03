@@ -67,6 +67,8 @@ export interface RegisterAgentOptions {
   endpoints?: { type: string; value: string }[];
   /** Optional free-form metadata (e.g. actions/tools) pinned into the IPFS file. */
   metadata?: Record<string, unknown>;
+  /** Declare x402 payment readiness in the registration file (default false). */
+  x402support?: boolean;
 }
 
 /** Result returned after successful ERC-8004 registration. */

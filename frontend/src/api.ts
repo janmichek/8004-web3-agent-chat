@@ -80,8 +80,10 @@ export type CreateAgentRequest = {
   fundEth?: string
   skipRegister?: boolean
   active?: boolean
+  x402support?: boolean
   services?: CreateAgentService[]
   mcpEndpoint?: string
+  a2aEndpoint?: string
 }
 
 export type CreateAgentStep = {

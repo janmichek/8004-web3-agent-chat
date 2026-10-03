@@ -1,7 +1,12 @@
 import { getAccount, getWalletClient, switchChain } from '@wagmi/vue/actions'
 import { arbitrumSepolia } from '@wagmi/vue/chains'
 import type { Config } from '@wagmi/vue'
-import type { Hex } from 'viem'
+import {
+  createPublicClient,
+  http,
+  type Address,
+  type Hex,
+} from 'viem'
 
 const ARB_SEPOLIA_HEX = `0x${arbitrumSepolia.id.toString(16)}` as Hex
 
@@ -13,9 +18,56 @@ export async function getInjectedChainId(): Promise<number | undefined> {
   return Number.parseInt(hex, 16)
 }
 
+/** Same-origin proxy for in-page viem calls (Vite → API → Alchemy). */
+export function appRpcUrl(): string {
+  if (typeof window !== 'undefined') return `${window.location.origin}/api/rpc`
+  return '/api/rpc'
+}
+
 /** MetaMask talks to this URL directly (not via Vite), so use the API host. */
 function walletRpcUrl(): string {
   return 'http://127.0.0.1:8787/api/rpc'
+}
+
+/**
+ * Estimate nonce/gas/fees via the app RPC proxy so the wallet does not need
+ * the public Arbitrum Sepolia endpoint (which rate-limits often).
+ */
+export async function prepareNativeTransfer(params: {
+  account: Address
+  to: Address
+  value: bigint
+}): Promise<{
+  to: Address
+  value: bigint
+  gas: bigint
+  nonce: number
+  maxFeePerGas?: bigint
+  maxPriorityFeePerGas?: bigint
+  chainId: number
+}> {
+  const client = createPublicClient({
+    chain: arbitrumSepolia,
+    transport: http(appRpcUrl()),
+  })
+  const [nonce, gas, fees] = await Promise.all([
+    client.getTransactionCount({ address: params.account }),
+    client.estimateGas({
+      account: params.account,
+      to: params.to,
+      value: params.value,
+    }),
+    client.estimateFeesPerGas(),
+  ])
+  return {
+    to: params.to,
+    value: params.value,
+    gas,
+    nonce,
+    maxFeePerGas: fees.maxFeePerGas,
+    maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+    chainId: arbitrumSepolia.id,
+  }
 }
 
 async function addArbitrumSepolia(): Promise<void> {
