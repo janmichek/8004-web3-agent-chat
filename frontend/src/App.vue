@@ -9,7 +9,7 @@ import AgentMemory from './components/AgentMemory.vue'
 import AgentStats from './components/AgentStats.vue'
 import AgentChat from './components/AgentChat.vue'
 import CreateAgent from './components/CreateAgent.vue'
-import web3AuthContextConfig from './web3authContext'
+import web3AuthContextConfig, { hasWeb3AuthClientId } from './web3authContext'
 import type { AgentSummary, MemorySession } from './api'
 
 function networkSlug(chainId: number): string {
@@ -97,7 +97,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 </script>
 
 <template>
-  <Web3AuthProvider :config="web3AuthContextConfig">
+  <div v-if="!hasWeb3AuthClientId" class="wallet-config-error" role="alert">
+    <h1>Wallet configuration required</h1>
+    <p>Set <code>VITE_WEB3AUTH_CLIENT_ID</code> in the frontend environment, then rebuild the app.</p>
+  </div>
+
+  <Web3AuthProvider v-else :config="web3AuthContextConfig">
     <WagmiProvider>
       <div class="shell">
         <WalletBar />
@@ -166,6 +171,26 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
 </template>
 
 <style scoped>
+.wallet-config-error {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  color: var(--text);
+  background: var(--bg);
+  text-align: center;
+}
+
+.wallet-config-error h1,
+.wallet-config-error p {
+  margin: 0;
+}
+
+.wallet-config-error code {
+  color: var(--accent);
+}
+
 .shell {
   height: 100vh;
   height: 100dvh;

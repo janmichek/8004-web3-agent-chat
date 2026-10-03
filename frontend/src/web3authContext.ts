@@ -31,8 +31,12 @@ const arbitrumOne = {
   logo: 'https://cryptologos.cc/logos/arbitrum-arb-logo.png',
 }
 
+const web3AuthClientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID?.trim()
+
+export const hasWeb3AuthClientId = Boolean(web3AuthClientId)
+
 const web3AuthOptions: Web3AuthOptions = {
-  clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID,
+  clientId: web3AuthClientId ?? '',
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
   chains: [arbitrumSepolia, arbitrumOne],
   defaultChainId: '0x66eee',
