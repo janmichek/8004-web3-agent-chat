@@ -15,7 +15,7 @@ import { SDK } from "@blockbyvlog/agent0-sdk";
 import type { RegisterAgentOptions, RegistrationResult } from "./types.js";
 import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
 import { toGatewayUrl, uploadJson } from "./ipfs.js";
-import { buildRegistrationServices } from "./registration-services.js";
+import { buildRegistrationServices, canonicalizeEndpoint } from "./registration-services.js";
 
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
@@ -103,42 +103,10 @@ export async function registerAgent(
   const updatedAt = Math.floor(Date.now() / 1000);
   agent.setMetadata({ ...options.metadata, updatedAt });
   if (options.endpoints && options.endpoints.length > 0) {
-    // Normalize known protocol names to SDK EndpointType casing (MCP/A2A/...).
-    const normalized = options.endpoints.map((e) => {
-      const lower = e.type.toLowerCase();
-      const type =
-        lower === "mcp" ? "MCP"
-        : lower === "a2a" ? "A2A"
-        : lower === "ens" ? "ENS"
-        : lower === "oasf" ? "OASF"
-        : e.type;
-      return { ...e, type };
-    });
-    const file = agent.getRegistrationFile() as unknown as {
-      endpoints?: { type: string; value: string }[];
-    };
-    file.endpoints = normalized as never;
-    // Prefer SDK helpers so A2A/MCP land in the typed registration file.
-    const a2a = normalized.find((e) => e.type === "A2A");
-    if (a2a?.value) {
-      try {
-        await agent.setA2A(a2a.value, "0.3.0", false);
-      } catch (err) {
-        console.warn(
-          `[registry] setA2A failed, keeping endpoints[] entry: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-    const mcp = normalized.find((e) => e.type === "MCP");
-    if (mcp?.value) {
-      try {
-        await agent.setMCP(mcp.value, "2025-06-18", false);
-      } catch (err) {
-        console.warn(
-          `[registry] setMCP failed, keeping endpoints[] entry: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
+    // Canonical names, well-known A2A URL and protocol `version` meta — the
+    // same shape SDK setA2A/setMCP would write.
+    const file = agent.getRegistrationFile() as unknown as { endpoints?: unknown };
+    file.endpoints = options.endpoints.map(canonicalizeEndpoint);
   }
   agent.setActive(options.active !== false);
   agent.setX402Support(Boolean(options.x402support));
@@ -230,21 +198,18 @@ async function pinEnrichedRegistrationFile(
     endpoints?: { type: string; value: string; meta?: Record<string, unknown> }[];
     trustModels?: string[];
     active?: boolean;
-    x402support?: boolean;
     agentId?: string;
   };
   const tokenId = Number(String(file.agentId ?? "").split(":").pop());
   if (!Number.isFinite(tokenId)) throw new Error("Missing agentId, cannot enrich registration file");
 
-  const x402Support = Boolean(options.x402support ?? file.x402support);
+  const x402Support = Boolean(options.x402support);
   const services = await buildRegistrationServices({
-    endpoints: file.endpoints ?? options.endpoints ?? [],
+    endpoints: file.endpoints ?? [],
     metadata: options.metadata,
     walletAddress: options.walletAddress,
     chainId,
-    x402support: x402Support,
   });
-  const a2aService = services.find((s) => String(s.name) === "A2A");
   const enriched: Record<string, unknown> = {
     type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
     name: file.name,
@@ -257,25 +222,14 @@ async function pinEnrichedRegistrationFile(
       },
     ],
     active: file.active ?? true,
-    // 8004scan Services / x402 badges read this top-level flag (not metadata.x402).
+    // 8004scan reads x402 from this top-level flag and the wallet from the
+    // agentWallet service; nothing under `metadata` is parsed for either.
     x402Support,
-    metadata: {
-      ...options.metadata,
-      updatedAt,
-      x402Support,
-      ...(a2aService?.endpoint ? { a2aEndpoint: a2aService.endpoint } : {}),
-      ...(options.walletAddress
-        ? { agentWallet: `eip155:${chainId}:${options.walletAddress}` }
-        : {}),
-    },
+    metadata: { ...options.metadata, updatedAt },
+    // Reputation is always available via ERC-8004 Reputation Registry.
+    supportedTrust: file.trustModels?.length ? file.trustModels : ["reputation"],
   };
   if (file.image) enriched.image = file.image;
-  if (file.trustModels?.length) {
-    enriched.supportedTrust = file.trustModels;
-  } else {
-    // Reputation is always available via ERC-8004 Reputation Registry.
-    enriched.supportedTrust = ["reputation"];
-  }
 
   const cid = await uploadJson(enriched, "agent-registration.json");
   const uri = `ipfs://${cid}`;

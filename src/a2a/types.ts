@@ -18,6 +18,8 @@ export const X402_EXTENSION_URI =
 export const X402_EXTENSION_URI_LEGACY =
   "https://github.com/google-a2a/a2a-x402/v0.1"
 
+export const X402_VERSION = 1
+
 export type PaymentStatus =
   | "payment-required"
   | "payment-rejected"
@@ -49,7 +51,6 @@ export type PaymentErrorCode =
   | "DUPLICATE_PAYMENT"
   | "PAYMENT_REJECTED"
   | "SETTLEMENT_FAILED"
-  | "AGENT_INACTIVE"
   | "SERVER_ERROR"
 
 export interface PaymentRequirements {
@@ -80,17 +81,15 @@ export interface PaymentAuthorization {
   nonce: string
 }
 
-export interface PaymentPayloadBody {
-  signature: string
-  authorization: PaymentAuthorization
-}
-
 export interface PaymentPayload {
   x402Version: number
   scheme: "exact"
   network: string
   asset?: string
-  payload: PaymentPayloadBody
+  payload: {
+    signature: string
+    authorization: PaymentAuthorization
+  }
 }
 
 export interface SettlementReceipt {
@@ -118,6 +117,8 @@ export interface SettleResponse {
 }
 
 export interface FacilitatorClient {
+  /** Shown in the health descriptor: "mock" or the facilitator URL. */
+  readonly name: string
   verify(payload: PaymentPayload, requirements: PaymentRequirements): Promise<VerifyResponse>
   settle(payload: PaymentPayload, requirements: PaymentRequirements): Promise<SettleResponse>
 }
@@ -134,28 +135,25 @@ export interface A2AMessage {
   parts: A2APart[]
   metadata?: Record<string, unknown>
   taskId?: string
+  contextId?: string
   messageId?: string
 }
 
-export interface A2ATaskStatus {
-  state: TaskState
-  message?: A2AMessage
-}
-
 export interface A2AArtifact {
-  kind: string
+  artifactId: string
   name?: string
-  mimeType?: string
-  data?: unknown
-  parts?: A2APart[]
+  parts: A2APart[]
 }
 
 export interface A2ATask {
   kind: "task"
   id: string
-  status: A2ATaskStatus
+  contextId: string
+  status: {
+    state: TaskState
+    message?: A2AMessage
+  }
   artifacts?: A2AArtifact[]
-  metadata?: Record<string, unknown>
 }
 
 export interface AgentCardSkill {
@@ -165,27 +163,21 @@ export interface AgentCardSkill {
   tags?: string[]
 }
 
-export interface AgentCardExtension {
-  uri: string
-  description: string
-  required: boolean
-}
-
 export interface AgentCard {
   name: string
   description: string
   url: string
   version: string
-  protocolVersion?: string
+  protocolVersion: string
   capabilities: {
-    streaming?: boolean
-    pushNotifications?: boolean
-    extensions?: AgentCardExtension[]
+    streaming: boolean
+    pushNotifications: boolean
+    extensions?: { uri: string; description: string; required: boolean }[]
   }
   defaultInputModes: string[]
   defaultOutputModes: string[]
   skills: AgentCardSkill[]
-  supportsAuthenticatedExtendedCard?: boolean
+  supportsAuthenticatedExtendedCard: boolean
 }
 
 export interface JsonRpcRequest {
@@ -195,15 +187,9 @@ export interface JsonRpcRequest {
   params?: Record<string, unknown>
 }
 
-export interface JsonRpcError {
-  code: number
-  message: string
-  data?: unknown
-}
-
 export interface JsonRpcResponse {
   jsonrpc: "2.0"
   id: string | number | null
   result?: unknown
-  error?: JsonRpcError
+  error?: { code: number; message: string; data?: unknown }
 }

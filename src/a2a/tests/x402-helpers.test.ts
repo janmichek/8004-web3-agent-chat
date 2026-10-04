@@ -6,7 +6,6 @@
 import { describe, it, expect } from "vitest"
 import {
   buildPaymentRequirements,
-  buildPaymentRequiredResponse,
   isX402ExtensionActivated,
   paymentPayloadFromMetadata,
   paymentStatusFromMetadata,
@@ -25,16 +24,6 @@ describe("x402 helpers", () => {
     expect(req.network).toBe(MOCK_PAYMENT_NETWORK)
     expect(req.asset).toBe(MOCK_USDC_ASSET)
     expect(req.maxAmountRequired).toBe("10000")
-  })
-
-  it("buildPaymentRequiredResponse wraps accepts", () => {
-    const req = buildPaymentRequirements({
-      payTo: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
-      resource: "https://host/api/a2a",
-    })
-    const resp = buildPaymentRequiredResponse([req])
-    expect(resp.x402Version).toBe(1)
-    expect(resp.accepts).toHaveLength(1)
   })
 
   it("isX402ExtensionActivated handles csv + legacy + empty", () => {

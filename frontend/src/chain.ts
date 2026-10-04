@@ -19,9 +19,8 @@ export async function getInjectedChainId(): Promise<number | undefined> {
 }
 
 /** Same-origin proxy for in-page viem calls (Vite → API → Alchemy). */
-export function appRpcUrl(): string {
-  if (typeof window !== 'undefined') return `${window.location.origin}/api/rpc`
-  return '/api/rpc'
+function appRpcUrl(): string {
+  return `${window.location.origin}/api/rpc`
 }
 
 /** MetaMask talks to this URL directly (not via Vite), so use the API host. */

@@ -141,9 +141,7 @@ describe("MockFacilitatorClient (x402 only)", () => {
   })
 
   it("rejects underfunded payer", async () => {
-    const fac = new MockFacilitatorClient({
-      underfundedPayers: new Set([PAYER]),
-    })
+    const fac = new MockFacilitatorClient({ underfundedPayers: [PAYER.toLowerCase()] })
     const requirements = req()
     const payload = buildMockPaymentPayload({ requirements, from: PAYER })
     const verified = await fac.verify(payload, requirements)

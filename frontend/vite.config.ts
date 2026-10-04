@@ -17,23 +17,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
-      '/api': {
-        target: `http://localhost:${process.env.API_PORT || 8787}`,
-        changeOrigin: true,
-      },
-      '/mcp': {
-        target: `http://localhost:${process.env.API_PORT || 8787}`,
-        changeOrigin: true,
-      },
-      '/a2a': {
-        target: `http://localhost:${process.env.API_PORT || 8787}`,
-        changeOrigin: true,
-      },
-      '/.well-known/agent-card.json': {
-        target: `http://localhost:${process.env.API_PORT || 8787}`,
-        changeOrigin: true,
-      },
-    },
+    proxy: Object.fromEntries(
+      ['/api', '/mcp', '/a2a', '/.well-known/agent-card.json'].map((path) => [
+        path,
+        { target: `http://localhost:${process.env.API_PORT || 8787}`, changeOrigin: true },
+      ]),
+    ),
   },
 })

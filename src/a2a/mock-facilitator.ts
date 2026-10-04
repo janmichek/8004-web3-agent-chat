@@ -8,12 +8,13 @@
  */
 
 import { createHash, randomBytes } from "node:crypto"
-import type {
-  FacilitatorClient,
-  PaymentPayload,
-  PaymentRequirements,
-  SettleResponse,
-  VerifyResponse,
+import {
+  X402_VERSION,
+  type FacilitatorClient,
+  type PaymentPayload,
+  type PaymentRequirements,
+  type SettleResponse,
+  type VerifyResponse,
 } from "./types.js"
 
 export interface MockFacilitatorOptions {
@@ -22,7 +23,7 @@ export interface MockFacilitatorOptions {
   /** Force settle to fail after a successful verify. */
   forceSettleFail?: { reason: string; errorCode?: SettleResponse["errorCode"] }
   /** Wallet addresses treated as underfunded. */
-  underfundedPayers?: Set<string>
+  underfundedPayers?: string[]
   /** Clock override (unix seconds). Defaults to Date.now()/1000. */
   now?: () => number
 }
@@ -33,7 +34,7 @@ function isAddress(value: string): boolean {
 
 function isHexSig(value: string): boolean {
   // Accept 65-byte ECDSA (130 hex) or longer mock sigs.
-  return /^0x[a-fA-F0-9]{128,}$/.test(value)
+  return /^0x[a-fA-F0-9]{130,}$/.test(value)
 }
 
 function fakeTxHash(seed: string): string {
@@ -45,30 +46,17 @@ function fakeTxHash(seed: string): string {
  * Validates payload shape + requirement match; never broadcasts.
  */
 export class MockFacilitatorClient implements FacilitatorClient {
+  readonly name = "mock"
   private readonly underfunded: Set<string>
   private readonly now: () => number
-  forceVerifyFail?: MockFacilitatorOptions["forceVerifyFail"]
-  forceSettleFail?: MockFacilitatorOptions["forceSettleFail"]
+  private readonly forceVerifyFail: MockFacilitatorOptions["forceVerifyFail"]
+  private readonly forceSettleFail: MockFacilitatorOptions["forceSettleFail"]
 
   constructor(options: MockFacilitatorOptions = {}) {
     this.forceVerifyFail = options.forceVerifyFail
     this.forceSettleFail = options.forceSettleFail
-    this.underfunded = new Set(
-      [...(options.underfundedPayers ?? [])].map((a) => a.toLowerCase()),
-    )
+    this.underfunded = new Set((options.underfundedPayers ?? []).map((a) => a.toLowerCase()))
     this.now = options.now ?? (() => Math.floor(Date.now() / 1000))
-  }
-
-  markUnderfunded(address: string): void {
-    this.underfunded.add(address.toLowerCase())
-  }
-
-  clearUnderfunded(address?: string): void {
-    if (!address) {
-      this.underfunded.clear()
-      return
-    }
-    this.underfunded.delete(address.toLowerCase())
   }
 
   async verify(
@@ -236,12 +224,12 @@ export function buildMockPaymentPayload(opts: {
   const now = Math.floor(Date.now() / 1000)
   const req = opts.requirements
   return {
-    x402Version: 1,
+    x402Version: X402_VERSION,
     scheme: "exact",
     network: opts.network ?? req.network,
     asset: opts.asset ?? req.asset,
     payload: {
-      signature: opts.signature ?? (`0x${"ab".repeat(65)}` as string),
+      signature: opts.signature ?? `0x${"ab".repeat(65)}`,
       authorization: {
         from: opts.from,
         to: opts.to ?? req.payTo,

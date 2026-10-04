@@ -9,8 +9,10 @@ import {
   canonicalizeServiceName,
   normalizeA2AEndpoint,
   buildAgentWalletEndpoint,
-  A2A_SERVICE_VERSION,
-  MCP_SERVICE_VERSION,
+  canonicalizeEndpoint,
+  isAdvertisableUrl,
+  A2A_PROTOCOL_VERSION,
+  MCP_PROTOCOL_VERSION,
 } from "../registration-services.js"
 
 vi.mock("../oasf.js", () => ({
@@ -35,6 +37,8 @@ describe("canonicalizeServiceName", () => {
     expect(canonicalizeServiceName("oasf")).toBe("oasf")
     expect(canonicalizeServiceName("wallet")).toBe("agentWallet")
     expect(canonicalizeServiceName("agentWallet")).toBe("agentWallet")
+    expect(canonicalizeServiceName(" Web ")).toBe("web")
+    expect(canonicalizeServiceName("custom-Thing")).toBe("custom-Thing")
   })
 })
 
@@ -51,6 +55,40 @@ describe("normalizeA2AEndpoint", () => {
   it("leaves agent-card URLs unchanged", () => {
     const card = "https://host.example/.well-known/agent-card.json"
     expect(normalizeA2AEndpoint(card)).toBe(card)
+  })
+
+  it("keeps the ?agent= scope and leaves non-URLs alone", () => {
+    expect(normalizeA2AEndpoint("https://host.example/api/a2a?agent=bob")).toBe(
+      "https://host.example/.well-known/agent-card.json?agent=bob",
+    )
+    expect(normalizeA2AEndpoint(" not a url ")).toBe("not a url")
+  })
+})
+
+describe("canonicalizeEndpoint", () => {
+  it("adds default protocol version without overriding caller meta", () => {
+    expect(canonicalizeEndpoint({ type: "a2a", value: " https://h.example/a2a " })).toEqual({
+      type: "A2A",
+      value: "https://h.example/.well-known/agent-card.json",
+      meta: { version: A2A_PROTOCOL_VERSION },
+    })
+    expect(
+      canonicalizeEndpoint({ type: "mcp", value: "https://h.example/mcp", meta: { version: "x" } }).meta,
+    ).toEqual({ version: "x" })
+    expect(canonicalizeEndpoint({ type: "email", value: "e@mail.fun" })).toEqual({
+      type: "email",
+      value: "e@mail.fun",
+    })
+  })
+})
+
+describe("isAdvertisableUrl", () => {
+  it("accepts https and local http only", () => {
+    expect(isAdvertisableUrl("https://host.example/api/a2a")).toBe(true)
+    expect(isAdvertisableUrl("http://localhost:8787")).toBe(true)
+    expect(isAdvertisableUrl("http://127.0.0.1:5173/api/mcp")).toBe(true)
+    expect(isAdvertisableUrl("http://host.example/api/a2a")).toBe(false)
+    expect(isAdvertisableUrl("ftp://not-allowed/a2a")).toBe(false)
   })
 })
 
@@ -69,7 +107,6 @@ describe("buildRegistrationServices (8004scan Services tab)", () => {
       },
       walletAddress: "0x4992cfb9899eade72df11a2ea3b904b39ceaccc7",
       chainId: 421614,
-      x402support: true,
     })
 
     const byName = Object.fromEntries(services.map((s) => [String(s.name), s]))
@@ -77,12 +114,12 @@ describe("buildRegistrationServices (8004scan Services tab)", () => {
     expect(byName.A2A).toMatchObject({
       name: "A2A",
       endpoint: "http://localhost:8787/.well-known/agent-card.json",
-      version: A2A_SERVICE_VERSION,
+      version: A2A_PROTOCOL_VERSION,
     })
     expect(byName.MCP).toMatchObject({
       name: "MCP",
       endpoint: "http://localhost:5173/api/mcp",
-      version: MCP_SERVICE_VERSION,
+      version: MCP_PROTOCOL_VERSION,
     })
     expect(byName.agentWallet).toMatchObject({
       name: "agentWallet",
@@ -109,39 +146,35 @@ describe("buildRegistrationServices (8004scan Services tab)", () => {
       ],
       walletAddress: "0x4992cfb9899eade72df11a2ea3b904b39ceaccc7",
       chainId: 421614,
-      x402support: true,
     })
     expect(services.filter((s) => s.name === "agentWallet")).toHaveLength(1)
   })
 
-  it("matches agent 261 gap: adding A2A+x402 changes supported protocol set", async () => {
-    // Baseline like h2000/261 today (no A2A, no agentWallet service).
-    const before = await buildRegistrationServices({
-      endpoints: [
-        { type: "web", value: "https://example.com" },
-        { type: "email", value: "e@mail.fun" },
-        { type: "MCP", value: "http://localhost:5173/api/mcp" },
-      ],
-      metadata: { oasfDomains: ["1"], oasfSkills: ["101"] },
-      x402support: false,
-    })
-    expect(before.some((s) => s.name === "A2A")).toBe(false)
-    expect(before.some((s) => s.name === "agentWallet")).toBe(false)
+  it("adds agentWallet only when wallet + chainId are known", async () => {
+    const endpoints = [{ type: "MCP", value: "http://localhost:5173/api/mcp" }]
+    const without = await buildRegistrationServices({ endpoints })
+    expect(without.map((s) => s.name)).toEqual(["MCP"])
 
-    const after = await buildRegistrationServices({
-      endpoints: [
-        { type: "web", value: "https://example.com" },
-        { type: "email", value: "e@mail.fun" },
-        { type: "MCP", value: "http://localhost:5173/api/mcp" },
-        { type: "A2A", value: "https://public.host/api/a2a" },
-      ],
-      metadata: { oasfDomains: ["1"], oasfSkills: ["101"] },
+    const withWallet = await buildRegistrationServices({
+      endpoints,
       walletAddress: "0x4992cfb9899eade72df11a2ea3b904b39ceaccc7",
       chainId: 421614,
-      x402support: true,
     })
-    expect(after.map((s) => s.name)).toEqual(
-      expect.arrayContaining(["A2A", "MCP", "oasf", "agentWallet", "web", "email"]),
-    )
+    expect(withWallet.map((s) => s.name)).toEqual(["MCP", "agentWallet"])
+  })
+
+  it("converts a bare 0x agentWallet endpoint to CAIP-10 and dedupes names", async () => {
+    const services = await buildRegistrationServices({
+      endpoints: [
+        { type: "wallet", value: "0x4992cfb9899eade72df11a2ea3b904b39ceaccc7" },
+        { type: "mcp", value: "https://a.example/mcp" },
+        { type: "MCP", value: "https://b.example/mcp" },
+      ],
+      chainId: 421614,
+    })
+    expect(services).toEqual([
+      { name: "agentWallet", endpoint: "eip155:421614:0x4992cfb9899eade72df11a2ea3b904b39ceaccc7" },
+      { name: "MCP", endpoint: "https://a.example/mcp", version: MCP_PROTOCOL_VERSION },
+    ])
   })
 })

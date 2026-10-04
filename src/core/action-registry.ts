@@ -29,6 +29,8 @@ export interface ActionEntry {
 export interface ToolEntry {
   name: string
   description: string
+  /** Never signs or sends a transaction, so it is safe to offer to anonymous A2A callers. */
+  readOnly: boolean
 }
 
 /** @notice Registry of all available actions (Level 1). */
@@ -47,18 +49,23 @@ export const TOOL_REGISTRY: ToolEntry[] = [
   {
     name: "send_eth",
     description: "Send ETH from the agent wallet to a destination address",
+    readOnly: false,
   },
   {
     name: "get_token_balance",
     description: "Check ETH or ERC-20 token balance of a wallet address",
+    readOnly: true,
   },
   {
     name: "fetch_contract_abi",
     description: "Fetch a verified contract's ABI from the block explorer (experimental)",
+    readOnly: true,
   },
   {
     name: "call_contract",
+    // Executes write functions with the agent key when the target is not view/pure.
     description: "Call any function on a verified contract (experimental)",
+    readOnly: false,
   },
 ]
 

@@ -1,0 +1,1547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>22 POVs — How ERC-8004 Complements A2A, MCP & x402</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #07131f;
+      --ink-2: #0d2133;
+      --panel: rgba(12, 32, 48, 0.72);
+      --line: rgba(232, 244, 255, 0.14);
+      --text: #e8f4ff;
+      --muted: #9bb3c7;
+      --lime: #c8f542;
+      --coral: #ff6b4a;
+      --cyan: #3de0c5;
+      --amber: #ffc857;
+      --sky: #6ec8ff;
+      --a2a: #3de0c5;
+      --mcp: #ffc857;
+      --x402: #ff6b4a;
+      --e8004: #c8f542;
+      --radius: 18px;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --font-display: "Syne", sans-serif;
+      --font-body: "Source Serif 4", Georgia, serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: var(--font-body);
+      background:
+        radial-gradient(1200px 700px at 10% -10%, rgba(61, 224, 197, 0.18), transparent 55%),
+        radial-gradient(900px 600px at 90% 0%, rgba(255, 107, 74, 0.16), transparent 50%),
+        radial-gradient(800px 500px at 50% 100%, rgba(200, 245, 66, 0.1), transparent 55%),
+        linear-gradient(160deg, #041018 0%, #0a1c2c 45%, #10263a 100%);
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.35;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+      animation: gridDrift 28s linear infinite;
+    }
+
+    @keyframes gridDrift {
+      from { transform: translateY(0); }
+      to { transform: translateY(48px); }
+    }
+
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(40px);
+      opacity: 0.45;
+      pointer-events: none;
+      z-index: 0;
+      animation: float 14s ease-in-out infinite;
+    }
+    .orb.a { width: 280px; height: 280px; background: var(--cyan); top: 12%; left: -60px; }
+    .orb.b { width: 220px; height: 220px; background: var(--coral); bottom: 8%; right: -40px; animation-delay: -4s; }
+    .orb.c { width: 180px; height: 180px; background: var(--lime); top: 55%; left: 40%; animation-delay: -8s; opacity: 0.22; }
+
+    @keyframes float {
+      0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+      50% { transform: translate3d(18px, -24px, 0) scale(1.08); }
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 0;
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: rgba(4, 14, 22, 0.55);
+      backdrop-filter: blur(16px);
+      padding: 20px 14px 20px 16px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .brand {
+      padding: 8px 10px 18px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
+    .brand-kicker {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 8px;
+    }
+    .brand h1 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      line-height: 1.15;
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+    }
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+
+    .pov-list {
+      overflow: auto;
+      flex: 1;
+      padding-right: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(232,244,255,0.2) transparent;
+    }
+
+    .pov-btn {
+      appearance: none;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+      border-radius: 12px;
+      padding: 10px 10px;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 8px;
+      align-items: start;
+      transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+      font: inherit;
+    }
+    .pov-btn:hover {
+      background: rgba(232, 244, 255, 0.05);
+      color: var(--text);
+      transform: translateX(2px);
+    }
+    .pov-btn.active {
+      background: linear-gradient(135deg, rgba(200,245,66,0.14), rgba(61,224,197,0.08));
+      border-color: rgba(200,245,66,0.35);
+      color: var(--text);
+    }
+    .pov-btn .n {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--lime);
+      padding-top: 3px;
+    }
+    .pov-btn .t {
+      font-family: var(--font-display);
+      font-size: 0.86rem;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+    .pov-btn .s {
+      grid-column: 2;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.3;
+      margin-top: 2px;
+    }
+
+    main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 28px 10px;
+    }
+    .progress-wrap {
+      flex: 1;
+      max-width: 520px;
+    }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      letter-spacing: 0.04em;
+    }
+    .progress {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(232,244,255,0.08);
+      overflow: hidden;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--cyan), var(--lime), var(--amber));
+      box-shadow: 0 0 18px rgba(200,245,66,0.45);
+      transition: width 320ms cubic-bezier(.2,.8,.2,1);
+    }
+    .keys {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .keys kbd {
+      display: inline-block;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      border-radius: 6px;
+      padding: 2px 6px;
+      color: var(--text);
+    }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 8px 28px 20px;
+      overflow: auto;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(18px) scale(0.985);
+      transition: opacity 320ms ease, transform 420ms cubic-bezier(.2,.8,.2,1), visibility 320ms;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(232,244,255,0.2) transparent;
+    }
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+    }
+
+    .hero-mark {
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: clamp(2.4rem, 5vw, 4.2rem);
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      margin: 8px 0 14px;
+      background: linear-gradient(120deg, #fff 10%, var(--lime) 45%, var(--cyan) 80%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: titleIn 700ms cubic-bezier(.2,.8,.2,1) both;
+    }
+
+    @keyframes titleIn {
+      from { opacity: 0; letter-spacing: -0.08em; transform: translateY(12px); }
+      to { opacity: 1; letter-spacing: -0.04em; transform: translateY(0); }
+    }
+
+    .pov-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--amber);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .pov-tag::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 12px var(--amber);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.35); opacity: 0.55; }
+    }
+
+    .lede {
+      font-size: 1.2rem;
+      line-height: 1.55;
+      max-width: 62ch;
+      color: #d7e8f7;
+      margin: 0 0 22px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .panel h3 {
+      font-family: var(--font-display);
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .panel p, .panel li {
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0 0 8px;
+    }
+    .panel ul { padding-left: 1.1rem; margin: 0; }
+
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .chip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+    }
+    .chip.a2a { color: var(--a2a); border-color: rgba(61,224,197,0.4); }
+    .chip.mcp { color: var(--mcp); border-color: rgba(255,200,87,0.4); }
+    .chip.x402 { color: var(--x402); border-color: rgba(255,107,74,0.4); }
+    .chip.e8004 { color: var(--e8004); border-color: rgba(200,245,66,0.4); }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+    .layer {
+      position: relative;
+      border-radius: 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      cursor: pointer;
+      transform-origin: center;
+      transition: transform 220ms ease, border-color 220ms ease, background 220ms ease, box-shadow 220ms ease;
+      overflow: hidden;
+    }
+    .layer::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.08) 50%, transparent 70%);
+      transform: translateX(-120%);
+      transition: transform 700ms ease;
+    }
+    .layer:hover::after, .layer.on::after { transform: translateX(120%); }
+    .layer:hover, .layer.on {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    }
+    .layer .name {
+      font-family: var(--font-display);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .layer .desc { color: var(--muted); font-size: 0.92rem; }
+    .layer.e8004 { background: linear-gradient(135deg, rgba(200,245,66,0.16), rgba(200,245,66,0.04)); border-color: rgba(200,245,66,0.35); }
+    .layer.a2a { background: linear-gradient(135deg, rgba(61,224,197,0.16), rgba(61,224,197,0.04)); border-color: rgba(61,224,197,0.35); }
+    .layer.mcp { background: linear-gradient(135deg, rgba(255,200,87,0.16), rgba(255,200,87,0.04)); border-color: rgba(255,200,87,0.35); }
+    .layer.x402 { background: linear-gradient(135deg, rgba(255,107,74,0.16), rgba(255,107,74,0.04)); border-color: rgba(255,107,74,0.35); }
+
+    .layer-detail {
+      margin-top: 12px;
+      min-height: 84px;
+      font-size: 0.98rem;
+      color: #d7e8f7;
+      animation: fadeUp 280ms ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    table.compare {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    table.compare th, table.compare td {
+      border-bottom: 1px solid var(--line);
+      padding: 12px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    table.compare th {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--text);
+    }
+    table.compare td { color: var(--muted); }
+    table.compare tr { transition: background 180ms ease; }
+    table.compare tr:hover { background: rgba(255,255,255,0.03); }
+    table.compare tr.hl-a2a { background: rgba(61,224,197,0.08); }
+    table.compare tr.hl-mcp { background: rgba(255,200,87,0.08); }
+    table.compare tr.hl-x402 { background: rgba(255,107,74,0.08); }
+
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .filter-btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+    .filter-btn:hover { transform: translateY(-1px); }
+    .filter-btn.on { border-color: var(--lime); background: rgba(200,245,66,0.12); color: var(--lime); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .flow-step {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      position: relative;
+      min-height: 110px;
+      animation: stepIn 500ms ease both;
+    }
+    .flow-step:nth-child(2) { animation-delay: 80ms; }
+    .flow-step:nth-child(3) { animation-delay: 160ms; }
+    .flow-step:nth-child(4) { animation-delay: 240ms; }
+    .flow-step:nth-child(5) { animation-delay: 320ms; }
+    @keyframes stepIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .flow-step .n {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--cyan);
+      margin-bottom: 6px;
+    }
+    .flow-step strong {
+      display: block;
+      font-family: var(--font-display);
+      margin-bottom: 6px;
+    }
+    .flow-step span { color: var(--muted); font-size: 0.88rem; line-height: 1.35; display: block; }
+
+    .quiz {
+      display: grid;
+      gap: 10px;
+    }
+    .quiz button {
+      appearance: none;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+    .quiz button:hover { transform: translateX(3px); border-color: rgba(200,245,66,0.4); }
+    .quiz button.correct {
+      border-color: rgba(200,245,66,0.7);
+      background: rgba(200,245,66,0.12);
+    }
+    .quiz button.wrong {
+      border-color: rgba(255,107,74,0.7);
+      background: rgba(255,107,74,0.12);
+    }
+    .quiz-feedback {
+      min-height: 1.4em;
+      color: var(--lime);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .scenario {
+      display: grid;
+      gap: 10px;
+    }
+    .scenario label {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease;
+    }
+    .scenario label:hover, .scenario label:has(input:checked) {
+      border-color: rgba(61,224,197,0.5);
+      background: rgba(61,224,197,0.08);
+    }
+    .scenario input { margin-top: 3px; accent-color: var(--cyan); }
+    .scenario-out {
+      margin-top: 8px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px dashed rgba(200,245,66,0.4);
+      background: rgba(200,245,66,0.06);
+      color: #eaf7c8;
+      line-height: 1.5;
+      min-height: 72px;
+    }
+
+    .code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre;
+      overflow: auto;
+      background: rgba(0,0,0,0.28);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      color: #d7f7ef;
+    }
+
+    .meter {
+      display: grid;
+      gap: 10px;
+    }
+    .meter-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 48px;
+      gap: 10px;
+      align-items: center;
+    }
+    .meter-row span:first-child {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .bar {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+    .bar > i {
+      display: block;
+      height: 100%;
+      width: var(--w, 40%);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--c, var(--cyan)), transparent);
+      animation: fillBar 1.1s cubic-bezier(.2,.8,.2,1) both;
+    }
+    @keyframes fillBar {
+      from { width: 0; }
+      to { width: var(--w, 40%); }
+    }
+    .meter-row span:last-child {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text);
+      text-align: right;
+    }
+
+    .nav-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 28px 18px;
+      border-top: 1px solid var(--line);
+      background: rgba(4, 14, 22, 0.35);
+      backdrop-filter: blur(10px);
+    }
+    .nav-btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      color: var(--text);
+      border-radius: 12px;
+      padding: 12px 16px;
+      min-width: 120px;
+      cursor: pointer;
+      font-family: var(--font-display);
+      font-weight: 700;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+    .nav-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      border-color: rgba(200,245,66,0.45);
+    }
+    .nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .nav-btn.primary {
+      background: linear-gradient(135deg, rgba(200,245,66,0.95), rgba(61,224,197,0.85));
+      color: #07131f;
+      border-color: transparent;
+    }
+    .center-meta {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .callout {
+      border-left: 3px solid var(--lime);
+      padding: 10px 14px;
+      background: rgba(200,245,66,0.06);
+      border-radius: 0 12px 12px 0;
+      color: #eaf7c8;
+      margin: 12px 0;
+      line-height: 1.45;
+    }
+
+    .split-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .good, .bad {
+      border-radius: 14px;
+      padding: 14px;
+      border: 1px solid var(--line);
+    }
+    .good { background: rgba(61,224,197,0.08); }
+    .bad { background: rgba(255,107,74,0.08); }
+    .good h4, .bad h4 {
+      margin: 0 0 8px;
+      font-family: var(--font-display);
+    }
+    .good h4 { color: var(--cyan); }
+    .bad h4 { color: var(--coral); }
+
+    .timeline {
+      position: relative;
+      padding-left: 18px;
+    }
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 4px;
+      bottom: 4px;
+      width: 2px;
+      background: linear-gradient(var(--cyan), var(--lime), var(--coral));
+    }
+    .timeline .item {
+      position: relative;
+      margin-bottom: 14px;
+      padding-left: 12px;
+    }
+    .timeline .item::before {
+      content: "";
+      position: absolute;
+      left: -16px;
+      top: 6px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 0 4px rgba(200,245,66,0.15);
+    }
+    .timeline strong {
+      display: block;
+      font-family: var(--font-display);
+      margin-bottom: 4px;
+    }
+
+    .mobile-toggle {
+      display: none;
+      appearance: none;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 980px) {
+      body { overflow: auto; }
+      .shell { grid-template-columns: 1fr; height: auto; min-height: 100%; }
+      aside {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        max-height: none;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .pov-list { display: none; max-height: 50vh; }
+      aside.open .pov-list { display: flex; }
+      .mobile-toggle { display: inline-flex; margin-bottom: 10px; }
+      .grid-2, .grid-3, .flow, .split-list { grid-template-columns: 1fr; }
+      .stage { min-height: 70vh; }
+      .slide { position: relative; inset: auto; display: none; }
+      .slide.active { display: block; }
+      .keys { display: none; }
+      .topbar { padding: 12px 16px 8px; }
+      .slide { padding: 8px 16px 20px; }
+      .nav-footer { padding: 12px 16px 16px; }
+      .hero-mark { font-size: clamp(2rem, 9vw, 3rem); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+      body::before { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="orb a" aria-hidden="true"></div>
+  <div class="orb b" aria-hidden="true"></div>
+  <div class="orb c" aria-hidden="true"></div>
+
+  <div class="shell">
+    <aside id="sidebar">
+      <button class="mobile-toggle" id="mobileToggle" type="button">Show all 22 POVs</button>
+      <div class="brand">
+        <div class="brand-kicker">Interactive walkthrough</div>
+        <h1>ERC-8004 Complements</h1>
+        <p>22 points of view on how Trustless Agents fit with A2A, MCP, and x402 — not replace them.</p>
+      </div>
+      <nav class="pov-list" id="povList" aria-label="Points of view"></nav>
+    </aside>
+
+    <main>
+      <div class="topbar">
+        <div class="progress-wrap">
+          <div class="progress-label">
+            <span id="progressText">POV 1 / 22</span>
+            <span>complement · don't compete</span>
+          </div>
+          <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+        </div>
+        <div class="keys"><kbd>←</kbd> <kbd>→</kbd> navigate · <kbd>1</kbd>–<kbd>4</kbd> jump protocols</div>
+      </div>
+
+      <div class="stage" id="stage"></div>
+
+      <div class="nav-footer">
+        <button class="nav-btn" id="prevBtn" type="button">← Prev</button>
+        <div class="center-meta" id="footerMeta">Stack Architect</div>
+        <button class="nav-btn primary" id="nextBtn" type="button">Next →</button>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const POVS = [
+      {
+        id: "stack",
+        title: "Stack Architect",
+        subtitle: "Layers, not rivals",
+        tag: "POV 01 · Systems",
+        html: `
+          <div class="pov-tag">POV 01 · Systems thinker</div>
+          <h2 class="hero-mark">ERC-8004 Complements</h2>
+          <p class="lede">ERC-8004 does not replace A2A, MCP, or x402. It is the on-chain discovery and trust layer that makes those protocols safer to use between strangers.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>Click a layer</h3>
+              <div class="stack" id="stackLayers">
+                <div class="layer e8004 on" data-key="e8004"><div class="name">ERC-8004</div><div class="desc">Identity · Reputation · Validation</div></div>
+                <div class="layer a2a" data-key="a2a"><div class="name">A2A</div><div class="desc">Auth · messaging · task orchestration</div></div>
+                <div class="layer mcp" data-key="mcp"><div class="name">MCP</div><div class="desc">Tools · prompts · resources</div></div>
+                <div class="layer x402" data-key="x402"><div class="name">x402</div><div class="desc">HTTP-native micropayments</div></div>
+              </div>
+              <div class="layer-detail" id="stackDetail">ERC-8004 answers: Who is this agent? Can I find them? What trust signals exist?</div>
+            </div>
+            <div class="panel">
+              <h3>The complement rule</h3>
+              <p>Each protocol owns a different question:</p>
+              <ul>
+                <li><strong style="color:var(--e8004)">Who / trust?</strong> → ERC-8004</li>
+                <li><strong style="color:var(--a2a)">How do we talk?</strong> → A2A</li>
+                <li><strong style="color:var(--mcp)">What can you do?</strong> → MCP</li>
+                <li><strong style="color:var(--x402)">How do we pay?</strong> → x402</li>
+              </ul>
+              <div class="callout">Think Lego bricks, not competing OS wars. An agent can wear all four at once.</div>
+            </div>
+          </div>`
+      },
+      {
+        id: "skeptic",
+        title: "Skeptical Engineer",
+        subtitle: "Why another standard?",
+        tag: "POV 02 · Critique",
+        html: `
+          <div class="pov-tag">POV 02 · Skeptical engineer</div>
+          <h2 class="hero-mark">Why not just use A2A?</h2>
+          <p class="lede">A2A already has agent cards and skills. MCP already lists tools. So what gap does ERC-8004 fill?</p>
+          <div class="split-list">
+            <div class="good">
+              <h4>What off-chain protocols already do well</h4>
+              <ul>
+                <li>Fast iteration on message formats</li>
+                <li>Rich capability descriptions</li>
+                <li>Per-request UX and transport details</li>
+              </ul>
+            </div>
+            <div class="bad">
+              <h4>What they don't guarantee alone</h4>
+              <ul>
+                <li>Portable identity across hosts</li>
+                <li>Shared reputation ledger</li>
+                <li>Independent validation attestations</li>
+                <li>Censorship-resistant discovery root</li>
+              </ul>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:14px">
+            <h3>The skeptic's conclusion</h3>
+            <p>ERC-8004 is deliberately thin. It treats the chain as a neutral phone book + scoreboard, and leaves runtime, messaging, and payments to specialized protocols.</p>
+            <div class="chip-row">
+              <span class="chip e8004">thin on-chain</span>
+              <span class="chip a2a">fat off-chain messaging</span>
+              <span class="chip mcp">fat capability surface</span>
+              <span class="chip x402">fat payment UX</span>
+            </div>
+          </div>`
+      },
+      {
+        id: "discovery",
+        title: "Discovery Cartographer",
+        subtitle: "Finding agents that exist",
+        tag: "POV 03 · Discovery",
+        html: `
+          <div class="pov-tag">POV 03 · Discovery cartographer</div>
+          <h2 class="hero-mark">Find first. Talk second.</h2>
+          <p class="lede">Before A2A messaging or MCP tool calls matter, you need a canonical way to discover who exists and where their endpoints live.</p>
+          <div class="flow">
+            <div class="flow-step"><div class="n">01</div><strong>Mint identity</strong><span>Agent becomes an ERC-721 NFT with agentURI.</span></div>
+            <div class="flow-step"><div class="n">02</div><strong>Publish file</strong><span>Registration JSON lists MCP/A2A URLs, skills, x402.</span></div>
+            <div class="flow-step"><div class="n">03</div><strong>Index & search</strong><span>Explorers/indexers surface agents by skill/domain.</span></div>
+            <div class="flow-step"><div class="n">04</div><strong>Resolve endpoints</strong><span>Client opens A2A/MCP URLs from the registration.</span></div>
+            <div class="flow-step"><div class="n">05</div><strong>Trust glance</strong><span>Reputation + validation inform the first contact.</span></div>
+          </div>
+          <div class="panel" style="margin-top:16px">
+            <h3>Discovery without ERC-8004</h3>
+            <p>You rely on private directories, Twitter links, or host-specific listings. With ERC-8004, the registration file becomes a portable, chain-anchored map pin that can advertise A2A, MCP, and payment readiness in one place.</p>
+          </div>`
+      },
+      {
+        id: "a2a",
+        title: "A2A Messenger",
+        subtitle: "Talk after you trust",
+        tag: "POV 04 · A2A",
+        html: `
+          <div class="pov-tag">POV 04 · A2A messenger</div>
+          <h2 class="hero-mark">A2A handles the conversation</h2>
+          <p class="lede">Agent-to-Agent covers authentication, messaging, and task orchestration. ERC-8004 adds the missing discovery and trust layer around those conversations.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>A2A owns</h3>
+              <ul>
+                <li>Agent Card metadata at the A2A URL</li>
+                <li>Skills and capability negotiation</li>
+                <li>Context / task IDs for threading work</li>
+                <li>Message exchange patterns</li>
+              </ul>
+              <div class="code">{
+  "services": {
+    "a2a": { "url": "https://agent.example.com/a2a" }
+  }</div>
+            </div>
+            <div class="panel">
+              <h3>ERC-8004's role</h3>
+              <ul>
+                <li>Advertise the A2A endpoint in registration</li>
+                <li>Bind that endpoint to a portable agent ID</li>
+                <li>Attach reputation after tasks complete</li>
+                <li>Optional validation before high-stakes tasks</li>
+              </ul>
+              <div class="callout">A2A is the radio. ERC-8004 is the callsign + reputation dossier.</div>
+            </div>
+          </div>`
+      },
+      {
+        id: "mcp",
+        title: "MCP Cataloguer",
+        subtitle: "Capabilities as inventory",
+        tag: "POV 05 · MCP",
+        html: `
+          <div class="pov-tag">POV 05 · MCP cataloguer</div>
+          <h2 class="hero-mark">MCP lists what you can do</h2>
+          <p class="lede">Model Context Protocol lets servers expose tools, prompts, and resources. ERC-8004 lets agents advertise those MCP endpoints so strangers can find the right capability surface.</p>
+          <div class="grid-3">
+            <div class="panel"><h3 style="color:var(--mcp)">Tools</h3><p>Executable functions an agent can perform for a client.</p></div>
+            <div class="panel"><h3 style="color:var(--mcp)">Prompts</h3><p>Reusable prompt templates for structured tasks.</p></div>
+            <div class="panel"><h3 style="color:var(--mcp)">Resources</h3><p>Data surfaces the agent can expose or stream.</p></div>
+          </div>
+          <div class="panel" style="margin-top:14px">
+            <h3>Registration advertisement</h3>
+            <div class="code">{
+  "services": {
+    "mcp": { "url": "https://agent.example.com/mcp" }
+  }</div>
+            <p style="margin-top:12px">MCP answers “what operations exist?” ERC-8004 answers “which agent owns this MCP server, and should I trust it enough to connect?”</p>
+          </div>`
+      },
+      {
+        id: "x402",
+        title: "x402 Cashier",
+        subtitle: "Pay per request",
+        tag: "POV 06 · x402",
+        html: `
+          <div class="pov-tag">POV 06 · x402 cashier</div>
+          <h2 class="hero-mark">x402 moves the money</h2>
+          <p class="lede">x402 is HTTP-native micropayments between agents. ERC-8004 does not price or settle payments — it can advertise that an agent is payment-ready, then let x402 do the charge.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>x402 flow (conceptually)</h3>
+              <ol style="color:var(--muted); line-height:1.55; padding-left:1.1rem; margin:0">
+                <li>Client hits a paid endpoint</li>
+                <li>Server responds with HTTP 402 + payment requirements</li>
+                <li>Client pays and retries with proof</li>
+                <li>Server delivers the agent result</li>
+              </ol>
+            </div>
+            <div class="panel">
+              <h3>Readiness checklist</h3>
+              <ul>
+                <li><code>x402: true</code> in registration</li>
+                <li>Agent wallet set on-chain</li>
+                <li><code>active: true</code></li>
+                <li>At least one reachable endpoint</li>
+              </ul>
+              <div class="callout">Payments are deliberately out of ERC-8004's scope so pricing and business models can evolve independently.</div>
+            </div>
+          </div>`
+      },
+      {
+        id: "identity",
+        title: "Identity NFT Holder",
+        subtitle: "Portable agent presence",
+        tag: "POV 07 · Identity",
+        html: `
+          <div class="pov-tag">POV 07 · Identity NFT holder</div>
+          <h2 class="hero-mark">An agent you can point at</h2>
+          <p class="lede">Identity Registry mints each agent as an ERC-721. That NFT's <em>agentURI</em> resolves to the registration file where A2A/MCP/x402 details live.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>Why NFT identity helps other standards</h3>
+              <ul>
+                <li>Endpoints can move hosts without losing identity</li>
+                <li>Ownership transfer is a known ERC-721 action</li>
+                <li>One ID can advertise many service URLs</li>
+                <li>Explorers can index a stable primary key</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <h3>ID shapes</h3>
+              <div class="code">short:  8453:17
+full:   eip155:8453:{registry}:17</div>
+              <p style="margin-top:12px">A2A and MCP URLs are pointers. The ERC-8004 ID is the subject those pointers belong to.</p>
+            </div>
+          </div>`
+      },
+      {
+        id: "reputation",
+        title: "Reputation Scorekeeper",
+        subtitle: "Signals after interaction",
+        tag: "POV 08 · Reputation",
+        html: `
+          <div class="pov-tag">POV 08 · Reputation scorekeeper</div>
+          <h2 class="hero-mark">Trust is earned after use</h2>
+          <p class="lede">After an A2A task or MCP tool call, clients can leave on-chain feedback. That is how discovery becomes safer over time without baking scoring into A2A or MCP themselves.</p>
+          <div class="panel">
+            <h3>Live feel of signal weight</h3>
+            <div class="meter" id="repMeter">
+              <div class="meter-row"><span>reachability</span><div class="bar"><i style="--w:86%;--c:var(--cyan)"></i></div><span>86</span></div>
+              <div class="meter-row"><span>success</span><div class="bar"><i style="--w:74%;--c:var(--lime)"></i></div><span>74</span></div>
+              <div class="meter-row"><span>latency</span><div class="bar"><i style="--w:61%;--c:var(--amber)"></i></div><span>61</span></div>
+              <div class="meter-row"><span>disputes</span><div class="bar"><i style="--w:18%;--c:var(--coral)"></i></div><span>-18</span></div>
+            </div>
+            <p style="margin-top:12px">Feedback can be signed values with tags like <code>uptime</code>, <code>successRate</code>, or <code>starred</code> — and optional IPFS payloads for detail.</p>
+          </div>`
+      },
+      {
+        id: "validation",
+        title: "Validation Attestor",
+        subtitle: "Third-party checks",
+        tag: "POV 09 · Validation",
+        html: `
+          <div class="pov-tag">POV 09 · Validation attestor</div>
+          <h2 class="hero-mark">When reviews aren't enough</h2>
+          <p class="lede">Reputation is crowd signal. Validation is independent attestation — TEE proofs, staking checkers, auditors — with a 0–100 score response.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>Use when</h3>
+              <ul>
+                <li>An MCP tool can move funds or private data</li>
+                <li>An A2A workflow is high-stakes</li>
+                <li>An x402 endpoint sells expensive compute</li>
+                <li>Enterprises need stronger assurance than stars</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <h3>Complement, again</h3>
+              <p>A2A/MCP/x402 do not need to invent their own attestation registries. They can gate access using ERC-8004 validation results as an external trust oracle.</p>
+              <div class="callout">Request → validator proves → score lands on-chain → clients decide.</div>
+            </div>
+          </div>`
+      },
+      {
+        id: "registration",
+        title: "Registration Author",
+        subtitle: "One JSON, many protocols",
+        tag: "POV 10 · Schema",
+        html: `
+          <div class="pov-tag">POV 10 · Registration file author</div>
+          <h2 class="hero-mark">One file, three doorways</h2>
+          <p class="lede">The registration file is where complementarity becomes concrete: the same document can advertise A2A, MCP, skills, and x402 readiness under one identity.</p>
+          <div class="panel">
+            <div class="code">{
+  "name": "Research Courier",
+  "description": "Fetches sources and drafts briefs",
+  "active": true,
+  "x402": true,
+  "services": {
+    "a2a": { "url": "https://courier.example/a2a" },
+    "mcp": { "url": "https://courier.example/mcp" }
+  },
+  "skills": ["research", "summarization"],
+  "domains": ["knowledge-work"]</div>
+            <p style="margin-top:12px">Authors should treat endpoints as living links: keep them reachable, keep <code>active</code> honest, and update when hosts change.</p>
+          </div>`
+      },
+      {
+        id: "marketplace",
+        title: "Marketplace Builder",
+        subtitle: "Compose a storefront",
+        tag: "POV 11 · Product",
+        html: `
+          <div class="pov-tag">POV 11 · Marketplace builder</div>
+          <h2 class="hero-mark">Build the aisle, not the roads</h2>
+          <p class="lede">A marketplace can index ERC-8004 identities, preview MCP tools, deep-link into A2A sessions, and show x402 pricing — without forking those protocols.</p>
+          <div class="grid-3">
+            <div class="panel"><h3>Browse</h3><p>Search ERC-8004 agents by skill, domain, trust label.</p></div>
+            <div class="panel"><h3>Inspect</h3><p>Show MCP tool list + A2A agent card + payment flag.</p></div>
+            <div class="panel"><h3>Transact</h3><p>Start A2A task; settle via x402; write reputation after.</p></div>
+          </div>
+          <div class="callout">Your product differentiation is curation and UX. The protocols stay interoperable underneath.</div>`
+      },
+      {
+        id: "security",
+        title: "Security Auditor",
+        subtitle: "Trust boundaries",
+        tag: "POV 12 · Security",
+        html: `
+          <div class="pov-tag">POV 12 · Security auditor</div>
+          <h2 class="hero-mark">On-chain text is untrusted</h2>
+          <p class="lede">Complementary standards create more surfaces — which is good for modularity and dangerous if you conflate “registered” with “safe.”</p>
+          <div class="split-list">
+            <div class="good">
+              <h4>Healthy assumptions</h4>
+              <ul>
+                <li>Identity proves ownership of an NFT, not honesty</li>
+                <li>Reputation can be gamed; look at volume + tags</li>
+                <li>MCP tools need least privilege</li>
+                <li>x402 proofs must be verified, not trusted by vibe</li>
+              </ul>
+            </div>
+            <div class="bad">
+              <h4>Failure modes</h4>
+              <ul>
+                <li>Prompt injection inside agent descriptions</li>
+                <li>Stale endpoints still marked active</li>
+                <li>Paying before validation on high-value calls</li>
+                <li>Treating A2A auth as global reputation</li>
+              </ul>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:14px">
+            <h3>Auditor mantra</h3>
+            <p>ERC-8004 narrows uncertainty. It does not eliminate it. Render agent-authored strings as data, never as instructions.</p>
+          </div>`
+      },
+      {
+        id: "orchestrator",
+        title: "Swarm Orchestrator",
+        subtitle: "Multi-agent composition",
+        tag: "POV 13 · Orchestration",
+        html: `
+          <div class="pov-tag">POV 13 · Swarm orchestrator</div>
+          <h2 class="hero-mark">Hire a crew, not one hero</h2>
+          <p class="lede">Orchestrators discover specialists via ERC-8004, talk via A2A, call tools via MCP, and settle piecework via x402.</p>
+          <div class="flow">
+            <div class="flow-step"><div class="n">plan</div><strong>Decompose</strong><span>Break goal into skills/domains.</span></div>
+            <div class="flow-step"><div class="n">find</div><strong>Discover</strong><span>Query ERC-8004 / indexers.</span></div>
+            <div class="flow-step"><div class="n">vet</div><strong>Filter</strong><span>Reputation + validation gates.</span></div>
+            <div class="flow-step"><div class="n">run</div><strong>Coordinate</strong><span>A2A tasks + MCP tools.</span></div>
+            <div class="flow-step"><div class="n">pay</div><strong>Settle</strong><span>x402 per successful step.</span></div>
+          </div>
+          <div class="panel" style="margin-top:16px">
+            <h3>Why separation helps swarms</h3>
+            <p>If payments lived inside A2A, or identity lived inside MCP, swapping one specialist mid-flight would be painful. Clean boundaries keep the crew remixable.</p>
+          </div>`
+      },
+      {
+        id: "wallet",
+        title: "Wallet Payer",
+        subtitle: "Human in the loop",
+        tag: "POV 14 · User",
+        html: `
+          <div class="pov-tag">POV 14 · Wallet payer</div>
+          <h2 class="hero-mark">You still approve value</h2>
+          <p class="lede">From a user's seat: ERC-8004 helps you pick who to talk to; A2A/MCP define the work; x402 asks your wallet for the cents (or dollars) to continue.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>Ideal UX sequence</h3>
+              <ol style="color:var(--muted);line-height:1.55;padding-left:1.1rem;margin:0">
+                <li>See agent identity + trust label</li>
+                <li>Preview MCP tools / A2A skills</li>
+                <li>Understand x402 price before pay</li>
+                <li>Approve in wallet</li>
+                <li>Optionally leave feedback</li>
+              </ol>
+            </div>
+            <div class="panel">
+              <h3>What users should never need to know</h3>
+              <p>ABI details, registry addresses, or which EIP number invented which registry — unless they want to. The complementary stack should feel like “find → try → pay → rate.”</p>
+            </div>
+          </div>`
+      },
+      {
+        id: "enterprise",
+        title: "Enterprise Buyer",
+        subtitle: "Procurement lens",
+        tag: "POV 15 · Enterprise",
+        html: `
+          <div class="pov-tag">POV 15 · Enterprise buyer</div>
+          <h2 class="hero-mark">Standards reduce vendor lock-in</h2>
+          <p class="lede">Enterprises care about replaceability. Complementary standards mean you can keep A2A orchestration while swapping payment rails or rediscovering agents on another indexer.</p>
+          <div class="grid-3">
+            <div class="panel"><h3>Identity portability</h3><p>Agents aren't trapped in one SaaS directory.</p></div>
+            <div class="panel"><h3>Audit hooks</h3><p>Validation registry supports third-party checks.</p></div>
+            <div class="panel"><h3>Spend controls</h3><p>x402 keeps pricing explicit at the HTTP edge.</p></div>
+          </div>
+          <div class="callout">Buy capability, not a proprietary “agent OS” that reinvents identity, chat, tools, and billing in one silo.</div>`
+      },
+      {
+        id: "historian",
+        title: "Protocol Historian",
+        subtitle: "How the stack formed",
+        tag: "POV 16 · History",
+        html: `
+          <div class="pov-tag">POV 16 · Protocol historian</div>
+          <h2 class="hero-mark">Specialization is the pattern</h2>
+          <p class="lede">Internet history repeats: identity, transport, application semantics, and payments rarely stay forever glued into one spec.</p>
+          <div class="panel">
+            <div class="timeline">
+              <div class="item"><strong>Capability surfaces mature</strong><span style="color:var(--muted)">MCP-style tool/resource catalogs make agent abilities machine-readable.</span></div>
+              <div class="item"><strong>Agent messaging matures</strong><span style="color:var(--muted)">A2A-style protocols standardize how agents assign and track work.</span></div>
+              <div class="item"><strong>Micropayments return to HTTP</strong><span style="color:var(--muted)">x402 revives status 402 as a practical paywall for machine clients.</span></div>
+              <div class="item"><strong>Trust needs a neutral root</strong><span style="color:var(--muted)">ERC-8004 supplies portable identity + reputation + validation on EVM chains.</span></div>
+            </div>
+          </div>`
+      },
+      {
+        id: "failures",
+        title: "Failure Detective",
+        subtitle: "What breaks when",
+        tag: "POV 17 · Reliability",
+        html: `
+          <div class="pov-tag">POV 17 · Failure detective</div>
+          <h2 class="hero-mark">Break one layer at a time</h2>
+          <p class="lede">Complementary stacks fail gracefully when boundaries are clear. Toggle a failure mode to see which protocol is at fault — and which still works.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <div class="scenario" id="failScenario">
+                <label><input type="radio" name="fail" value="identity" checked /><span><strong>Identity URI 404s</strong><br/>Registration file unreachable.</span></label>
+                <label><input type="radio" name="fail" value="a2a" /><span><strong>A2A endpoint down</strong><br/>Messaging host offline.</span></label>
+                <label><input type="radio" name="fail" value="mcp" /><span><strong>MCP tools empty</strong><br/>Server up but catalog broken.</span></label>
+                <label><input type="radio" name="fail" value="x402" /><span><strong>Payment verify fails</strong><br/>402 loop never clears.</span></label>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Diagnosis</h3>
+              <div class="scenario-out" id="failOut"></div>
+            </div>
+          </div>`
+      },
+      {
+        id: "ux",
+        title: "UX Designer",
+        subtitle: "Make the stack feel simple",
+        tag: "POV 18 · Design",
+        html: `
+          <div class="pov-tag">POV 18 · UX designer</div>
+          <h2 class="hero-mark">Hide the alphabet soup</h2>
+          <p class="lede">Users should feel continuity: discover an agent, understand capabilities, approve payment, get work, leave a rating. The four names are implementation details.</p>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>UI mapping</h3>
+              <ul>
+                <li><strong>Profile header</strong> ← ERC-8004 identity + trust</li>
+                <li><strong>Skills / actions</strong> ← A2A card + MCP tools</li>
+                <li><strong>Price chip</strong> ← x402 requirements</li>
+                <li><strong>Aftercare</strong> ← reputation feedback</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <h3>Motion with meaning</h3>
+              <p>Animate trust label changes, payment confirmation, and task state — not random glow. Protocol boundaries can appear as progressive disclosure for power users.</p>
+              <div class="chip-row">
+                <span class="chip e8004">trust first</span>
+                <span class="chip mcp">capability second</span>
+                <span class="chip x402">price before send</span>
+              </div>
+            </div>
+          </div>`
+      },
+      {
+        id: "maintainer",
+        title: "OSS Maintainer",
+        subtitle: "Keep scopes tight",
+        tag: "POV 19 · Governance",
+        html: `
+          <div class="pov-tag">POV 19 · Open-source maintainer</div>
+          <h2 class="hero-mark">Don't swallow the neighbors</h2>
+          <p class="lede">The healthiest outcome is boring: each spec stays narrow, documents extension points, and refuses feature envy.</p>
+          <div class="split-list">
+            <div class="good">
+              <h4>Good neighbor behavior</h4>
+              <ul>
+                <li>ERC-8004 links out to service URLs</li>
+                <li>A2A/MCP remain transport/capability authorities</li>
+                <li>x402 remains payment authority</li>
+                <li>Shared examples show combined use</li>
+              </ul>
+            </div>
+            <div class="bad">
+              <h4>Scope creep traps</h4>
+              <ul>
+                <li>Putting chat semantics on-chain</li>
+                <li>Encoding tool schemas into the NFT</li>
+                <li>Hardcoding one payment rail into identity</li>
+                <li>Forking “compatible enough” dialects</li>
+              </ul>
+            </div>
+          </div>`
+      },
+      {
+        id: "nomad",
+        title: "Cross-Chain Nomad",
+        subtitle: "IDs across networks",
+        tag: "POV 20 · Multi-chain",
+        html: `
+          <div class="pov-tag">POV 20 · Cross-chain nomad</div>
+          <h2 class="hero-mark">Same pattern, many chains</h2>
+          <p class="lede">ERC-8004 identities are chain-scoped (<code>chainId:tokenId</code>). A2A/MCP endpoints are just URLs. x402 can settle on whatever rails the payment payload specifies.</p>
+          <div class="panel">
+            <h3>Practical implication</h3>
+            <p>An agent on Base can still host MCP in any cloud region and speak A2A to a client that discovered them through a Sepolia test registration during development. The complementary design lets chain choice and runtime hosting evolve separately.</p>
+            <div class="chip-row">
+              <span class="chip e8004">chain-native identity</span>
+              <span class="chip a2a">host-native messaging</span>
+              <span class="chip mcp">host-native tools</span>
+              <span class="chip x402">rail-native payments</span>
+            </div>
+          </div>`
+      },
+      {
+        id: "compare",
+        title: "Comparison Scientist",
+        subtitle: "Interactive matrix",
+        tag: "POV 21 · Compare",
+        html: `
+          <div class="pov-tag">POV 21 · Comparison scientist</div>
+          <h2 class="hero-mark">Side-by-side truth table</h2>
+          <p class="lede">Filter the classic complementarity matrix. This is the whole lesson in one interactive surface.</p>
+          <div class="panel">
+            <div class="filters" id="compareFilters">
+              <button class="filter-btn on" data-f="all" type="button">All</button>
+              <button class="filter-btn" data-f="a2a" type="button">A2A</button>
+              <button class="filter-btn" data-f="mcp" type="button">MCP</button>
+              <button class="filter-btn" data-f="x402" type="button">x402</button>
+            </div>
+            <table class="compare" id="compareTable">
+              <thead>
+                <tr><th>Protocol</th><th>What it does</th><th>ERC-8004's role</th></tr>
+              </thead>
+              <tbody>
+                <tr data-proto="a2a" class="hl-a2a">
+                  <td><strong style="color:var(--a2a)">A2A</strong></td>
+                  <td>Agent authentication, messaging, task orchestration</td>
+                  <td>Adds discovery and trust layer</td>
+                </tr>
+                <tr data-proto="mcp" class="hl-mcp">
+                  <td><strong style="color:var(--mcp)">MCP</strong></td>
+                  <td>Servers list capabilities (tools, prompts, resources)</td>
+                  <td>Agents advertise MCP endpoints in registration</td>
+                </tr>
+                <tr data-proto="x402" class="hl-x402">
+                  <td><strong style="color:var(--x402)">x402</strong></td>
+                  <td>HTTP-native micropayments between agents</td>
+                  <td>Agents can signal payment readiness; pay via HTTP/JSON flows</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>`
+      },
+      {
+        id: "future",
+        title: "Future Scenarist",
+        subtitle: "The combined loop",
+        tag: "POV 22 · Synthesis",
+        html: `
+          <div class="pov-tag">POV 22 · Future scenarist</div>
+          <h2 class="hero-mark">The loop that sticks</h2>
+          <p class="lede">In a mature agent economy, no single protocol “wins.” The winning pattern is a repeatable loop where each standard stays in its lane.</p>
+          <div class="panel" style="margin-bottom:14px">
+            <div class="flow">
+              <div class="flow-step"><div class="n">8004</div><strong>Discover</strong><span>Find agent ID + endpoints + trust.</span></div>
+              <div class="flow-step"><div class="n">MCP</div><strong>Inspect</strong><span>List tools/prompts/resources.</span></div>
+              <div class="flow-step"><div class="n">A2A</div><strong>Assign</strong><span>Open a task thread and negotiate.</span></div>
+              <div class="flow-step"><div class="n">x402</div><strong>Pay</strong><span>Settle the HTTP 402 challenge.</span></div>
+              <div class="flow-step"><div class="n">8004</div><strong>Remember</strong><span>Write reputation / seek validation.</span></div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="panel">
+              <h3>Quick check</h3>
+              <p>Which statement is true?</p>
+              <div class="quiz" id="finalQuiz">
+                <button type="button" data-ok="0">ERC-8004 replaces MCP for tool listing</button>
+                <button type="button" data-ok="1">ERC-8004 complements A2A/MCP/x402 with discovery & trust</button>
+                <button type="button" data-ok="0">x402 is how agents mint identity NFTs</button>
+              </div>
+              <div class="quiz-feedback" id="quizFeedback"></div>
+            </div>
+            <div class="panel">
+              <h3>Takeaway to keep</h3>
+              <p><strong style="color:var(--e8004)">ERC-8004</strong> = who + trust.<br/>
+              <strong style="color:var(--a2a)">A2A</strong> = how we collaborate.<br/>
+              <strong style="color:var(--mcp)">MCP</strong> = what can be invoked.<br/>
+              <strong style="color:var(--x402)">x402</strong> = how value moves.</p>
+              <div class="callout">If you remember only one sentence: ERC-8004 doesn't replace existing protocols — it complements them.</div>
+            </div>
+          </div>`
+      }
+    ];
+
+    const stackCopy = {
+      e8004: "ERC-8004 answers: Who is this agent? Can I find them? What trust signals exist?",
+      a2a: "A2A answers: How do authenticated agents message and orchestrate tasks?",
+      mcp: "MCP answers: What tools, prompts, and resources can I invoke?",
+      x402: "x402 answers: How does an HTTP client pay for this agent response?"
+    };
+
+    const failCopy = {
+      identity: "Discovery breaks first. Clients may still hit a cached A2A/MCP URL, but newcomers can't verify the canonical registration. Fix the agentURI / hosting.",
+      a2a: "Conversation breaks. Identity and MCP catalog may still be fine; task orchestration fails. Fail over to another agent with similar skills, or wait for the host.",
+      mcp: "Capability inspection breaks. You might still message via A2A, but tool-centric clients should stop. Don't pay for an empty toolbox.",
+      x402: "Settlement breaks. Work may be producible, but paid access loops. Keep unpaid health checks separate from monetized routes."
+    };
+
+    let index = 0;
+    const stage = document.getElementById("stage");
+    const povList = document.getElementById("povList");
+    const progressBar = document.getElementById("progressBar");
+    const progressText = document.getElementById("progressText");
+    const footerMeta = document.getElementById("footerMeta");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+
+    function build() {
+      POVS.forEach((pov, i) => {
+        const btn = document.createElement("button");
+        btn.className = "pov-btn" + (i === 0 ? " active" : "");
+        btn.type = "button";
+        btn.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span class="t">${pov.title}</span><span class="s">${pov.subtitle}</span>`;
+        btn.addEventListener("click", () => go(i));
+        povList.appendChild(btn);
+
+        const slide = document.createElement("section");
+        slide.className = "slide" + (i === 0 ? " active" : "");
+        slide.dataset.i = String(i);
+        slide.innerHTML = pov.html;
+        stage.appendChild(slide);
+      });
+      wireInteractions();
+      sync();
+    }
+
+    function wireInteractions() {
+      const layers = document.getElementById("stackLayers");
+      if (layers) {
+        layers.addEventListener("click", (e) => {
+          const layer = e.target.closest(".layer");
+          if (!layer) return;
+          layers.querySelectorAll(".layer").forEach((l) => l.classList.remove("on"));
+          layer.classList.add("on");
+          const detail = document.getElementById("stackDetail");
+          detail.style.animation = "none";
+          detail.offsetHeight;
+          detail.style.animation = "";
+          detail.textContent = stackCopy[layer.dataset.key];
+        });
+      }
+
+      const fail = document.getElementById("failScenario");
+      const failOut = document.getElementById("failOut");
+      if (fail && failOut) {
+        const update = () => {
+          const v = fail.querySelector('input[name="fail"]:checked').value;
+          failOut.textContent = failCopy[v];
+        };
+        fail.addEventListener("change", update);
+        update();
+      }
+
+      const filters = document.getElementById("compareFilters");
+      const table = document.getElementById("compareTable");
+      if (filters && table) {
+        filters.addEventListener("click", (e) => {
+          const btn = e.target.closest(".filter-btn");
+          if (!btn) return;
+          filters.querySelectorAll(".filter-btn").forEach((b) => b.classList.remove("on"));
+          btn.classList.add("on");
+          const f = btn.dataset.f;
+          table.querySelectorAll("tbody tr").forEach((tr) => {
+            tr.style.display = f === "all" || tr.dataset.proto === f ? "" : "none";
+          });
+        });
+      }
+
+      const quiz = document.getElementById("finalQuiz");
+      const feedback = document.getElementById("quizFeedback");
+      if (quiz && feedback) {
+        quiz.addEventListener("click", (e) => {
+          const btn = e.target.closest("button");
+          if (!btn) return;
+          quiz.querySelectorAll("button").forEach((b) => b.classList.remove("correct", "wrong"));
+          const ok = btn.dataset.ok === "1";
+          btn.classList.add(ok ? "correct" : "wrong");
+          if (ok) {
+            feedback.textContent = "Correct — complementary, not replacement.";
+          } else {
+            feedback.textContent = "Not quite — ERC-8004 adds discovery/trust; it doesn't absorb MCP/A2A/x402 jobs.";
+            const right = quiz.querySelector('button[data-ok="1"]');
+            right.classList.add("correct");
+          }
+        });
+      }
+    }
+
+    function go(i) {
+      index = Math.max(0, Math.min(POVS.length - 1, i));
+      sync();
+    }
+
+    function sync() {
+      document.querySelectorAll(".slide").forEach((s, i) => s.classList.toggle("active", i === index));
+      document.querySelectorAll(".pov-btn").forEach((b, i) => b.classList.toggle("active", i === index));
+      progressBar.style.width = ((index + 1) / POVS.length * 100) + "%";
+      progressText.textContent = `POV ${index + 1} / ${POVS.length}`;
+      footerMeta.textContent = POVS[index].title;
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === POVS.length - 1;
+      const activeBtn = document.querySelector(".pov-btn.active");
+      if (activeBtn) activeBtn.scrollIntoView({ block: "nearest" });
+      // re-trigger title animation
+      const mark = document.querySelector(".slide.active .hero-mark");
+      if (mark) {
+        mark.style.animation = "none";
+        mark.offsetHeight;
+        mark.style.animation = "";
+      }
+    }
+
+    prevBtn.addEventListener("click", () => go(index - 1));
+    nextBtn.addEventListener("click", () => go(index + 1));
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "l") go(index + 1);
+      if (e.key === "ArrowLeft" || e.key === "h") go(index - 1);
+      if (e.key === "1") go(0);
+      if (e.key === "2") go(3); // A2A
+      if (e.key === "3") go(4); // MCP
+      if (e.key === "4") go(5); // x402
+    });
+
+    const mobileToggle = document.getElementById("mobileToggle");
+    const sidebar = document.getElementById("sidebar");
+    mobileToggle.addEventListener("click", () => {
+      sidebar.classList.toggle("open");
+      mobileToggle.textContent = sidebar.classList.contains("open") ? "Hide POV list" : "Show all 22 POVs";
+    });
+
+    build();
+  </script>
+</body>
+</html>

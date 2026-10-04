@@ -26,7 +26,7 @@ import { ACTION_REGISTRY, TOOL_REGISTRY } from "../core/action-registry.js"
 import { saveAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "../core/agent-config.js"
 import type { AgentConfig } from "../core/agent-config.js"
 import { getChainId, getNetworkNameByChainId } from "../core/config.js"
-import { normalizeA2AEndpoint } from "../core/registration-services.js"
+import { isAdvertisableUrl, normalizeA2AEndpoint } from "../core/registration-services.js"
 import type { Skill } from "../actions/types.js"
 
 dotenv.config()
@@ -309,69 +309,60 @@ async function main(): Promise<void> {
   const state = await actionSelectionLoop()
 
   // --- MCP / A2A endpoints (optional — advertised on 8004scan Services) ---
-  const httpsOrLocal = (v: string) =>
-    /^https:\/\/.+/i.test(v) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/.+/i.test(v)
-
-  const mcpFromFlag = getFlag("mcp-endpoint")
-  let mcpEndpoint: string
-  if (mcpFromFlag !== undefined) {
-    mcpEndpoint = mcpFromFlag.trim()
-  } else {
-    const hasCapabilities = state.actions.length > 0 || state.tools.length > 0
-    const mcpResult = await p.text({
-      message: "MCP endpoint (optional — https://…/mcp to advertise tools on 8004scan)",
-      placeholder: "https://your-host/mcp",
-      initialValue: "",
-      validate: (v) => {
-        const t = v?.trim() ?? ""
-        if (!t) return undefined
-        return httpsOrLocal(t) ? undefined : "Must be an https:// URL (or http://localhost/...)"
-      },
-    })
-    if (p.isCancel(mcpResult)) { p.cancel("Cancelled."); process.exit(0) }
-    mcpEndpoint = (mcpResult as string | undefined)?.trim() ?? ""
-    if (!mcpEndpoint && hasCapabilities) {
-      p.log.warn("No MCP endpoint — actions/tools will run locally in chat only, not on 8004scan.")
+  const urlError = "must be an https:// URL (or http://localhost/...)"
+  async function askEndpoint(flag: string, message: string, placeholder: string): Promise<string> {
+    const fromFlag = getFlag(flag)
+    if (fromFlag !== undefined) {
+      const value = fromFlag.trim()
+      if (value && !isAdvertisableUrl(value)) {
+        p.cancel(`Invalid --${flag}: ${urlError}`)
+        process.exit(1)
+      }
+      return value
     }
-  }
-  if (mcpEndpoint && !httpsOrLocal(mcpEndpoint)) {
-    p.cancel("Invalid --mcp-endpoint: must be an https:// URL (or http://localhost/...)")
-    process.exit(1)
-  }
-
-  const a2aFromFlag = getFlag("a2a-endpoint")
-  let a2aEndpoint: string
-  if (a2aFromFlag !== undefined) {
-    a2aEndpoint = a2aFromFlag.trim()
-  } else {
-    const a2aResult = await p.text({
-      message: "A2A endpoint (optional — https://…/api/a2a for agent-to-agent + x402)",
-      placeholder: "https://your-host/api/a2a",
+    const result = await p.text({
+      message,
+      placeholder,
       initialValue: "",
       validate: (v) => {
         const t = v?.trim() ?? ""
-        if (!t) return undefined
-        return httpsOrLocal(t) ? undefined : "Must be an https:// URL (or http://localhost/...)"
+        return !t || isAdvertisableUrl(t) ? undefined : `Endpoint ${urlError}`
       },
     })
-    if (p.isCancel(a2aResult)) { p.cancel("Cancelled."); process.exit(0) }
-    a2aEndpoint = (a2aResult as string | undefined)?.trim() ?? ""
-  }
-  if (a2aEndpoint && !httpsOrLocal(a2aEndpoint)) {
-    p.cancel("Invalid --a2a-endpoint: must be an https:// URL (or http://localhost/...)")
-    process.exit(1)
+    if (p.isCancel(result)) { p.cancel("Cancelled."); process.exit(0) }
+    return (result as string | undefined)?.trim() ?? ""
   }
 
+  const mcpEndpoint = await askEndpoint(
+    "mcp-endpoint",
+    "MCP endpoint (optional — https://…/mcp to advertise tools on 8004scan)",
+    "https://your-host/mcp",
+  )
+  if (!mcpEndpoint && (state.actions.length > 0 || state.tools.length > 0)) {
+    p.log.warn("No MCP endpoint — actions/tools will run locally in chat only, not on 8004scan.")
+  }
+  const a2aEndpoint = await askEndpoint(
+    "a2a-endpoint",
+    "A2A endpoint (optional — https://…/api/a2a for agent-to-agent + x402)",
+    "https://your-host/api/a2a",
+  )
+
+  // x402 is the payment step of the A2A flow, so it needs an A2A endpoint.
+  const x402Live = Boolean(process.env.X402_FACILITATOR_URL?.trim())
   let x402support = x402FromFlag
+  if (x402FromFlag && !a2aEndpoint) {
+    p.cancel("--x402 requires --a2a-endpoint")
+    process.exit(1)
+  }
   if (!x402FromFlag && a2aEndpoint) {
     const x402Result = await p.confirm({
-      message: "Enable x402 payments on the A2A endpoint? (mock facilitator locally)",
-      initialValue: true,
+      message: x402Live
+        ? "Charge A2A callers 0.01 USDC (Base Sepolia) per request via x402?"
+        : "Declare x402 on the A2A endpoint? (test mode: payments are simulated, set X402_FACILITATOR_URL to charge for real)",
+      initialValue: x402Live,
     })
     if (p.isCancel(x402Result)) { p.cancel("Cancelled."); process.exit(0) }
     x402support = Boolean(x402Result)
-  } else if (x402FromFlag && !a2aEndpoint) {
-    p.log.warn("--x402 set without --a2a-endpoint; x402support will still be declared on-chain.")
   }
 
   const endpoints: AgentConfig["endpoints"] = []
@@ -488,7 +479,7 @@ async function main(): Promise<void> {
     `Tools    : ${allToolNames.join(", ") || "none"}\n` +
     `MCP      : ${mcpEndpoint || "not advertised"}\n` +
     `A2A      : ${a2aEndpoint || "not advertised"}\n` +
-    `x402     : ${x402support ? "enabled (mock facilitator locally)" : "disabled"}\n` +
+    `x402     : ${x402support ? (x402Live ? "enabled" : "enabled (test mode, payments simulated)") : "disabled"}\n` +
     `Owner    : ${masterWallet.address}`,
     "Agent Created (ERC-8004)",
   )

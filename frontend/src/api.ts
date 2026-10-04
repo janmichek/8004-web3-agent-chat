@@ -10,6 +10,9 @@ export type AgentSummary = {
   actions: string[]
   tools: string[]
   active: boolean
+  x402support?: boolean
+  /** Present when x402support: how the server handles A2A payments. */
+  x402Mode?: X402Mode
   endpoints?: { type: string; value: string }[]
   services?: CreateAgentService[]
   oasfDomains?: string[]
@@ -53,7 +56,13 @@ export type CatalogAction = {
 export type CatalogTool = {
   name: string
   description: string
+  /** Never signs or sends; the only tools an agent uses when called over A2A. */
+  readOnly?: boolean
 }
+
+/** "mock": payments simulated. "facilitator": verified and settled on-chain. */
+export type X402Mode = 'mock' | 'facilitator'
+
 
 export type CatalogResponse = {
   network: string
@@ -62,6 +71,7 @@ export type CatalogResponse = {
   master: { address?: string; balanceEth?: string }
   actions: CatalogAction[]
   tools: CatalogTool[]
+  x402?: { mode: X402Mode; network: string; maxAmountRequired: string }
 }
 
 export type CreateAgentService = {

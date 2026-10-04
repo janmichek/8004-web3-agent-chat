@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, unref, watch } from 'vue'
 import { useBalance } from '@wagmi/vue'
 import { formatEther, isAddress, type Address } from 'viem'
+import { errorLine, friendlyFundError } from '../rpc-errors'
 import { fetchAgents, fetchHealth, fetchReputation, fundAgent, deleteAgent, deleteAgentBackup, type AgentSummary } from '../api'
 
 const props = defineProps<{
@@ -59,12 +60,10 @@ function shortAddr(a: string): string {
   return a.length > 13 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a
 }
 
-function friendlyError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Transfer failed'
-  const line = (raw.split('\n')[0] || raw)
-  if (/insufficient funds|insufficient balance/i.test(line)) return 'Master wallet has insufficient ETH.'
-  if (/exceeds defined limit|limit exceeded|-32005|429/i.test(line)) return 'RPC rate limit hit. Wait a few seconds and retry.'
-  return line
+function x402Title(mode?: string): string {
+  return mode === 'facilitator'
+    ? 'A2A callers pay in USDC on Base Sepolia; verified and settled by the x402 facilitator.'
+    : 'The server has no X402_FACILITATOR_URL, so A2A payments are accepted without being charged.'
 }
 
 async function fund() {
@@ -78,7 +77,7 @@ async function fund() {
     fundStatusKind.value = 'ok'
     emit('funded', r.txHash)
   } catch (err) {
-    fundStatusText.value = friendlyError(err)
+    fundStatusText.value = friendlyFundError(err, 'master')
     fundStatusKind.value = 'error'
   } finally { fundBusy.value = false }
 }
@@ -196,7 +195,7 @@ async function removeAgent() {
     emit('deleted', name)
     await loadAgents()
   } catch (err) {
-    deleteStatusText.value = friendlyError(err)
+    deleteStatusText.value = errorLine(err, 'Delete failed')
   } finally {
     deleteBusy.value = false
   }
@@ -304,6 +303,31 @@ onMounted(() => {
         <div v-if="agent.agentId">
           <dt>Rating</dt>
           <dd class="mono" data-testid="agent-rating">{{ ratingLoading ? '…' : (ratingText || '—') }}</dd>
+        </div>
+        <div v-if="agent.services?.length" data-testid="agent-services">
+          <dt>Services</dt>
+          <dd>
+            <div class="chips">
+              <template v-for="s in agent.services" :key="s.name">
+                <a
+                  v-if="/^https?:\/\//i.test(s.endpoint)"
+                  class="chip mono"
+                  :href="s.endpoint"
+                  :title="s.endpoint"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >{{ s.name }} ↗</a
+                >
+                <span v-else class="chip mono" :title="s.endpoint">{{ s.name }}</span>
+              </template>
+            </div>
+          </dd>
+        </div>
+        <div v-if="agent.x402support" data-testid="agent-x402">
+          <dt>x402</dt>
+          <dd :title="x402Title(agent.x402Mode)">
+            {{ agent.x402Mode === 'facilitator' ? '0.01 USDC per A2A request' : 'test mode (payments simulated)' }}
+          </dd>
         </div>
         <div>
           <dt>Tools</dt>
@@ -496,6 +520,8 @@ onMounted(() => {
 .muted { color: var(--muted); font-size: 0.85rem; }
 .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
 .chip { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.22rem 0.5rem; border-radius: 999px; background: var(--surface-2, color-mix(in oklab, var(--border) 45%, var(--surface))); border: 1px solid var(--border); font-size: 0.72rem; color: var(--ink); }
+a.chip { text-decoration: none; color: var(--accent); }
+a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border)); }
 
 .fund { display: flex; flex-direction: column; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
 .danger-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding-bottom: 0.1rem; }

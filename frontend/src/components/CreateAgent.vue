@@ -56,9 +56,37 @@ const emailEndpoint = ref('e@mail.fun')
 const mcpEndpoint = ref(
   typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : '',
 )
-const a2aEndpoint = ref(
-  typeof window !== 'undefined' ? `${window.location.origin}/api/a2a` : '',
-)
+
+// A2A: defaults to this app's endpoint scoped to the agent being named, so the
+// advertised Agent Card is this agent's (not the generic one). Typing in the
+// field takes over; clearing it means "no A2A".
+const a2aEdited = ref<string | null>(null)
+const a2aDefault = computed(() => {
+  const scope = nameValid.value ? `?agent=${encodeURIComponent(agentName.value.trim())}` : ''
+  return `${window.location.origin}/api/a2a${scope}`
+})
+const a2aEndpoint = computed({
+  get: () => a2aEdited.value ?? a2aDefault.value,
+  set: (value: string) => {
+    a2aEdited.value = value
+  },
+})
+const hasA2a = computed(() => a2aEndpoint.value.trim().length > 0)
+
+// x402: off by default while the server only simulates payments, on once a
+// real facilitator is configured. The user's own choice always wins.
+const x402Choice = ref<boolean | null>(null)
+const x402Live = computed(() => catalog.value?.x402?.mode === 'facilitator')
+const x402Enabled = computed({
+  get: () => hasA2a.value && (x402Choice.value ?? x402Live.value),
+  set: (value: boolean) => {
+    x402Choice.value = value
+  },
+})
+
+function isLink(endpoint: string): boolean {
+  return /^https?:\/\//i.test(endpoint)
+}
 
 const hasSelectedCapabilities = computed(
   () => selectedActions.value.length > 0 || selectedTools.value.length > 0,
@@ -382,7 +410,7 @@ async function submitCreate() {
       oasfDomains: selectedOasfDomains.value,
       oasfSkills: selectedOasfSkills.value,
       services,
-      x402support: true,
+      x402support: x402Enabled.value,
     })
     createSteps.value = res.steps
     createdAgent.value = res.agent
@@ -442,7 +470,7 @@ async function fundFromMaster() {
     bumpBalance(res.amountEth)
   } catch (err) {
     fundStatusKind.value = 'error'
-    fundStatus.value = friendlyFundError(err)
+    fundStatus.value = friendlyFundError(err, 'master')
   } finally {
     fundBusy.value = null
   }
@@ -594,7 +622,7 @@ async function fundFromWallet() {
         not appear under Services → MCP on 8004scan. Add an https://…/api/mcp URL to advertise them.
       </p>
       <label class="field">
-        <span>A2A endpoint <span class="optional">(optional — agent-to-agent + x402 on 8004scan)</span></span>
+        <span>A2A endpoint <span class="optional">(optional — lets other agents message this one)</span></span>
         <input
           v-model="a2aEndpoint"
           type="text"
@@ -603,10 +631,34 @@ async function fundFromWallet() {
           data-testid="create-a2a-endpoint"
         />
       </label>
-      <p class="hint">
-        Prefills to this app’s /api/a2a; registration stores the well-known Agent Card
-        URL so it shows under Services → A2A on 8004scan.
+      <p class="hint" data-testid="create-a2a-hint">
+        <template v-if="hasA2a">
+          Over A2A the agent answers with its read-only tools only — it never sends funds or
+          signs transactions for outside callers. Shown under Services → A2A on 8004scan as
+          the Agent Card URL.
+        </template>
+        <template v-else>No A2A endpoint — other agents can't reach this one, and x402 is off.</template>
       </p>
+      <label class="check" :class="{ disabled: !hasA2a }">
+        <input
+          v-model="x402Enabled"
+          type="checkbox"
+          :disabled="!hasA2a"
+          data-testid="create-x402"
+        />
+        <span>
+          <strong>Charge for A2A requests (x402)</strong>
+          <em v-if="x402Live" data-testid="create-x402-hint">
+            Callers pay 0.01 USDC on Base Sepolia to the agent wallet per request. The agent
+            is only paid after it has answered.
+          </em>
+          <em v-else data-testid="create-x402-hint">
+            Test mode: this server has no payment facilitator, so payments are simulated and
+            nobody is charged. 8004scan will still show the agent as x402-ready. Set
+            X402_FACILITATOR_URL on the server to charge for real.
+          </em>
+        </span>
+      </label>
       <p class="step-label">Image <span class="optional">(optional)</span></p>
       <div
         v-if="!imageFile"
@@ -897,9 +949,25 @@ async function fundFromWallet() {
           <dt>Status</dt>
           <dd>{{ createdAgent.active ? 'Active' : 'Inactive' }}</dd>
         </div>
-        <div v-if="(createdAgent.services ?? []).length">
+        <div v-if="(createdAgent.services ?? []).length" data-testid="create-done-services">
           <dt>Services</dt>
-          <dd class="mono">{{ createdAgent.services!.map((s) => `${s.name}: ${s.endpoint}`).join(', ') }}</dd>
+          <dd v-for="s in createdAgent.services" :key="s.name" class="mono">
+            {{ s.name }}:
+            <a v-if="isLink(s.endpoint)" :href="s.endpoint" target="_blank" rel="noopener noreferrer"
+              >{{ s.endpoint }} ↗</a
+            >
+            <span v-else>{{ s.endpoint }}</span>
+          </dd>
+        </div>
+        <div v-if="createdAgent.x402support" data-testid="create-done-x402">
+          <dt>x402</dt>
+          <dd>
+            {{
+              createdAgent.x402Mode === 'facilitator'
+                ? 'On — 0.01 USDC per A2A request'
+                : 'On — test mode, payments simulated'
+            }}
+          </dd>
         </div>
       </dl>
       <ul v-if="createSteps.length" class="steps">

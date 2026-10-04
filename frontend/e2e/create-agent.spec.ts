@@ -94,13 +94,13 @@ test.describe('create agent wizard', () => {
     await expect(page.getByTestId('create-fund-panel')).toBeVisible()
     expect(created).toHaveLength(1)
     expect(created[0]).toMatchObject({ name: 'my-agent' })
-    // MCP + A2A are prefilled as ${origin}/api/{mcp,a2a} — advertised alongside web/email
+    // MCP + A2A are prefilled as ${origin}/api/{mcp,a2a}; A2A is scoped to the agent name
     expect(created[0]).toMatchObject({
       services: expect.arrayContaining([
         { name: 'web', endpoint: 'https://example.com' },
         { name: 'email', endpoint: 'e@mail.fun' },
         { name: 'mcp', endpoint: expect.stringMatching(/\/api\/mcp$/) },
-        { name: 'A2A', endpoint: expect.stringMatching(/\/api\/a2a$/) },
+        { name: 'A2A', endpoint: expect.stringMatching(/\/api\/a2a\?agent=my-agent$/) },
       ]),
     })
 
@@ -259,6 +259,39 @@ test.describe('create agent wizard', () => {
     })
   })
 
+  test('a2a endpoint follows the agent name until edited; x402 is opt-in in test mode', async ({ page }) => {
+    const created: unknown[] = []
+    await setupOffline(page, { capture: { create: created } })
+    await gotoWithAgent(page)
+    await openCreateDialog(page)
+    const a2a = page.getByTestId('create-a2a-endpoint')
+    const x402 = page.getByTestId('create-x402')
+
+    await page.getByTestId('create-name-input').fill('my-agent')
+    await expect(a2a).toHaveValue(/\/api\/a2a\?agent=my-agent$/)
+    await page.getByTestId('create-name-input').fill('renamed')
+    await expect(a2a).toHaveValue(/\/api\/a2a\?agent=renamed$/)
+
+    // No facilitator in the mocked catalog → off by default, with the reason shown.
+    await expect(x402).not.toBeChecked()
+    await expect(page.getByTestId('create-x402-hint')).toContainText('payments are simulated')
+
+    // Without an A2A endpoint x402 cannot be on.
+    await a2a.fill('')
+    await expect(x402).toBeDisabled()
+    await a2a.fill('https://my-host/api/a2a')
+    await x402.check()
+
+    await page.getByTestId('create-name-continue').click()
+    await page.getByRole('button', { name: 'Next →' }).last().click()
+    await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
+    await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
+    expect(created[0]).toMatchObject({ name: 'renamed', x402support: true })
+    expect(created[0]).toMatchObject({
+      services: expect.arrayContaining([{ name: 'A2A', endpoint: 'https://my-host/api/a2a' }]),
+    })
+  })
+
   test('warns when tools selected but no mcp endpoint set', async ({ page }) => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
@@ -346,7 +379,7 @@ test.describe('create agent — step 1 image & description', () => {
         { name: 'web', endpoint: 'https://example.com' },
         { name: 'email', endpoint: 'e@mail.fun' },
         { name: 'mcp', endpoint: expect.stringMatching(/\/api\/mcp$/) },
-        { name: 'A2A', endpoint: expect.stringMatching(/\/api\/a2a$/) },
+        { name: 'A2A', endpoint: expect.stringMatching(/\/api\/a2a\?agent=e2e-agent$/) },
       ]),
     })
   })

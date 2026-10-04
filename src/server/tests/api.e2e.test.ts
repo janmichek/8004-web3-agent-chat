@@ -301,8 +301,7 @@ describe("API offline e2e", () => {
   });
 
   it("POST /api/a2a JSON-RPC message/send without extension fails when x402 on", async () => {
-    // Force a fresh default server with x402 enabled (cache key includes A2A_X402).
-    vi.stubEnv("A2A_X402", "1");
+    vi.stubEnv("A2A_PAY_TO", "0x00000000000000000000000000000000000000aa");
     const res = await app.request("/api/a2a", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -327,6 +326,73 @@ describe("API offline e2e", () => {
     expect(body.result.status.message.metadata["x402.payment.error"]).toBe(
       "EXTENSION_NOT_ACTIVATED",
     );
+  });
+
+  it("?agent= scopes the Agent Card and its JSON-RPC url; bad names are 404", async () => {
+    const res = await app.request("/.well-known/agent-card.json?agent=scoped-agent");
+    expect(res.status).toBe(200);
+    const card = (await res.json()) as { name: string; url: string };
+    expect(card.name).toBe("scoped-agent");
+    expect(card.url).toMatch(/\/api\/a2a\?agent=scoped-agent$/);
+
+    const traversal = await app.request("/api/a2a?agent=..%2F..%2Fetc");
+    expect(traversal.status).toBe(404);
+  });
+
+  it("generic endpoint is a free echo unless A2A_PAY_TO is set", async () => {
+    vi.stubEnv("A2A_PAY_TO", "");
+    const health = (await (await app.request("/api/a2a")).json()) as { x402support: boolean };
+    expect(health.x402support).toBe(false);
+    const res = await app.request("/api/a2a", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "message/send",
+        params: { message: { kind: "message", role: "user", parts: [{ kind: "text", text: "ping" }] } },
+      }),
+    });
+    const body = (await res.json()) as {
+      result: { status: { state: string; message: { parts: { text: string }[] } } };
+    };
+    expect(body.result.status.state).toBe("completed");
+    expect(body.result.status.message.parts[0]?.text).toBe("ping");
+  });
+
+  it("agent card advertises chat plus the agent's read-only tools only", async () => {
+    const res = await app.request("/.well-known/agent-card.json?agent=scoped-agent");
+    const card = (await res.json()) as { skills: { id: string }[] };
+    expect(card.skills.map((s) => s.id)).toEqual(["chat"]);
+  });
+
+  it("GET /api/catalog reports the x402 mode and read-only tools", async () => {
+    const body = (await (await app.request("/api/catalog")).json()) as {
+      x402: { mode: string };
+      tools: { name: string; readOnly: boolean }[];
+    };
+    expect(body.x402.mode).toBe("mock");
+    expect(body.tools.filter((t) => t.readOnly).map((t) => t.name)).toEqual([
+      "get_token_balance",
+      "fetch_contract_abi",
+    ]);
+  });
+
+  it("POST /api/agents rejects x402support without an A2A endpoint", async () => {
+    const res = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "x402-no-a2a-agent", skipRegister: true, x402support: true }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("A2A endpoint");
+  });
+
+  it("POST /api/a2a with malformed JSON is a 400 parse error", async () => {
+    const res = await app.request("/api/a2a", { method: "POST", body: "{nope" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: number } };
+    expect(body.error.code).toBe(-32700);
   });
 
   it("POST /api/agents rejects bad a2a endpoint URL", async () => {

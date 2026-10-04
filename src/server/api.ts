@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import dotenv from "dotenv";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
@@ -45,15 +45,16 @@ import { registerAgent } from "../core/registry.js";
 import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemory } from "../core/memory-reader.js";
 import type { Skill } from "../actions/types.js";
-import { A2AServer, createA2AServer, X402_EXTENSION_URI } from "../a2a/index.js";
-import {
-  canonicalizeServiceName,
-  normalizeA2AEndpoint,
-} from "../core/registration-services.js";
+import { A2AServer, type A2AExecutor } from "../a2a/server.js";
+import { HttpFacilitatorClient } from "../a2a/http-facilitator.js";
+import { MockFacilitatorClient } from "../a2a/mock-facilitator.js";
+import { DEFAULT_PRICE_ATOMIC, MOCK_PAYMENT_NETWORK } from "../a2a/x402.js";
+import { canonicalizeEndpoint, isAdvertisableUrl } from "../core/registration-services.js";
 
 dotenv.config();
 
 const PORT = Number(process.env.API_PORT || 8787);
+const AGENT_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/;
 
 // --- MCP (stateless, Bearer-authenticated) -------------------------------------
 // Served at /api/mcp and /mcp so `${origin}/api/mcp` (prefilled in wizard) is verifiable on 8004scan.
@@ -75,6 +76,7 @@ function getMcpClientIp(c: { req: { header: (name: string) => string | undefined
   );
 }
 
+/** Shared by MCP tool calls and A2A requests; pass a prefixed key to keep the buckets apart. */
 function checkMcpRateLimit(ip: string): boolean {
   const now = Date.now();
   const hits = (mcpRateHits.get(ip) ?? []).filter((t) => now - t < MCP_RATE_WINDOW_MS);
@@ -280,36 +282,49 @@ async function publicAgentSummary(name: string) {
     oasfSkills: (config?.metadata?.oasfSkills as string[] | undefined) ?? [],
     active: config?.active ?? true,
     x402support: config?.x402support ?? false,
+    ...(config?.x402support ? { x402Mode: x402Mode() } : {}),
     endpoints: config?.endpoints ?? [],
-    services: (config?.endpoints ?? []).map((e) => {
-      const name = canonicalizeServiceName(e.type);
-      const endpoint =
-        name === "A2A" ? normalizeA2AEndpoint(e.value) : e.value;
-      return { name, endpoint };
-    }),
+    services: (config?.endpoints ?? []).map((e) => ({ name: e.type, endpoint: e.value })),
   };
 }
 
-async function runChat(agentName: string, message: string): Promise<{
+/** Tool names an anonymous A2A caller may trigger: read-only ones the agent was given. */
+function a2aToolNames(config: AgentConfig): string[] {
+  const readOnly = new Set(TOOL_REGISTRY.filter((t) => t.readOnly).map((t) => t.name));
+  return (config.metadata?.tools ?? []).filter((t) => readOnly.has(t));
+}
+
+/**
+ * @param a2a Request from an anonymous agent over A2A: read-only tools only,
+ *   no skill prompts, and no checkpointer, so the caller neither sees nor
+ *   writes the owner's conversation history.
+ */
+async function runChat(agentName: string, message: string, a2a = false): Promise<{
   reply: string;
   events: ChatEvent[];
 }> {
   const wallet = getOrCreateAgentWallet({ agentName });
   process.env.AGENT_PRIVATE_KEY = wallet.privateKey;
 
-  const agentConfig = loadAgentConfig(agentName);
+  let agentConfig = loadAgentConfig(agentName);
   let tools: Awaited<ReturnType<typeof resolveAgentSkills>>;
   let skills: Skill[] = [];
 
-  if (agentConfig) {
+  if (agentConfig && a2a) {
+    const allowed = a2aToolNames(agentConfig);
+    agentConfig = { ...agentConfig, metadata: { ...agentConfig.metadata, actions: [], tools: allowed } };
+    tools = resolveToolsFromConfig(agentConfig).tools;
+  } else if (agentConfig) {
     const resolved = resolveToolsFromConfig(agentConfig);
     tools = resolved.tools;
     skills = resolved.skills;
   } else {
-    tools = await resolveAgentSkills(agentName, wallet.privateKey);
+    tools = a2a ? [] : await resolveAgentSkills(agentName, wallet.privateKey);
   }
 
-  const { saver, flush } = createFileCheckpointer(agentName);
+  const { saver, flush } = a2a
+    ? { saver: undefined, flush: () => {} }
+    : createFileCheckpointer(agentName);
 
   const networkName = agentConfig?.walletChainId
     ? getNetworkNameByChainId(agentConfig.walletChainId)
@@ -331,6 +346,9 @@ async function runChat(agentName: string, message: string): Promise<{
     "- Call each tool at most once per request unless its result is an error you can fix.",
     "- As soon as a tool gives you the answer (balance, hash, ABI, ...), stop calling tools and reply to the user.",
     "- After send_eth returns a transaction hash, the transfer is done: report it, do not verify or re-check.",
+    a2a
+      ? "- This request comes from another agent over A2A. You cannot send funds, sign or execute transactions here; say so if asked."
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -339,7 +357,7 @@ async function runChat(agentName: string, message: string): Promise<{
   const agent = createReactAgent({
     llm,
     tools,
-    checkpointSaver: saver,
+    ...(saver ? { checkpointSaver: saver } : {}),
     prompt: systemMessage,
   });
 
@@ -438,6 +456,7 @@ app.use(
       "mcp-session-id",
       "mcp-protocol-version",
       "Last-Event-ID",
+      "X-A2A-Extensions",
     ],
     exposeHeaders: ["mcp-session-id"],
   }),
@@ -509,108 +528,126 @@ async function handleMcp(c: McpContext) {
 app.all("/api/mcp", async (c) => handleMcp(c));
 app.all("/mcp", async (c) => handleMcp(c));
 
-// --- A2A + x402 (mock facilitator) -------------------------------------------
-// Agent Card at /.well-known/agent-card.json; JSON-RPC at /api/a2a.
-// Optional ?agent=<name> scopes card/skills/x402 to that agent's config.
-const a2aServerCache = new Map<string, A2AServer>();
+// --- A2A + x402 --------------------------------------------------------------
+// Agent Card at /.well-known/agent-card.json; JSON-RPC at /api/a2a (and /a2a).
+// ?agent=<name> serves that agent: its LLM answers with its read-only tools,
+// and x402 follows its config. Without ?agent= a generic echo endpoint answers.
+// Servers hold their tasks in memory, so one is kept per agent and rebuilt
+// only when its `stamp` (public URL + config revision) changes.
+const a2aServers = new Map<string, { stamp: string; server: A2AServer }>();
 
-function requestPublicBaseUrl(c: { req: { url: string; header: (n: string) => string | undefined } }): string {
-  const proto = c.req.header("x-forwarded-proto") || "http";
-  const host = c.req.header("x-forwarded-host") || c.req.header("host") || `localhost:${PORT}`;
-  return `${proto}://${host}`;
+/** Real verify/settle when X402_FACILITATOR_URL is set, simulated otherwise. */
+const x402FacilitatorUrl = process.env.X402_FACILITATOR_URL?.trim();
+const x402Facilitator = x402FacilitatorUrl
+  ? new HttpFacilitatorClient(x402FacilitatorUrl)
+  : new MockFacilitatorClient();
+
+function x402Mode(): "mock" | "facilitator" {
+  return x402FacilitatorUrl ? "facilitator" : "mock";
 }
 
 function defaultA2AConfig(): AgentConfig {
+  const payTo = process.env.A2A_PAY_TO?.trim();
   return {
     name: "web3agent",
-    description: "web3agent A2A endpoint",
-    walletAddress: process.env.A2A_PAY_TO?.trim() || undefined,
+    description: "web3agent A2A endpoint (echo). Use ?agent=<name> to reach an agent.",
+    walletAddress: payTo || undefined,
     endpoints: [],
     trustModels: [],
     owners: [],
     operators: [],
     active: true,
-    x402support: process.env.A2A_X402 !== "0",
+    // Paid only when there is somewhere to pay to.
+    x402support: Boolean(payTo) && process.env.A2A_X402 !== "0",
     metadata: { actions: [], tools: [] },
-    createdAt: new Date().toISOString(),
-    updatedAt: Math.floor(Date.now() / 1000),
+    createdAt: "",
+    updatedAt: 0,
   };
 }
 
-function resolveA2AServer(c: {
-  req: { url: string; header: (n: string) => string | undefined; query: (n: string) => string | undefined };
-}): { server: A2AServer } | { error: Response } {
-  const agentName = c.req.query("agent")?.trim();
-  const base = requestPublicBaseUrl(c);
-  if (agentName) {
-    const config = loadAgentConfig(agentName);
-    if (!config) {
-      return { error: Response.json({ error: `Unknown agent: ${agentName}` }, { status: 404 }) };
-    }
-    const cacheKey = `${agentName}:${base}:${config.x402support}:${config.updatedAt}`;
-    let server = a2aServerCache.get(cacheKey);
-    if (!server) {
-      server = createA2AServer({ publicBaseUrl: base, config });
-      a2aServerCache.set(cacheKey, server);
-    }
-    return { server };
-  }
-  const x402On = process.env.A2A_X402 !== "0";
-  const cacheKey = `__default__:${base}:x402=${x402On}`;
-  let server = a2aServerCache.get(cacheKey);
-  if (!server) {
-    server = createA2AServer({ publicBaseUrl: base, config: defaultA2AConfig() });
-    a2aServerCache.set(cacheKey, server);
-  }
-  return { server };
+function agentA2AExecutor(config: AgentConfig): A2AExecutor {
+  return {
+    skills: [
+      {
+        id: "chat",
+        name: "chat",
+        description: config.description || `Ask ${config.name} a question`,
+        tags: ["chat"],
+      },
+      ...a2aToolNames(config).map((name) => ({
+        id: `tool:${name}`,
+        name,
+        description: TOOL_REGISTRY.find((t) => t.name === name)?.description ?? name,
+        tags: ["tool", "read-only"],
+      })),
+    ],
+    run: async (text) => (await runChat(config.name, text, true)).reply,
+  };
 }
 
-app.get("/.well-known/agent-card.json", async (c) => {
-  const resolved = resolveA2AServer(c);
-  if ("error" in resolved) return resolved.error;
-  return c.json(resolved.server.buildAgentCard());
+/** Returns null for an unknown `?agent=`. */
+function resolveA2AServer(c: Context): A2AServer | null {
+  const agentName = c.req.query("agent")?.trim() ?? "";
+  const config = !agentName
+    ? defaultA2AConfig()
+    : AGENT_NAME_RE.test(agentName)
+      ? loadAgentConfig(agentName)
+      : null;
+  if (!config) return null;
+
+  const proto = c.req.header("x-forwarded-proto") || "http";
+  const host = c.req.header("x-forwarded-host") || c.req.header("host") || `localhost:${PORT}`;
+  const endpointUrl = `${proto}://${host}/api/a2a${agentName ? `?agent=${encodeURIComponent(agentName)}` : ""}`;
+  const stamp = [endpointUrl, config.x402support, config.walletAddress, config.active, config.updatedAt].join("|");
+
+  const cached = a2aServers.get(agentName);
+  if (cached?.stamp === stamp) return cached.server;
+  const server = new A2AServer({
+    endpointUrl,
+    config,
+    facilitator: x402Facilitator,
+    ...(agentName ? { executor: agentA2AExecutor(config) } : {}),
+  });
+  a2aServers.set(agentName, { stamp, server });
+  return server;
+}
+
+function unknownA2AAgent(c: Context) {
+  return c.json({ error: `Unknown agent: ${c.req.query("agent")}` }, 404);
+}
+
+app.get("/.well-known/agent-card.json", (c) => {
+  const server = resolveA2AServer(c);
+  return server ? c.json(server.buildAgentCard()) : unknownA2AAgent(c);
 });
 
-async function handleA2A(c: {
-  req: {
-    method: string;
-    url: string;
-    header: (n: string) => string | undefined;
-    query: (n: string) => string | undefined;
-    json: () => Promise<unknown>;
-  };
-  json: (data: unknown, status?: number) => Response;
-}) {
-  const resolved = resolveA2AServer(c);
-  if ("error" in resolved) return resolved.error;
-  const { server } = resolved;
+async function handleA2A(c: Context) {
+  const server = resolveA2AServer(c);
+  if (!server) return unknownA2AAgent(c);
 
-  if (c.req.method === "GET") {
-    return c.json(server.healthDescriptor());
-  }
+  if (c.req.method === "GET") return c.json(server.healthDescriptor());
   if (c.req.method !== "POST") {
-    return c.json({ error: "Use GET for health/card or POST for JSON-RPC" }, 405);
+    return c.json({ error: "Use GET for health or POST for JSON-RPC" }, 405);
   }
 
+  // Anonymous callers can make the agent's LLM work, so cap them per IP.
+  if (!checkMcpRateLimit(`a2a:${getMcpClientIp(c)}`)) {
+    return c.json(
+      { jsonrpc: "2.0", id: null, error: { code: -32000, message: "Rate limited, try again later" } },
+      429,
+    );
+  }
   let body: unknown;
   try {
     body = await c.req.json();
   } catch {
     return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400);
   }
-
-  const extensionHeader =
-    c.req.header("x-a2a-extensions") || c.req.header("X-A2A-Extensions");
-  const response = await server.handleJsonRpc(body, { extensionHeader });
-  // JSON-RPC always HTTP 200 with error object for protocol errors; use 400 only for parse.
-  return c.json(response);
+  // Protocol-level errors travel inside the JSON-RPC body with HTTP 200.
+  return c.json(await server.handleJsonRpc(body, c.req.header("x-a2a-extensions")));
 }
-
-app.all("/api/a2a", async (c) => handleA2A(c));
-app.all("/a2a", async (c) => handleA2A(c));
-
-// Expose extension URI for clients / tests.
-app.get("/api/a2a/extension", (c) => c.json({ uri: X402_EXTENSION_URI }));
+app.all("/api/a2a", handleA2A);
+app.all("/a2a", handleA2A);
 
 // Return JSON (not Hono's default plain-text "404 Not Found") so the
 // frontend's res.json() never chokes on unknown routes with a cryptic
@@ -690,7 +727,14 @@ app.get("/api/catalog", async (c) => {
     tools: TOOL_REGISTRY.map((t) => ({
       name: t.name,
       description: t.description,
+      readOnly: t.readOnly,
     })),
+    x402: {
+      // "mock": payments are simulated. "facilitator": verified + settled on-chain.
+      mode: x402Mode(),
+      network: MOCK_PAYMENT_NETWORK,
+      maxAmountRequired: DEFAULT_PRICE_ATOMIC,
+    },
   });
 });
 
@@ -760,7 +804,7 @@ app.post("/api/agents", async (c) => {
   if (!name) {
     return c.json({ error: "name is required" }, 400);
   }
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(name)) {
+  if (!AGENT_NAME_RE.test(name)) {
     return c.json({
       error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
     }, 400);
@@ -828,30 +872,23 @@ app.post("/api/agents", async (c) => {
     return c.json({ error: "services must be an array" }, 400);
   }
   // Shorthand: `mcpEndpoint` / `a2aEndpoint` append services unless already declared.
-  const mcpEndpoint = body.mcpEndpoint?.trim();
-  if (mcpEndpoint) {
-    const hasMcp = rawServices.some(
-      (s) => typeof s?.name === "string" && s.name.trim().toLowerCase() === "mcp",
+  for (const [shorthandName, shorthandEndpoint] of [
+    ["mcp", body.mcpEndpoint],
+    ["A2A", body.a2aEndpoint],
+  ] as const) {
+    const endpoint = shorthandEndpoint?.trim();
+    const declared = rawServices.some(
+      (s) => typeof s?.name === "string" && s.name.trim().toLowerCase() === shorthandName.toLowerCase(),
     );
-    if (!hasMcp) rawServices.push({ name: "mcp", endpoint: mcpEndpoint });
+    if (endpoint && !declared) rawServices.push({ name: shorthandName, endpoint });
   }
-  const a2aEndpoint = body.a2aEndpoint?.trim();
-  if (a2aEndpoint) {
-    const hasA2a = rawServices.some(
-      (s) => typeof s?.name === "string" && s.name.trim().toLowerCase() === "a2a",
-    );
-    if (!hasA2a) {
-      rawServices.push({
-        name: "A2A",
-        endpoint: normalizeA2AEndpoint(a2aEndpoint),
-      });
-    }
-  }
-  const x402support = Boolean(body.x402support);
+  const x402support = body.x402support === true;
   if (rawServices.length > 20) {
     return c.json({ error: "services must have at most 20 entries" }, 400);
   }
-  const services: { name: string; endpoint: string }[] = [];
+  // Stored with canonical names (MCP/A2A/...) and the well-known Agent Card
+  // URL for A2A, i.e. exactly what registration later pins for 8004scan.
+  const endpoints: { type: string; value: string }[] = [];
   const seenServiceNames = new Set<string>();
   for (const entry of rawServices) {
     const svcName = entry?.name?.trim();
@@ -862,33 +899,25 @@ app.post("/api/agents", async (c) => {
     if (svcName.length > 64 || svcEndpoint.length > 500) {
       return c.json({ error: "service name (max 64) or endpoint (max 500) too long" }, 400);
     }
-    const canonicalName = canonicalizeServiceName(svcName);
-    const lower = canonicalName.toLowerCase();
+    const { type, value } = canonicalizeEndpoint({ type: svcName, value: svcEndpoint });
+    const lower = type.toLowerCase();
     if (seenServiceNames.has(lower)) {
       return c.json({ error: `duplicate service: ${svcName}` }, 400);
     }
     seenServiceNames.add(lower);
-    let resolvedEndpoint =
-      lower === "a2a" ? normalizeA2AEndpoint(svcEndpoint) : svcEndpoint;
     // MCP/A2A/web endpoints must be https URLs so 8004scan can verify them.
-    // Email keeps its legacy free-form value (e@mail.fun). Allow http for
+    // Email keeps its legacy free-form value (e@mail.fun). http is allowed for
     // localhost/127.0.0.1 so local dev (`http://localhost:5173/api/mcp`) can be advertised.
-    if (lower === "mcp" || lower === "a2a" || lower === "web") {
-      const isHttps = /^https:\/\/.+/i.test(resolvedEndpoint);
-      const isLocalHttp = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/.*)?$/i.test(
-        resolvedEndpoint,
-      );
-      if (!isHttps && !isLocalHttp) {
-        return c.json({ error: `${canonicalName} endpoint must be an https:// URL` }, 400);
-      }
+    if ((lower === "mcp" || lower === "a2a" || lower === "web") && !isAdvertisableUrl(value)) {
+      return c.json({ error: `${type} endpoint must be an https:// URL` }, 400);
     }
-    services.push({ name: canonicalName, endpoint: resolvedEndpoint });
+    endpoints.push({ type, value });
   }
-  // Persist A2A/MCP with SDK casing so registration enrichment matches 8004scan.
-  const endpoints = services.map((s) => ({
-    type: s.name,
-    value: s.endpoint,
-  })) as AgentConfig["endpoints"];
+  // x402 is the payment step of the A2A flow; without an A2A endpoint the
+  // on-chain x402Support flag would promise something nobody can call.
+  if (x402support && !seenServiceNames.has("a2a")) {
+    return c.json({ error: "x402support requires an A2A endpoint" }, 400);
+  }
   const description = body.description?.trim() || `Agent ${name}`;
   let imageUri = body.imageUri?.trim();
   if (imageUri && !/^(https?:\/\/|ipfs:\/\/)/i.test(imageUri)) {
@@ -946,7 +975,7 @@ app.post("/api/agents", async (c) => {
     image: imageUri || undefined,
     walletAddress: agentWallet.address,
     walletChainId: getChainId(),
-    endpoints,
+    endpoints: endpoints as AgentConfig["endpoints"],
     trustModels: [],
     owners: [masterWallet.address],
     operators: [agentWallet.address],
@@ -1074,7 +1103,7 @@ app.post("/api/agents/:name/restore", async (c) => {
   if (config.name !== name) {
     return c.json({ error: "config.name must match the URL" }, 400);
   }
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(name)) {
+  if (!AGENT_NAME_RE.test(name)) {
     return c.json({ error: "invalid agent name" }, 400);
   }
   if (!config.walletAddress || !ethers.isAddress(config.walletAddress)) {
