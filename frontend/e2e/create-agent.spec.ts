@@ -110,6 +110,41 @@ test.describe('create agent wizard', () => {
     await expect(page.getByTestId('agent-select')).toHaveValue('fresh-agent', { timeout: 15000 })
   })
 
+  test('creates the agent on the picked network and links its explorer', async ({ page }) => {
+    const created: unknown[] = []
+    const newAgent = {
+      ...DEMO_AGENT,
+      name: 'fresh-agent',
+      walletChainId: 11155111,
+      agentId: '11155111:7',
+    }
+    await setupOffline(page, {
+      capture: { create: created },
+      create: { ok: true, agent: newAgent, balanceEth: '0', steps: [{ step: 'wallet', ok: true }] },
+    })
+    await gotoWithAgent(page)
+    await openCreateDialog(page)
+
+    // defaults to the server's network, with the master balance there
+    const network = page.getByTestId('create-network')
+    await expect(network).toHaveValue('421614')
+    await expect(page.getByTestId('create-master-balance')).toContainText('1.234')
+    await network.selectOption('11155111')
+    await expect(page.getByTestId('create-master-balance')).toContainText('0.5')
+
+    await page.getByTestId('create-name-input').fill('my-agent')
+    await page.getByTestId('create-name-continue').click()
+    await page.getByRole('button', { name: 'Next →' }).last().click()
+    await page.getByTestId('create-dialog').getByRole('button', { name: 'Create agent' }).click()
+    await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
+
+    expect(created[0]).toMatchObject({ name: 'my-agent', chainId: 11155111 })
+    const dialog = page.getByTestId('create-dialog')
+    await expect(page.getByTestId('create-done-network')).toContainText('Ethereum Sepolia')
+    await expect(dialog.locator('a[href*="sepolia.etherscan.io/address/0x1111"]')).toBeVisible()
+    await expect(dialog.locator('a[href*="8004scan.io/agents/sepolia/7"]')).toBeVisible()
+  })
+
   test('post-creation fund amount validation gates funding', async ({ page }) => {
     const newAgent = { ...DEMO_AGENT, name: 'fresh-agent' }
     await setupOffline(page, {

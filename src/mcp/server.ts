@@ -223,6 +223,16 @@ export async function getAgentToolAllowlist(agentName: string): Promise<string[]
   return [...new Set(config.metadata?.tools ?? [])]
 }
 
+/** A standalone server serves one agent, so its tools act on that agent's chain. */
+async function useAgentNetwork(agentName: string | undefined): Promise<void> {
+  if (!agentName) return
+  const { loadAgentConfig } = await import("../core/agent-config.js")
+  const { findNetworkByChainId, setProcessNetwork } = await import("../core/config.js")
+  const chainId = loadAgentConfig(agentName)?.walletChainId
+  const network = chainId ? findNetworkByChainId(chainId) : undefined
+  if (network) setProcessNetwork(network)
+}
+
 function resolveAgentName(): string | undefined {
   const idx = process.argv.indexOf("--agent")
   const fromFlag = idx !== -1 ? process.argv[idx + 1]?.trim() : undefined
@@ -232,6 +242,7 @@ function resolveAgentName(): string | undefined {
 
 async function runStdio(): Promise<void> {
   const agentName = resolveAgentName()
+  await useAgentNetwork(agentName)
   const allowlist = agentName ? await getAgentToolAllowlist(agentName) : undefined
   const server = getMcpServer(allowlist)
   const transport = new StdioServerTransport()
@@ -272,6 +283,7 @@ function mcpHttpAuthOk(req: http.IncomingMessage): boolean {
 async function runHttp(): Promise<void> {
   const port = Number(process.env.MCP_PORT || 8788)
   const agentName = resolveAgentName()
+  await useAgentNetwork(agentName)
   const allowlist = agentName ? await getAgentToolAllowlist(agentName) : undefined
   if (!process.env.MCP_AUTH_TOKEN?.trim()) {
     console.error("[mcp] MCP_AUTH_TOKEN is not set — POST /mcp will return 503 (fail closed)")

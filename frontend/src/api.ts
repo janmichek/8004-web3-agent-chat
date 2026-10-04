@@ -1,3 +1,5 @@
+import { chainIdOfAgentId, networkInfo, txExplorerUrl } from './networks'
+
 export type AgentSummary = {
   name: string
   description: string
@@ -64,11 +66,23 @@ export type CatalogTool = {
 export type X402Mode = 'mock' | 'facilitator'
 
 
+/** A network agents can be created on, with the master wallet's balance there. */
+export type CatalogNetwork = {
+  network: string
+  name: string
+  chainId: number
+  explorerUrl?: string
+  masterBalanceEth?: string
+}
+
 export type CatalogResponse = {
+  /** Default network (server NETWORK env). */
   network: string
   networkName: string
   chainId: number
   master: { address?: string; balanceEth?: string }
+  /** Absent on servers that predate multichain. */
+  networks?: CatalogNetwork[]
   actions: CatalogAction[]
   tools: CatalogTool[]
   x402?: { mode: X402Mode; network: string; maxAmountRequired: string }
@@ -81,6 +95,8 @@ export type CreateAgentService = {
 
 export type CreateAgentRequest = {
   name: string
+  /** Chain to create the agent on; the server default when omitted. */
+  chainId?: number
   description?: string
   imageUri?: string
   actions?: string[]
@@ -358,15 +374,15 @@ export function extractSuccessfulTxHash(content: string): string | null {
   return m?.[1] ?? null
 }
 
+/** 8004scan page of an agent. `chainId` applies to bare token IDs; a "<chainId>:<tokenId>" ID wins. */
 export function scanUrlForAgent(agentId: string, chainId: number, tab?: string): string {
   const parts = agentId.split(':')
   const tokenId = parts[parts.length - 1] || agentId
-  const slug = chainId === 42161 ? 'arbitrum-one' : 'arbitrum-sepolia'
-  const base = `https://testnet.8004scan.io/agents/${slug}/${tokenId}`
+  const network = networkInfo(chainIdOfAgentId(agentId) ?? chainId)
+  const base = `${network.scanUrl}/agents/${network.scanSlug}/${tokenId}`
   return tab ? `${base}?tab=${tab}` : base
 }
 
 export function txScanUrl(txHash: string, chainId: number): string {
-  const base = chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
-  return `${base}/tx/${txHash}`
+  return txExplorerUrl(txHash, chainId)
 }

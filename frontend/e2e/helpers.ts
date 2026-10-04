@@ -37,6 +37,10 @@ export const MOCK_CATALOG = {
     address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     balanceEth: '1.234',
   },
+  networks: [
+    { network: 'arbitrum-sepolia', name: 'Arbitrum Sepolia', chainId: 421614, masterBalanceEth: '1.234' },
+    { network: 'ethereum-sepolia', name: 'Ethereum Sepolia', chainId: 11155111, masterBalanceEth: '0.5' },
+  ],
   actions: [
     {
       name: 'transfer-eth',
@@ -176,7 +180,7 @@ function multicallResult(data: `0x${string}`): string {
 
 /** Stub JSON-RPC so wagmi useBalance never hits a real RPC. */
 export async function mockRpc(page: Page) {
-  await page.route('**/api/rpc', async (route) => {
+  await page.route('**/api/rpc**', async (route) => {
     let text = ''
     try {
       text = route.request().postData() ?? ''
@@ -254,7 +258,7 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
 
   await mockRpc(page)
 
-  await page.route('**/api/health', async (route) => {
+  await page.route('**/api/health**', async (route) => {
     await json(route, 200, health)
   })
 

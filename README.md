@@ -1,6 +1,6 @@
 # web3Agent
 
-Create AI agents with their own wallets on Arbitrum, register them on
+Create AI agents with their own wallets on Arbitrum or Ethereum, register them on
 ERC-8004, and talk to them from a CLI or a web console. Each agent can be
 reached over chat, MCP and A2A.
 
@@ -94,10 +94,10 @@ Served by `npm run serve` (Hono) and by the Vercel function.
 
 | Route | Does |
 |---|---|
-| `GET /api/health` | Network, chain id, master wallet |
-| `GET /api/catalog` | Available actions and tools |
+| `GET /api/health` | Network, chain id, master wallet (`?chainId=` picks the network) |
+| `GET /api/catalog` | Available actions, tools and `networks[]` (with the master balance on each) |
 | `GET /api/agents`, `GET /api/agents/:name` | Agent summaries |
-| `POST /api/agents` | Create (wallet, optional funding, config, registration) |
+| `POST /api/agents` | Create (wallet, optional funding, config, registration). `chainId` in the body picks the network |
 | `DELETE /api/agents/:name` | Delete (disabled on Vercel unless `ALLOW_AGENT_DELETE`) |
 | `POST /api/agents/:name/restore` | Re-create an agent on a cold instance from a browser-held backup |
 | `POST /api/agents/:name/chat` | One chat turn, returns reply + tool events |
@@ -105,7 +105,7 @@ Served by `npm run serve` (Hono) and by the Vercel function.
 | `GET /api/agents/:name/memory` | Conversation history |
 | `POST /api/agents/:name/feedback`, `GET /api/reputation/:agentId` | ERC-8004 reputation |
 | `POST /api/upload/image` | Pin an image to IPFS |
-| `POST /api/rpc` | JSON-RPC proxy to `RPC_URL` |
+| `POST /api/rpc` | JSON-RPC proxy to the network's RPC (`?chainId=`, default `NETWORK`) |
 | `/api/mcp`, `/mcp` | MCP over Streamable HTTP |
 | `/api/a2a`, `/a2a`, `/.well-known/agent-card.json` | A2A |
 
@@ -168,12 +168,13 @@ Copy `.env.example` to `.env`.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `RPC_URL` | yes | RPC endpoint for the active network |
+| `RPC_URL` | yes | RPC endpoint for the default network (`NETWORK`) |
+| `RPC_URL_<NETWORK>` | no | RPC endpoint for one network, e.g. `RPC_URL_ETHEREUM_SEPOLIA`. Wins over `RPC_URL`; other networks fall back to a public RPC |
 | `MASTER_PRIVATE_KEY` | yes | Owner of registered agents, funds agent wallets. Written by `npm run setup` |
 | `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | one | LLM key for the chosen provider |
 | `LLM_PROVIDER` | no | `openrouter` (default), `anthropic`, `openai` |
 | `LLM_MODEL` | no | Model override |
-| `NETWORK` | no | `arbitrum-sepolia` (default), `arbitrum-one`, `robinhood-testnet` |
+| `NETWORK` | no | Default network: `arbitrum-sepolia` (default), `ethereum-sepolia`, `arbitrum-one`, `robinhood-testnet` |
 | `PINATA_JWT` or `IPFS_NODE_URL` | no | IPFS backend for registration files and images |
 | `PINATA_GATEWAY_URL` | no | IPFS gateway override |
 | `MCP_AUTH_TOKEN` | for MCP tool calls | Bearer token for `tools/call` |
@@ -191,15 +192,22 @@ Copy `.env.example` to `.env`.
 | `AGENT_<NAME>_PRIVATE_KEY`, `AGENT_<NAME>_CONFIG` | no | Provide an agent through env vars instead of files (Vercel) |
 | `VITE_WEB3AUTH_CLIENT_ID` | frontend | Web3Auth client id (`frontend/.env`) |
 
-`X402_FACILITATOR_URL`, `A2A_PAY_TO` and `A2A_X402` are not yet listed in `.env.example`.
+`X402_FACILITATOR_URL`, `A2A_PAY_TO`, `A2A_X402` and `RPC_URL_<NETWORK>` are not yet listed in `.env.example`.
 
 ## Networks
 
+The app is multichain: each agent lives on the network picked when it was
+created (`walletChainId` in its config), and funding, chat tools, registration
+and feedback for that agent run there. The web app offers Arbitrum Sepolia and
+Ethereum Sepolia; the CLI uses `NETWORK`. The master wallet is the same
+address on every network and needs ETH on each one it funds or registers on.
+
 | Network | Chain ID | Notes |
 |---|---|---|
-| Arbitrum Sepolia | 421614 | Default |
-| Arbitrum One | 42161 | Mainnet |
-| Robinhood Testnet | 46630 | Experimental |
+| Arbitrum Sepolia | 421614 | Default, in the web app |
+| Ethereum Sepolia | 11155111 | In the web app |
+| Arbitrum One | 42161 | Mainnet, `NETWORK` only |
+| Robinhood Testnet | 46630 | Experimental, `NETWORK` only |
 
 ## Deploying to Vercel
 

@@ -9,15 +9,20 @@ export function errorLine(err: unknown, fallback = 'Something went wrong'): stri
 /**
  * Map wallet/RPC failures of an ETH transfer to short UI messages.
  * @param payer Who was paying: the server's master wallet or the user's connected wallet.
+ * @param networkName Network the transfer ran on, named in the top-up hint.
  */
-export function friendlyFundError(err: unknown, payer: 'master' | 'wallet' = 'wallet'): string {
+export function friendlyFundError(
+  err: unknown,
+  payer: 'master' | 'wallet' = 'wallet',
+  networkName = "the agent's network",
+): string {
   const line = errorLine(err, 'Transfer failed')
   if (/user rejected|denied|rejected the request/i.test(line)) {
     return 'Wallet signature rejected.'
   }
   if (/insufficient funds|insufficient balance/i.test(line)) {
     return payer === 'master'
-      ? 'Master wallet has insufficient ETH. Fund it on Arbitrum Sepolia, then retry.'
+      ? `Master wallet has insufficient ETH. Fund it on ${networkName}, then retry.`
       : 'Wallet has insufficient ETH.'
   }
   if (RATE_LIMIT_RE.test(line)) {

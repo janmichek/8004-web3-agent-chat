@@ -10,13 +10,7 @@ import AgentStats from './components/AgentStats.vue'
 import AgentChat from './components/AgentChat.vue'
 import CreateAgent from './components/CreateAgent.vue'
 import web3AuthContextConfig from './web3authContext'
-import type { AgentSummary, MemorySession } from './api'
-
-function networkSlug(chainId: number): string {
-  if (chainId === 42161) return 'arbitrum-one'
-  if (chainId === 421614) return 'arbitrum-sepolia'
-  return 'arbitrum-sepolia'
-}
+import { scanUrlForAgent, type AgentSummary, type MemorySession } from './api'
 
 const selectedAgent = ref<AgentSummary | null>(null)
 const refreshKey = ref(0)
@@ -37,9 +31,9 @@ const scanId = computed(() => {
 })
 
 const scanUrl = computed(() => {
-  if (!scanId.value) return null
-  const slug = networkSlug(selectedAgent.value!.walletChainId)
-  return `https://testnet.8004scan.io/agents/${slug}/${scanId.value}`
+  const agent = selectedAgent.value
+  if (!agent?.agentId) return null
+  return scanUrlForAgent(agent.agentId, agent.walletChainId)
 })
 
 function onSelect(agent: AgentSummary | null) {

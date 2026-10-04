@@ -32,13 +32,20 @@ import {
 } from "../core/agent-config.js";
 import { ethers } from "ethers";
 import {
+  findNetworkByChainId,
+  getAgentScanUrl,
   getChainId,
+  getDefaultNetwork,
   getNetworkNameByChainId,
   getNetworkConfig,
   getRpcUrl,
   getActiveNetwork,
   getProvider,
+  getSupportedNetworkByChainId,
+  getSupportedNetworks,
+  runWithNetwork,
 } from "../core/config.js";
+import type { NetworkName } from "../core/types.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
 import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
 import { registerAgent } from "../core/registry.js";
@@ -288,6 +295,12 @@ async function publicAgentSummary(name: string) {
   };
 }
 
+/** Network an agent lives on: its `walletChainId`, else the NETWORK default (legacy configs). */
+function agentNetwork(config: AgentConfig | null | undefined): NetworkName {
+  const network = config?.walletChainId ? findNetworkByChainId(config.walletChainId) : undefined;
+  return network ?? getDefaultNetwork();
+}
+
 /** Tool names an anonymous A2A caller may trigger: read-only ones the agent was given. */
 function a2aToolNames(config: AgentConfig): string[] {
   const readOnly = new Set(TOOL_REGISTRY.filter((t) => t.readOnly).map((t) => t.name));
@@ -300,6 +313,16 @@ function a2aToolNames(config: AgentConfig): string[] {
  *   writes the owner's conversation history.
  */
 async function runChat(agentName: string, message: string, a2a = false): Promise<{
+  reply: string;
+  events: ChatEvent[];
+}> {
+  // The agent's tools read the active network, so run the whole turn on its chain.
+  return runWithNetwork(agentNetwork(loadAgentConfig(agentName)), () =>
+    runChatOnActiveNetwork(agentName, message, a2a),
+  );
+}
+
+async function runChatOnActiveNetwork(agentName: string, message: string, a2a: boolean): Promise<{
   reply: string;
   events: ChatEvent[];
 }> {
@@ -523,7 +546,9 @@ async function handleMcp(c: McpContext) {
     allowedTools = allowlist;
   }
   const handler = await getMcpHandler(allowedTools);
-  return handler(c.req.raw);
+  if (!agentName) return handler(c.req.raw);
+  // Agent-scoped tool calls act on that agent's chain.
+  return runWithNetwork(agentNetwork(loadAgentConfig(agentName)), () => handler(c.req.raw));
 }
 app.all("/api/mcp", async (c) => handleMcp(c));
 app.all("/mcp", async (c) => handleMcp(c));
@@ -654,30 +679,96 @@ app.all("/a2a", handleA2A);
 // "unexpected non-whitespace character after JSON data" error.
 app.notFound((c) => c.json({ error: `Not found: ${c.req.method} ${c.req.path}` }, 404));
 
-app.get("/api/health", async (c) => {
-  let master: { address?: string; balanceEth?: string } = {};
-  try {
-    const wallet = getMasterWallet();
-    master = {
-      address: wallet.address,
-      balanceEth: await getMasterWalletBalance(),
-    };
-  } catch {
-    /* master key optional for health */
-  }
-  return c.json({
-    ok: true,
-    network: getNetworkConfig().name,
-    chainId: getNetworkConfig().chainId,
-    master,
-  });
+// --- Multichain: scope each request to one network ---------------------------
+// Providers, the agent0 SDK and agent tools all read the active network, so
+// these run the downstream handler on the chain the request is about.
+
+/** Agent sub-routes (fund/chat/feedback/...) act on the agent's own chain. */
+app.use("/api/agents/:name/*", async (c, next) => {
+  const name = c.req.param("name");
+  const config = AGENT_NAME_RE.test(name) ? loadAgentConfig(name) : null;
+  return runWithNetwork(agentNetwork(config), next);
 });
 
-/** Proxy JSON-RPC to the configured RPC_URL (avoids public/Alchemy browser rate limits). */
+/** Creation picks the chain with `chainId` in the body (default: NETWORK). */
+app.post("/api/agents", async (c, next) => {
+  let chainId: unknown;
+  try {
+    chainId = ((await c.req.json()) as { chainId?: unknown } | null)?.chainId;
+  } catch {
+    return next(); // the handler reports the invalid body
+  }
+  if (chainId == null) return next();
+  const network = getSupportedNetworkByChainId(chainId);
+  if (!network) return c.json({ error: unsupportedChainMessage(chainId) }, 400);
+  return runWithNetwork(network, next);
+});
+
+function unsupportedChainMessage(chainId: unknown): string {
+  const supported = getSupportedNetworks().map((n) => getChainId(n)).join(", ");
+  return `Unsupported chainId: ${String(chainId)}. Supported: ${supported}`;
+}
+
+/** `?chainId=` on read-only routes; undefined when absent, null when unsupported. */
+function queryNetwork(c: Context): NetworkName | null | undefined {
+  const chainId = c.req.query("chainId");
+  if (chainId == null || chainId === "") return undefined;
+  return getSupportedNetworkByChainId(chainId) ?? null;
+}
+
+async function masterInfo(): Promise<{ address?: string; balanceEth?: string }> {
+  try {
+    const wallet = getMasterWallet();
+    return { address: wallet.address, balanceEth: await getMasterWalletBalance() };
+  } catch {
+    return {}; // master key is optional for health/catalog
+  }
+}
+
+/** Every network agents can be created on, with the master wallet's balance there. */
+async function supportedNetworkSummaries() {
+  return Promise.all(
+    getSupportedNetworks().map((network) =>
+      runWithNetwork(network, async () => {
+        const config = getNetworkConfig();
+        return {
+          network,
+          name: config.name,
+          chainId: config.chainId,
+          explorerUrl: config.explorerUrl,
+          masterBalanceEth: (await masterInfo()).balanceEth,
+        };
+      }),
+    ),
+  );
+}
+
+app.get("/api/health", async (c) => {
+  const network = queryNetwork(c);
+  if (network === null) return c.json({ error: unsupportedChainMessage(c.req.query("chainId")) }, 400);
+  return runWithNetwork(network ?? getDefaultNetwork(), async () =>
+    c.json({
+      ok: true,
+      network: getNetworkConfig().name,
+      chainId: getNetworkConfig().chainId,
+      master: await masterInfo(),
+    }),
+  );
+});
+
+/**
+ * Proxy JSON-RPC to the network's configured RPC (avoids public/Alchemy
+ * browser rate limits). `?chainId=` selects the network (default: NETWORK).
+ */
 app.post("/api/rpc", async (c) => {
+  const network = queryNetwork(c);
+  if (network === null) {
+    const message = unsupportedChainMessage(c.req.query("chainId"));
+    return c.json({ jsonrpc: "2.0", id: null, error: { code: -32602, message } }, 400);
+  }
   let rpcUrl: string;
   try {
-    rpcUrl = getRpcUrl();
+    rpcUrl = getRpcUrl(network);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: msg } }, 500);
@@ -702,13 +793,11 @@ app.post("/api/rpc", async (c) => {
 });
 
 app.get("/api/catalog", async (c) => {
-  let master: { address?: string; balanceEth?: string } = {};
+  const networks = await supportedNetworkSummaries();
+  const defaultChainId = getChainId();
+  let masterAddress: string | undefined;
   try {
-    const wallet = getMasterWallet();
-    master = {
-      address: wallet.address,
-      balanceEth: await getMasterWalletBalance(),
-    };
+    masterAddress = getMasterWallet().address;
   } catch {
     /* master key may be missing */
   }
@@ -716,8 +805,12 @@ app.get("/api/catalog", async (c) => {
   return c.json({
     network: getActiveNetwork(),
     networkName: getNetworkConfig().name,
-    chainId: getNetworkConfig().chainId,
-    master,
+    chainId: defaultChainId,
+    master: {
+      address: masterAddress,
+      balanceEth: networks.find((n) => n.chainId === defaultChainId)?.masterBalanceEth,
+    },
+    networks,
     actions: ACTION_REGISTRY.map((a) => ({
       name: a.name,
       description: a.description,
@@ -1266,7 +1359,6 @@ app.post("/api/agents/:name/feedback", async (c) => {
 
   try {
     const { giveFeedback } = await import("../core/reputation.js");
-    const { getNetworkSlugByChainId, getChainId } = await import("../core/config.js");
     const result = await giveFeedback({
       agentId,
       value: body.value,
@@ -1275,17 +1367,11 @@ app.post("/api/agents/:name/feedback", async (c) => {
       endpoint: body.endpoint,
       comment: body.comment,
     });
-    const chainId = summary.walletChainId ?? getChainId();
-    let networkSlug = "arbitrum-sepolia";
-    try {
-      networkSlug = getNetworkSlugByChainId(chainId);
-    } catch { /* keep default */ }
-    const numericId = String(agentId).split(":").pop();
-    const base = chainId === 42161 ? "https://8004scan.io" : "https://testnet.8004scan.io";
+    // A rated agent may live on another chain than the rater; its ID says which.
     return c.json({
       ok: true,
       ...result,
-      scanUrl: `${base}/agents/${networkSlug}/${numericId}`,
+      scanUrl: getAgentScanUrl(String(agentId)),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

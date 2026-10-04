@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useAccount } from '@wagmi/vue'
 import { fetchReputation, scanUrlForAgent, submitFeedback, txScanUrl } from '../api'
+import { DEFAULT_CHAIN_ID, chainIdOfAgentId } from '../networks'
 
 const props = defineProps<{
   /** Local agent name used for the feedback API route. */
@@ -90,7 +91,7 @@ const canSubmit = computed(() => {
   )
 })
 
-const chainId = computed(() => props.walletChainId ?? 421614)
+const chainId = computed(() => props.walletChainId ?? DEFAULT_CHAIN_ID)
 
 const previewScanUrl = computed(() => {
   const id = agentId.value.trim()
@@ -105,7 +106,8 @@ const feedbackScanUrl = computed(() => {
 
 const ratingTxUrl = computed(() => {
   if (!resultTx.value) return ''
-  return txScanUrl(resultTx.value, chainId.value)
+  // Feedback lands on the rated agent's chain, which its ID names.
+  return txScanUrl(resultTx.value, chainIdOfAgentId(agentId.value.trim()) ?? chainId.value)
 })
 
 function setStars(n: number) {

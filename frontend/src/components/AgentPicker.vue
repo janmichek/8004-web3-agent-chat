@@ -3,6 +3,7 @@ import { computed, onMounted, ref, unref, watch } from 'vue'
 import { useBalance } from '@wagmi/vue'
 import { formatEther, isAddress, type Address } from 'viem'
 import { errorLine, friendlyFundError } from '../rpc-errors'
+import { addressExplorerUrl, networkInfo } from '../networks'
 import { fetchAgents, fetchHealth, fetchReputation, fundAgent, deleteAgent, deleteAgentBackup, type AgentSummary } from '../api'
 
 const props = defineProps<{
@@ -19,7 +20,10 @@ const addr = computed<Address | undefined>(() =>
     : undefined,
 )
 const hasTarget = computed(() => Boolean(addr.value))
-const eth = useBalance({ address: addr, query: { enabled: hasTarget } })
+// The agent's balance lives on its own chain, whatever chain the wallet is on.
+const agentChainId = computed(() => networkInfo(props.agent?.walletChainId).chainId)
+const agentNetworkName = computed(() => networkInfo(props.agent?.walletChainId).name)
+const eth = useBalance({ address: addr, chainId: agentChainId, query: { enabled: hasTarget } })
 
 const ethDisplay = computed(() => {
   if (!addr.value) return '—'
@@ -33,15 +37,13 @@ const ethDisplay = computed(() => {
 const walletScanUrl = computed(() => {
   const address = props.agent?.walletAddress
   if (!address) return null
-  const chainId = props.agent?.walletChainId ?? 421614
-  const base = chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
-  return `${base}/address/${address}`
+  return addressExplorerUrl(address, props.agent?.walletChainId)
 })
 
 const masterScanUrl = computed(() => {
   if (!masterAddress.value) return null
-  const base = masterChainId.value === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
-  return `${base}/address/${masterAddress.value}`
+  // The master wallet funds the agent on the agent's chain.
+  return addressExplorerUrl(masterAddress.value, props.agent?.walletChainId)
 })
 
 const metadataUrl = computed(() => {
@@ -77,7 +79,7 @@ async function fund() {
     fundStatusKind.value = 'ok'
     emit('funded', r.txHash)
   } catch (err) {
-    fundStatusText.value = friendlyFundError(err, 'master')
+    fundStatusText.value = friendlyFundError(err, 'master', agentNetworkName.value)
     fundStatusKind.value = 'error'
   } finally { fundBusy.value = false }
 }
@@ -102,7 +104,6 @@ const deleteBusy = ref(false)
 const deleteStatusText = ref('')
 const deleteConfirm = ref(false)
 const masterAddress = ref('')
-const masterChainId = ref(421614)
 const ratingText = ref('')
 const ratingLoading = ref(false)
 
@@ -215,7 +216,6 @@ onMounted(() => {
   void fetchHealth()
     .then((h) => {
       if (h.master?.address) masterAddress.value = h.master.address
-      if (h.chainId) masterChainId.value = h.chainId
     })
     .catch(() => {})
 })
@@ -281,6 +281,10 @@ onMounted(() => {
               >{{ shortAddr(agent.agentURI) }} ↗</a
             >
           </dd>
+        </div>
+        <div data-testid="agent-network">
+          <dt>Network</dt>
+          <dd>{{ agentNetworkName }}</dd>
         </div>
         <div v-if="agent.walletAddress">
           <dt>Wallet</dt>

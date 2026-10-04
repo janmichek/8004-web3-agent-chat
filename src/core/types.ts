@@ -4,7 +4,11 @@
  */
 
 /** Supported network identifiers. */
-export type NetworkName = "arbitrum-sepolia" | "arbitrum-one" | "robinhood-testnet";
+export type NetworkName =
+  | "arbitrum-sepolia"
+  | "ethereum-sepolia"
+  | "arbitrum-one"
+  | "robinhood-testnet";
 
 /** Network configuration entry. */
 export interface NetworkConfig {
@@ -14,6 +18,14 @@ export interface NetworkConfig {
   chainId: number;
   /** Default RPC URL used when RPC_URL is not set. */
   defaultRpcUrl: string;
+  /** Keyless public RPC, used when no endpoint is configured for a non-default network. */
+  publicRpcUrl?: string;
+  /** Block explorer base URL (no trailing slash). */
+  explorerUrl?: string;
+  /** Network segment of 8004scan agent URLs (`/agents/<scanSlug>/<tokenId>`). */
+  scanSlug?: string;
+  /** Testnets are listed on testnet.8004scan.io. */
+  testnet: boolean;
 }
 
 /** Persisted wallet data stored in agents/<name>/wallet.json. */

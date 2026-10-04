@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, unref, watch } from 'vue'
 import { useAccount, useBalance, useConfig, useSwitchChain } from '@wagmi/vue'
-import { arbitrum, arbitrumSepolia } from '@wagmi/vue/chains'
 import { useWeb3Auth, useWeb3AuthConnect, useWeb3AuthDisconnect } from '@web3auth/modal/vue'
 import { formatEther } from 'viem'
-import { ensureArbitrumSepolia, getInjectedChainId } from '../chain'
+import { ensureChain, getInjectedChainId } from '../chain'
+import { SUPPORTED_NETWORKS, findNetwork, isSupportedChain } from '../networks'
 
 const wagmiConfig = useConfig()
 const { address, chainId: accountChainId } = useAccount()
@@ -55,15 +55,11 @@ const activeChainId = computed(() => walletChainId.value ?? accountChainId.value
 
 const chainLabel = computed(() => {
   const id = activeChainId.value
-  if (id === arbitrumSepolia.id) return 'Arb Sepolia'
-  if (id === arbitrum.id) return 'Arbitrum'
   if (id == null) return 'Unknown'
-  return `Chain ${id}`
+  return findNetwork(id)?.shortName ?? `Chain ${id}`
 })
 
-const wrongNetwork = computed(
-  () => isConnected.value && activeChainId.value !== arbitrumSepolia.id,
-)
+const wrongNetwork = computed(() => isConnected.value && !isSupportedChain(activeChainId.value))
 
 const eth = useBalance({ address: address })
 const ethDisplay = computed(() => {
@@ -82,14 +78,19 @@ async function onSignOut() {
   await disconnect()
 }
 
-async function onSwitchClick() {
+async function onChainPicked(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const chainId = Number(select.value)
+  if (!isSupportedChain(chainId) || chainId === activeChainId.value) return
   switching.value = true
   try {
-    await ensureArbitrumSepolia(wagmiConfig)
-    await refreshWalletChain()
+    await ensureChain(wagmiConfig, chainId)
   } catch {
-    switchChain({ chainId: arbitrumSepolia.id })
+    switchChain({ chainId })
   } finally {
+    await refreshWalletChain()
+    // The wallet may have refused: show the chain it is really on.
+    select.value = String(activeChainId.value ?? '')
     switching.value = false
   }
 }
@@ -101,21 +102,29 @@ async function onSwitchClick() {
       <img class="mark" src="/favicon.svg" alt="Web3 Agent Chat logo" width="32" height="32" />
       <div>
         <p class="name">Web3 Agent Chat</p>
-        <p class="tag">Arbitrum · ERC-8004</p>
+        <p class="tag">Multichain · ERC-8004</p>
       </div>
     </div>
 
     <div class="actions">
       <template v-if="isConnected">
-        <button
-          type="button"
+        <select
           class="chip"
           :class="{ warn: wrongNetwork }"
           :disabled="switching"
-          @click="onSwitchClick"
+          :value="activeChainId"
+          aria-label="Wallet network"
+          :title="switching ? 'Switching…' : 'Switch wallet network'"
+          data-testid="wallet-network"
+          @change="onChainPicked"
         >
-          {{ switching ? 'Switching…' : wrongNetwork ? `Switch · ${chainLabel}` : chainLabel }}
-        </button>
+          <option v-if="wrongNetwork || activeChainId == null" :value="activeChainId ?? ''" disabled>
+            Switch · {{ chainLabel }}
+          </option>
+          <option v-for="n in SUPPORTED_NETWORKS" :key="n.chainId" :value="n.chainId">
+            {{ n.shortName }}
+          </option>
+        </select>
         <span class="addr mono">{{ shortAddress }}</span>
         <span v-if="ethDisplay" class="balance mono">{{ ethDisplay }}</span>
         <button

@@ -11,10 +11,12 @@ import {
   scanUrlForAgent,
   uploadImage,
   type AgentSummary,
+  type CatalogNetwork,
   type CatalogResponse,
   type CreateAgentStep,
 } from '../api'
-import { ensureArbitrumSepolia, prepareNativeTransfer } from '../chain'
+import { ensureChain, prepareNativeTransfer } from '../chain'
+import { DEFAULT_CHAIN_ID, addressExplorerUrl, networkInfo } from '../networks'
 import { friendlyFundError, isRpcRateLimit } from '../rpc-errors'
 
 import { OASF_SCHEMA_URL, fetchOasfDomains, type OasfDomain } from '../oasf'
@@ -36,6 +38,18 @@ const wagmiConfig = useConfig()
 const phase = ref<Phase>('env')
 const catalog = ref<CatalogResponse | null>(null)
 const loadError = ref('')
+// Chain the agent is created on; starts at the server default.
+const selectedChainId = ref(DEFAULT_CHAIN_ID)
+const networks = computed<CatalogNetwork[]>(() => {
+  const c = catalog.value
+  if (!c) return []
+  return (
+    c.networks ?? [
+      { network: c.network, name: c.networkName, chainId: c.chainId, masterBalanceEth: c.master.balanceEth },
+    ]
+  )
+})
+const selectedNetwork = computed(() => networks.value.find((n) => n.chainId === selectedChainId.value))
 const createError = ref('')
 const busy = ref(false)
 
@@ -165,10 +179,10 @@ const privateKeyCopied = ref(false)
 const createdWalletScanUrl = computed(() => {
   const address = createdAgent.value?.walletAddress
   if (!address) return null
-  const chainId = createdAgent.value?.walletChainId ?? 421614
-  const base = chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
-  return `${base}/address/${address}`
+  return addressExplorerUrl(address, createdAgent.value?.walletChainId)
 })
+
+const createdNetworkName = computed(() => networkInfo(createdAgent.value?.walletChainId).name)
 
 const createdScanId = computed(() => {
   const agentId = createdAgent.value?.agentId
@@ -180,7 +194,7 @@ const createdScanId = computed(() => {
 const createdScanUrl = computed(() => {
   const agentId = createdAgent.value?.agentId
   if (!agentId) return null
-  return scanUrlForAgent(agentId, createdAgent.value?.walletChainId ?? 421614)
+  return scanUrlForAgent(agentId, createdAgent.value?.walletChainId ?? DEFAULT_CHAIN_ID)
 })
 
 const nameValid = computed(() =>
@@ -294,6 +308,7 @@ async function loadCatalog() {
   loadError.value = ''
   try {
     catalog.value = await fetchCatalog()
+    selectedChainId.value = catalog.value.chainId
   } catch (err) {
     loadError.value =
       err instanceof Error ? err.message : 'Failed to load catalog — is the API running?'
@@ -403,6 +418,7 @@ async function submitCreate() {
 
     const res = await createAgent({
       name: agentName.value.trim(),
+      chainId: selectedChainId.value,
       description: agentDescription.value.trim() || undefined,
       imageUri: imageUriToSend,
       actions: selectedActions.value,
@@ -470,7 +486,7 @@ async function fundFromMaster() {
     bumpBalance(res.amountEth)
   } catch (err) {
     fundStatusKind.value = 'error'
-    fundStatus.value = friendlyFundError(err, 'master')
+    fundStatus.value = friendlyFundError(err, 'master', createdNetworkName.value)
   } finally {
     fundBusy.value = null
   }
@@ -500,17 +516,20 @@ async function fundFromWallet() {
   fundStatusKind.value = 'info'
   fundStatus.value = 'Preparing transaction…'
   try {
-    await ensureArbitrumSepolia(wagmiConfig)
+    // The agent wallet is funded on the chain the agent was created on.
+    const chainId = createdAgent.value.walletChainId ?? DEFAULT_CHAIN_ID
+    await ensureChain(wagmiConfig, chainId)
     const account = getAccount(wagmiConfig)
     if (!account.address) throw new Error('Connect a wallet first')
 
     const to = createdAgent.value.walletAddress as `0x${string}`
     const value = parseEther(fundEth.value.trim() as `${number}`)
-    // Gas/nonce via /api/rpc (Alchemy) — avoids public rollup RPC rate limits.
+    // Gas/nonce via /api/rpc (Alchemy) — avoids public RPC rate limits.
     const prepared = await prepareNativeTransfer({
       account: account.address,
       to,
       value,
+      chainId,
     })
 
     fundStatus.value = 'Waiting for wallet signature…'
@@ -552,7 +571,19 @@ async function fundFromWallet() {
       <dl v-if="catalog" class="env">
         <div>
           <dt>Network</dt>
-          <dd>{{ catalog.networkName }} ({{ catalog.network }})</dd>
+          <dd>
+            <select
+              v-model.number="selectedChainId"
+              class="network-select"
+              aria-label="Network"
+              data-testid="create-network"
+              :disabled="networks.length < 2"
+            >
+              <option v-for="n in networks" :key="n.chainId" :value="n.chainId">
+                {{ n.name }} ({{ n.network }})
+              </option>
+            </select>
+          </dd>
         </div>
         <div>
           <dt>Master Wallet</dt>
@@ -560,7 +591,9 @@ async function fundFromWallet() {
         </div>
         <div>
           <dt>Balance</dt>
-          <dd class="mono">{{ catalog.master.balanceEth ?? '—' }} ETH</dd>
+          <dd class="mono" data-testid="create-master-balance">
+            {{ selectedNetwork?.masterBalanceEth ?? '—' }} ETH
+          </dd>
         </div>
       </dl>
       <p v-else class="hint">Loading environment…</p>
@@ -916,6 +949,10 @@ async function fundFromWallet() {
             <span v-else>#{{ createdAgent.agentId }}</span>
           </dd>
         </div>
+        <div data-testid="create-done-network">
+          <dt>Network</dt>
+          <dd>{{ createdNetworkName }}</dd>
+        </div>
         <div>
           <dt>Wallet</dt>
           <dd class="mono">
@@ -1084,6 +1121,16 @@ async function fundFromWallet() {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
+}
+
+.network-select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  max-width: 100%;
 }
 
 .env dt {

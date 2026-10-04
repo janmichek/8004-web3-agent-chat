@@ -19,6 +19,18 @@ const arbitrumSepolia = {
   logo: 'https://cryptologos.cc/logos/arbitrum-arb-logo.png',
 }
 
+const ethereumSepolia = {
+  chainNamespace: CHAIN_NAMESPACES.EIP155,
+  chainId: '0xaa36a7',
+  rpcTarget: 'https://ethereum-sepolia-rpc.publicnode.com',
+  displayName: 'Ethereum Sepolia',
+  blockExplorerUrl: 'https://sepolia.etherscan.io',
+  ticker: 'ETH',
+  tickerName: 'Ether',
+  decimals: 18,
+  logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.png',
+}
+
 const arbitrumOne = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
   chainId: '0xa4b1',
@@ -34,7 +46,7 @@ const arbitrumOne = {
 const web3AuthOptions: Web3AuthOptions = {
   clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID,
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
-  chains: [arbitrumSepolia, arbitrumOne],
+  chains: [arbitrumSepolia, ethereumSepolia, arbitrumOne],
   defaultChainId: '0x66eee',
 }
 

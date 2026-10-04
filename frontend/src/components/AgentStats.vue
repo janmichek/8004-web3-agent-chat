@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { fetchMemory, type MemorySummary, type AgentSummary } from '../api'
+import { networkInfo } from '../networks'
 
 const props = defineProps<{
   agent?: AgentSummary | null
@@ -31,10 +32,7 @@ function shortTx(h: string): string {
   return `${h.slice(0, 10)}…${h.slice(-6)}`
 }
 
-const explorerBase = computed(() => {
-  const chainId = props.agent?.walletChainId ?? 421614
-  return chainId === 42161 ? 'https://arbiscan.io' : 'https://sepolia.arbiscan.io'
-})
+const explorerBase = computed(() => networkInfo(props.agent?.walletChainId).explorerUrl)
 
 async function load() {
   const name = props.agent?.name

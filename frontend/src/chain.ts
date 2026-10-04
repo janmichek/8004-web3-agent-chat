@@ -1,14 +1,26 @@
 import { getAccount, getWalletClient, switchChain } from '@wagmi/vue/actions'
-import { arbitrumSepolia } from '@wagmi/vue/chains'
+import { arbitrum, arbitrumSepolia, sepolia } from '@wagmi/vue/chains'
 import type { Config } from '@wagmi/vue'
 import {
   createPublicClient,
   http,
   type Address,
+  type Chain,
   type Hex,
 } from 'viem'
+import { networkInfo } from './networks'
 
-const ARB_SEPOLIA_HEX = `0x${arbitrumSepolia.id.toString(16)}` as Hex
+const VIEM_CHAINS: Record<number, Chain> = {
+  [arbitrumSepolia.id]: arbitrumSepolia,
+  [sepolia.id]: sepolia,
+  [arbitrum.id]: arbitrum,
+}
+
+function viemChain(chainId: number): Chain {
+  const chain = VIEM_CHAINS[chainId]
+  if (!chain) throw new Error(`Unsupported chain ${chainId}`)
+  return chain
+}
 
 /** Read the wallet's real chain id (not wagmi's configured-chain fallback). */
 export async function getInjectedChainId(): Promise<number | undefined> {
@@ -18,24 +30,25 @@ export async function getInjectedChainId(): Promise<number | undefined> {
   return Number.parseInt(hex, 16)
 }
 
-/** Same-origin proxy for in-page viem calls (Vite → API → Alchemy). */
-function appRpcUrl(): string {
-  return `${window.location.origin}/api/rpc`
+/** Same-origin proxy for in-page viem calls (Vite → API → the chain's RPC). */
+function appRpcUrl(chainId: number): string {
+  return `${window.location.origin}/api/rpc?chainId=${chainId}`
 }
 
 /** MetaMask talks to this URL directly (not via Vite), so use the API host. */
-function walletRpcUrl(): string {
-  return 'http://127.0.0.1:8787/api/rpc'
+function walletRpcUrl(chainId: number): string {
+  return `http://127.0.0.1:8787/api/rpc?chainId=${chainId}`
 }
 
 /**
  * Estimate nonce/gas/fees via the app RPC proxy so the wallet does not need
- * the public Arbitrum Sepolia endpoint (which rate-limits often).
+ * the chain's public endpoint (which rate-limits often).
  */
 export async function prepareNativeTransfer(params: {
   account: Address
   to: Address
   value: bigint
+  chainId: number
 }): Promise<{
   to: Address
   value: bigint
@@ -46,8 +59,8 @@ export async function prepareNativeTransfer(params: {
   chainId: number
 }> {
   const client = createPublicClient({
-    chain: arbitrumSepolia,
-    transport: http(appRpcUrl()),
+    chain: viemChain(params.chainId),
+    transport: http(appRpcUrl(params.chainId)),
   })
   const [nonce, gas, fees] = await Promise.all([
     client.getTransactionCount({ address: params.account }),
@@ -65,61 +78,62 @@ export async function prepareNativeTransfer(params: {
     nonce,
     maxFeePerGas: fees.maxFeePerGas,
     maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-    chainId: arbitrumSepolia.id,
+    chainId: params.chainId,
   }
 }
 
-async function addArbitrumSepolia(): Promise<void> {
+async function addChain(chainId: number): Promise<void> {
   const provider = window.ethereum
   if (!provider?.request) {
     throw new Error('No injected wallet found')
   }
 
+  const network = networkInfo(chainId)
   await provider.request({
     method: 'wallet_addEthereumChain',
     params: [
       {
-        chainId: ARB_SEPOLIA_HEX,
-        chainName: 'Arbitrum Sepolia',
+        chainId: `0x${chainId.toString(16)}` as Hex,
+        chainName: network.name,
         nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-        // Prefer local proxy → Alchemy. Public rollup RPC rate-limits often.
-        rpcUrls: [walletRpcUrl()],
-        blockExplorerUrls: ['https://sepolia.arbiscan.io'],
+        // Prefer local proxy → configured RPC. Public RPCs rate-limit often.
+        rpcUrls: [walletRpcUrl(chainId)],
+        blockExplorerUrls: [network.explorerUrl],
       },
     ],
   })
 }
 
 /**
- * Ensure the connected wallet is on Arbitrum Sepolia before sending.
+ * Ensure the connected wallet is on `chainId` before sending.
  * Adds the chain if missing (injected wallets), then verifies chain id.
  */
-export async function ensureArbitrumSepolia(config: Config): Promise<void> {
-  if (getAccount(config).chainId === arbitrumSepolia.id) return
+export async function ensureChain(config: Config, chainId: number): Promise<void> {
+  if (getAccount(config).chainId === chainId) return
 
   const current = await getInjectedChainId()
-  if (current === arbitrumSepolia.id) return
+  if (current === chainId) return
 
   try {
-    await switchChain(config, { chainId: arbitrumSepolia.id })
+    await switchChain(config, { chainId })
   } catch {
     try {
-      await addArbitrumSepolia()
-      await switchChain(config, { chainId: arbitrumSepolia.id })
+      await addChain(chainId)
+      await switchChain(config, { chainId })
     } catch {
       // wallet_addEthereumChain often switches already
     }
   }
 
   let after = getAccount(config).chainId ?? (await getInjectedChainId())
-  if (after !== arbitrumSepolia.id) {
+  if (after !== chainId) {
     const client = await getWalletClient(config)
     if (client) {
       try {
-        await client.switchChain({ id: arbitrumSepolia.id })
+        await client.switchChain({ id: chainId })
       } catch {
         try {
-          await addArbitrumSepolia()
+          await addChain(chainId)
         } catch {
           // social / embedded wallets may not support wallet_addEthereumChain
         }
@@ -128,9 +142,9 @@ export async function ensureArbitrumSepolia(config: Config): Promise<void> {
     after = getAccount(config).chainId ?? (await getInjectedChainId())
   }
 
-  if (after !== arbitrumSepolia.id) {
+  if (after !== chainId) {
     throw new Error(
-      `Wallet is still on chain ${after ?? '?'}. Switch to Arbitrum Sepolia (421614), then retry.`,
+      `Wallet is still on chain ${after ?? '?'}. Switch to ${networkInfo(chainId).name} (${chainId}), then retry.`,
     )
   }
 }

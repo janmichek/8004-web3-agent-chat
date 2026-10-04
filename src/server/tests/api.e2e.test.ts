@@ -176,6 +176,48 @@ describe("API offline e2e", () => {
     else vi.unstubAllEnvs();
   });
 
+  it("GET /api/catalog lists the supported networks with the default first", async () => {
+    const body = (await (await app.request("/api/catalog")).json()) as {
+      chainId: number;
+      master: { balanceEth?: string };
+      networks: { network: string; chainId: number; masterBalanceEth?: string }[];
+    };
+    expect(body.networks.map((n) => n.chainId)).toEqual([421614, 11155111]);
+    expect(body.networks[0]?.chainId).toBe(body.chainId);
+    expect(body.networks[1]?.masterBalanceEth).toBe("1.0");
+    expect(body.master.balanceEth).toBe("1.0");
+  });
+
+  it("GET /api/health?chainId= reports that network; unsupported chains are 400", async () => {
+    const sepolia = (await (await app.request("/api/health?chainId=11155111")).json()) as {
+      network: string;
+      chainId: number;
+    };
+    expect(sepolia).toMatchObject({ network: "Ethereum Sepolia", chainId: 11155111 });
+    expect((await app.request("/api/health?chainId=1")).status).toBe(400);
+  });
+
+  it("POST /api/rpc?chainId= rejects unsupported chains before proxying", async () => {
+    const res = await app.request("/api/rpc?chainId=1", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("Unsupported chainId: 1");
+  });
+
+  it("POST /api/agents rejects an unsupported chainId before side effects", async () => {
+    const res = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "wrong-chain-agent", skipRegister: true, chainId: 1 }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("Unsupported chainId: 1");
+  });
+
   it("DELETE /api/agents/:name 404s for unknown agent", async () => {
     const res = await app.request("/api/agents/ghost-agent-xyz", { method: "DELETE" });
     expect(res.status).toBe(404);

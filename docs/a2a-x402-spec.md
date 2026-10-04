@@ -315,7 +315,7 @@ Funding from the connected wallet in the create wizard:
 | F1 | Nonce, gas and fees are estimated through the app's `/api/rpc` proxy, then the prepared transaction is sent to the wallet | — |
 | F2 | Requires a connected account, else `Connect a wallet first` | — |
 | F3 | On an RPC rate-limit error the send is retried up to 3 times (800 ms, 1600 ms backoff) with a `RPC busy, retrying (n/3)…` status | — |
-| F4 | Errors are mapped: user rejection → `Wallet signature rejected.`; insufficient funds → `Wallet has insufficient ETH.` (connected wallet) or `Master wallet has insufficient ETH. Fund it on Arbitrum Sepolia, then retry.` (master wallet); rate limit → `RPC rate limit hit. Wait a few seconds and retry.`; otherwise first line of the message | `rpc-errors.test` |
+| F4 | Errors are mapped: user rejection → `Wallet signature rejected.`; insufficient funds → `Wallet has insufficient ETH.` (connected wallet) or `Master wallet has insufficient ETH. Fund it on <agent's network>, then retry.` (master wallet); rate limit → `RPC rate limit hit. Wait a few seconds and retry.`; otherwise first line of the message | `rpc-errors.test` |
 | F6 | The same mapping is used by the wizard and the picker's fund button; the picker's delete error shows the first line of the server message | Playwright `agent-picker` |
 | F5 | Rate limit = `exceeds defined limit`, `limit exceeded`, `-32005`, or standalone `429` | `rpc-errors.test` |
 

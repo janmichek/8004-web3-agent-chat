@@ -8,6 +8,7 @@ import { getChainId } from "../../core/config.js"
 const CHAIN_IDS: Record<number, number> = {
   42161: 42161,
   421614: 421614,
+  11155111: 11155111,
 }
 
 function getChainIdForExplorer(): number {

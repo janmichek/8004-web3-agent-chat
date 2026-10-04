@@ -37,7 +37,7 @@ export interface ToolEntry {
 export const ACTION_REGISTRY: ActionEntry[] = [
   {
     name: "transfer-eth",
-    description: "Transfer ETH on Arbitrum with balance checks and safety confirmations",
+    description: "Transfer ETH on the agent's chain with balance checks and safety confirmations",
     toolNames: ["send_eth", "get_token_balance"],
     skillName: "transfer-eth",
     factory: TransferEthAction,

@@ -7,7 +7,7 @@ test.describe('app shell', () => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
     await expect(page.getByText('Web3 Agent Chat')).toBeVisible()
-    await expect(page.getByText('Arbitrum · ERC-8004')).toBeVisible()
+    await expect(page.getByText('Multichain · ERC-8004')).toBeVisible()
     await expect(page.getByRole('button', { name: /Sign in/ })).toBeVisible()
   })
 

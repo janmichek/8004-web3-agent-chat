@@ -4,7 +4,13 @@
  */
 
 import { SDK } from "@blockbyvlog/agent0-sdk";
-import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
+import {
+  findNetworkByAgentId,
+  getActiveNetwork,
+  getNetworkConfig,
+  getRpcUrl,
+  runWithNetwork,
+} from "./config.js";
 
 export interface GiveFeedbackOptions {
   agentId: string;
@@ -31,6 +37,16 @@ export interface GiveFeedbackResult {
 export interface ReputationSummary {
   count: number;
   averageValue: number;
+}
+
+/**
+ * Runs `fn` on the chain the agent ID names ("<chainId>:<tokenId>"), so an
+ * agent on another supported chain can be rated/read. Bare token IDs and
+ * unknown chains stay on the active network.
+ */
+function onAgentNetwork<T>(agentId: string, fn: () => T): T {
+  const network = findNetworkByAgentId(agentId);
+  return network ? runWithNetwork(network, fn) : fn();
 }
 
 function buildSdk(privateKey: string): SDK {
@@ -68,10 +84,14 @@ export function resolveRaterPrivateKey(override?: string): string {
 }
 
 export async function giveFeedback(options: GiveFeedbackOptions): Promise<GiveFeedbackResult> {
+  if (!options.agentId) throw new Error("agentId is required");
+  return onAgentNetwork(options.agentId, () => giveFeedbackOnActiveNetwork(options));
+}
+
+async function giveFeedbackOnActiveNetwork(options: GiveFeedbackOptions): Promise<GiveFeedbackResult> {
   const { agentId, tag, endpoint, comment } = options;
   const privateKey = resolveRaterPrivateKey(options.privateKey);
   const value = normalizeRating(options.value);
-  if (!agentId) throw new Error("agentId is required");
 
   const sdk = buildSdk(privateKey);
   // Off-chain feedback files need Pinata/IPFS; skip when not configured so ratings still land on-chain.
@@ -105,6 +125,10 @@ export async function giveFeedback(options: GiveFeedbackOptions): Promise<GiveFe
 }
 
 export async function getReputationSummary(agentId: string, tag?: string): Promise<ReputationSummary> {
+  return onAgentNetwork(agentId, () => getReputationSummaryOnActiveNetwork(agentId, tag));
+}
+
+async function getReputationSummaryOnActiveNetwork(agentId: string, tag?: string): Promise<ReputationSummary> {
   const rpcUrl = (() => { try { return getRpcUrl(); } catch { return undefined; } })();
   const network = getActiveNetwork();
   const config = getNetworkConfig(network);

@@ -24,7 +24,7 @@ import type { Action } from "./types.js"
  */
 export const TransferEthAction = (): Action => ({
   name: "transfer-eth",
-  description: "Transfer ETH on Arbitrum with balance checks and safety confirmations",
+  description: "Transfer ETH on the agent's chain with balance checks and safety confirmations",
   tools: [sendEthTool, tokenBalanceTool],
   skill: transferEthSkill,
 })

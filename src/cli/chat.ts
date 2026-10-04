@@ -16,7 +16,12 @@ import { AGENTS_DIR, getOrCreateAgentWallet } from "../core/wallet.js";
 import { discoverAgentSkills, resolveAgentSkills } from "../core/agent-skills.js";
 import { createFileCheckpointer } from "../core/file-checkpoint.js";
 import { loadAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "../core/agent-config.js";
-import { getNetworkNameByChainId, getNetworkConfig } from "../core/config.js";
+import {
+  findNetworkByChainId,
+  getNetworkNameByChainId,
+  getNetworkConfig,
+  setProcessNetwork,
+} from "../core/config.js";
 import type { Skill } from "../actions/types.js";
 
 dotenv.config();
@@ -104,6 +109,12 @@ async function main() {
   console.log('  Type your message and press Enter. Type "exit" to quit.');
   console.log("=".repeat(60));
   console.log();
+
+  // Tools read the active network: act on the agent's own chain, not NETWORK.
+  const agentNetwork = agentConfig?.walletChainId
+    ? findNetworkByChainId(agentConfig.walletChainId)
+    : undefined;
+  if (agentNetwork) setProcessNetwork(agentNetwork);
 
   const networkName = agentConfig?.walletChainId
     ? getNetworkNameByChainId(agentConfig.walletChainId)
