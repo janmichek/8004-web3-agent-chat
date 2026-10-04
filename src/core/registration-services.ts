@@ -100,6 +100,15 @@ export function buildAgentWalletEndpoint(chainId: number, walletAddress: string)
   return `eip155:${chainId}:${walletAddress}`
 }
 
+/**
+ * Build the decentralized identifier (DID) for an agent wallet.
+ * Uses `did:pkh` (CAIP-10 based, EVM-native) so resolvers can map it
+ * back to `eip155:{chainId}:{address}` without extra lookup.
+ */
+export function buildDID(chainId: number, walletAddress: string): string {
+  return `did:pkh:eip155:${chainId}:${walletAddress}`
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []
 }
@@ -136,6 +145,13 @@ export async function buildRegistrationServices(
       name: "agentWallet",
       endpoint: buildAgentWalletEndpoint(chainId, walletAddress),
     })
+  }
+
+  // Decentralized identity: always advertise the agent wallet as a DID
+  // service (`did:pkh:eip155:{chainId}:{address}`) so creation metadata
+  // carries a self-sovereign identifier alongside agentWallet.
+  if (walletAddress && chainId != null && !seen.has("did")) {
+    services.push({ name: "DID", endpoint: buildDID(chainId, walletAddress) })
   }
 
   const domains = stringArray(options.metadata?.oasfDomains)

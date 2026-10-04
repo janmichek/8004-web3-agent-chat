@@ -160,7 +160,7 @@ describe("buildRegistrationServices (8004scan Services tab)", () => {
       walletAddress: "0x4992cfb9899eade72df11a2ea3b904b39ceaccc7",
       chainId: 421614,
     })
-    expect(withWallet.map((s) => s.name)).toEqual(["MCP", "agentWallet"])
+    expect(withWallet.map((s) => s.name)).toEqual(["MCP", "agentWallet", "DID"])
   })
 
   it("converts a bare 0x agentWallet endpoint to CAIP-10 and dedupes names", async () => {

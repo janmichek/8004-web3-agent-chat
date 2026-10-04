@@ -15,7 +15,7 @@ import { SDK } from "@blockbyvlog/agent0-sdk";
 import type { RegisterAgentOptions, RegistrationResult } from "./types.js";
 import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
 import { toGatewayUrl, uploadJson } from "./ipfs.js";
-import { buildRegistrationServices, canonicalizeEndpoint } from "./registration-services.js";
+import { buildRegistrationServices, canonicalizeEndpoint, buildDID } from "./registration-services.js";
 
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
@@ -99,9 +99,12 @@ export async function registerAgent(
 
   // Pin capabilities/endpoints into the registration file so they land in IPFS.
   // Always include `updatedAt` (unix seconds) at the moment of creation so
-  // on-chain metadata carries a creation timestamp.
+  // on-chain metadata carries a creation timestamp. Enrich with the
+  // decentralized identifier (`did:pkh:eip155:{chainId}:{wallet}`) so the
+  // creation metadata is DID-bound from birth.
   const updatedAt = Math.floor(Date.now() / 1000);
-  agent.setMetadata({ ...options.metadata, updatedAt });
+  const did = buildDID(config.chainId, walletAddress);
+  agent.setMetadata({ ...options.metadata, updatedAt, did });
   if (options.endpoints && options.endpoints.length > 0) {
     // Canonical names, well-known A2A URL and protocol `version` meta — the
     // same shape SDK setA2A/setMCP would write.
@@ -225,7 +228,7 @@ async function pinEnrichedRegistrationFile(
     // 8004scan reads x402 from this top-level flag and the wallet from the
     // agentWallet service; nothing under `metadata` is parsed for either.
     x402Support,
-    metadata: { ...options.metadata, updatedAt },
+    metadata: { ...options.metadata, updatedAt, did: buildDID(chainId, options.walletAddress) },
     // Reputation is always available via ERC-8004 Reputation Registry.
     supportedTrust: file.trustModels?.length ? file.trustModels : ["reputation"],
   };

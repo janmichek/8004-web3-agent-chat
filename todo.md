@@ -13,3 +13,4 @@
   💰 Payments: Agent wallet addresses for x402 protocol
   🔗 Verification: Bidirectional link to onchain registry
   🏷️ Trust Models: Supported validation and reputation patterns
+- creator signed user, also funds bot - add test flow

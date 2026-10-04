@@ -26,7 +26,7 @@ import { ACTION_REGISTRY, TOOL_REGISTRY } from "../core/action-registry.js"
 import { saveAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "../core/agent-config.js"
 import type { AgentConfig } from "../core/agent-config.js"
 import { getChainId, getNetworkNameByChainId } from "../core/config.js"
-import { isAdvertisableUrl, normalizeA2AEndpoint } from "../core/registration-services.js"
+import { isAdvertisableUrl, normalizeA2AEndpoint, buildDID } from "../core/registration-services.js"
 import type { Skill } from "../actions/types.js"
 
 dotenv.config()
@@ -408,11 +408,13 @@ async function main(): Promise<void> {
   }
 
   // --- Persist ERC-8004 config ---
+  const chainId = getChainId()
+  const did = buildDID(chainId, agentWallet.address)
   const config: AgentConfig = {
     name: agentName,
     description: `Agent ${agentName}`,
     walletAddress: agentWallet.address,
-    walletChainId: getChainId(),
+    walletChainId: chainId,
     endpoints,
     trustModels: [],
     owners: [masterWallet.address],
@@ -422,6 +424,7 @@ async function main(): Promise<void> {
     metadata: {
       actions: state.actions,
       tools: [...new Set([...state.actionToolNames, ...state.tools])],
+      did,
     },
     createdAt: new Date().toISOString(),
     updatedAt: Math.floor(Date.now() / 1000),
@@ -443,6 +446,7 @@ async function main(): Promise<void> {
         metadata: {
           actions: state.actions,
           tools: [...new Set([...state.actionToolNames, ...state.tools])],
+          did,
         },
       })
       // Persist agentId and URI back into the config

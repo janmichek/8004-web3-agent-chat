@@ -10,10 +10,14 @@ import type { DynamicStructuredTool } from "@langchain/core/tools"
 import type { Action } from "../actions/types.js"
 import {
   TransferEthAction,
+  EnsNameAction,
   sendEthTool,
   tokenBalanceTool,
   fetchContractAbiTool,
   callContractTool,
+  resolveEnsTool,
+  lookupEnsTool,
+  setPrimaryEnsTool,
 } from "../actions/index.js"
 
 /** @notice Describes an available action for the selection menu. */
@@ -42,6 +46,13 @@ export const ACTION_REGISTRY: ActionEntry[] = [
     skillName: "transfer-eth",
     factory: TransferEthAction,
   },
+  {
+    name: "ens-name",
+    description: "Resolve ENS names, look up primary names, and set the agent wallet primary ENS name",
+    toolNames: ["resolve_ens", "lookup_ens", "set_primary_ens"],
+    skillName: "ens-name",
+    factory: EnsNameAction,
+  },
 ]
 
 /** @notice Registry of all available standalone tools (Level 2). */
@@ -67,6 +78,21 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     description: "Call any function on a verified contract (experimental)",
     readOnly: false,
   },
+  {
+    name: "resolve_ens",
+    description: "Resolve an ENS name to an address",
+    readOnly: true,
+  },
+  {
+    name: "lookup_ens",
+    description: "Look up the primary ENS name for a wallet address",
+    readOnly: true,
+  },
+  {
+    name: "set_primary_ens",
+    description: "Set the agent wallet's primary ENS name (reverse record)",
+    readOnly: false,
+  },
 ]
 
 const TOOL_INSTANCES: Record<string, DynamicStructuredTool> = {
@@ -74,6 +100,9 @@ const TOOL_INSTANCES: Record<string, DynamicStructuredTool> = {
   get_token_balance: tokenBalanceTool,
   fetch_contract_abi: fetchContractAbiTool,
   call_contract: callContractTool,
+  resolve_ens: resolveEnsTool,
+  lookup_ens: lookupEnsTool,
+  set_primary_ens: setPrimaryEnsTool,
 }
 
 /** @notice Look up an action entry by name. */

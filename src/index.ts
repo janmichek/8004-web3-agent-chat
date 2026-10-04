@@ -26,12 +26,17 @@ export type { SkillFactory } from "./core/agent-skills.js";
 export { createFileCheckpointer } from "./core/file-checkpoint.js";
 export {
   TransferEthAction,
+  EnsNameAction,
   sendEthTool,
   tokenBalanceTool,
   transferEthSkill,
   tokenBalanceSkill,
+  ensNameSkill,
   fetchContractAbiTool,
   callContractTool,
+  resolveEnsTool,
+  lookupEnsTool,
+  setPrimaryEnsTool,
 } from "./actions/index.js";
 export type { Action, Skill } from "./actions/types.js";
 export { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName, getToolByName, getStandaloneToolInstance } from "./core/action-registry.js";
