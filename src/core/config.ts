@@ -48,6 +48,15 @@ const NETWORKS: Record<NetworkName, NetworkConfig> = {
     scanSlug: "mantle",
     testnet: false,
   },
+  "mantle-sepolia": {
+    name: "Mantle Sepolia",
+    chainId: 5003,
+    defaultRpcUrl: "https://mantle-sepolia.g.alchemy.com/v2",
+    publicRpcUrl: "https://rpc.sepolia.mantle.xyz",
+    explorerUrl: "https://sepolia.mantlescan.io",
+    scanSlug: "mantle-sepolia",
+    testnet: true,
+  },
   // NOTE: Chain ID 23888 for Robinhood Testnet should be verified before production use.
   "robinhood-testnet": {
     name: "Robinhood Testnet",
@@ -58,7 +67,7 @@ const NETWORKS: Record<NetworkName, NetworkConfig> = {
 };
 
 /** Networks the dapp offers besides the NETWORK default. */
-const DAPP_NETWORKS: NetworkName[] = ["arbitrum-sepolia", "ethereum-sepolia"];
+const DAPP_NETWORKS: NetworkName[] = ["arbitrum-sepolia", "ethereum-sepolia", "mantle-sepolia"];
 
 /** Network of the request/agent currently being served (see {@link runWithNetwork}). */
 const networkScope = new AsyncLocalStorage<NetworkName>();

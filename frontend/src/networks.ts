@@ -10,6 +10,8 @@ export type NetworkInfo = {
   scanSlug: string
   /** Keyless RPC for wallets: Web3Auth needs an absolute https URL. */
   publicRpcUrl: string
+  /** Native gas token (defaults to ETH when omitted). */
+  nativeCurrency?: { name: string; symbol: string; decimals: number }
 }
 
 const NETWORKS: NetworkInfo[] = [
@@ -48,13 +50,24 @@ const NETWORKS: NetworkInfo[] = [
     scanUrl: 'https://8004scan.io',
     scanSlug: 'mantle',
     publicRpcUrl: 'https://rpc.mantle.xyz',
+    nativeCurrency: { name: 'MNT', symbol: 'MNT', decimals: 18 },
+  },
+  {
+    chainId: 5003,
+    name: 'Mantle Sepolia',
+    shortName: 'Mnt Sepolia',
+    explorerUrl: 'https://sepolia.mantlescan.io',
+    scanUrl: 'https://testnet.8004scan.io',
+    scanSlug: 'mantle-sepolia',
+    publicRpcUrl: 'https://rpc.sepolia.mantle.xyz',
+    nativeCurrency: { name: 'MNT', symbol: 'MNT', decimals: 18 },
   },
 ]
 
 export const DEFAULT_CHAIN_ID = 421614
 
 /** Chains the dapp works on; the wallet is asked to be on one of these. */
-export const SUPPORTED_CHAIN_IDS: readonly number[] = [421614, 11155111]
+export const SUPPORTED_CHAIN_IDS: readonly number[] = [421614, 11155111, 5003]
 
 export const SUPPORTED_NETWORKS: NetworkInfo[] = NETWORKS.filter((n) =>
   SUPPORTED_CHAIN_IDS.includes(n.chainId),

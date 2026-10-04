@@ -1,5 +1,5 @@
 import { getAccount, getWalletClient, switchChain } from '@wagmi/vue/actions'
-import { arbitrum, arbitrumSepolia, sepolia } from '@wagmi/vue/chains'
+import { arbitrum, arbitrumSepolia, mantle, mantleSepoliaTestnet, sepolia } from '@wagmi/vue/chains'
 import type { Config } from '@wagmi/vue'
 import {
   createPublicClient,
@@ -14,6 +14,8 @@ const VIEM_CHAINS: Record<number, Chain> = {
   [arbitrumSepolia.id]: arbitrumSepolia,
   [sepolia.id]: sepolia,
   [arbitrum.id]: arbitrum,
+  [mantle.id]: mantle,
+  [mantleSepoliaTestnet.id]: mantleSepoliaTestnet,
 }
 
 function viemChain(chainId: number): Chain {
@@ -89,13 +91,14 @@ async function addChain(chainId: number): Promise<void> {
   }
 
   const network = networkInfo(chainId)
+  const native = network.nativeCurrency ?? { name: 'Ether', symbol: 'ETH', decimals: 18 }
   await provider.request({
     method: 'wallet_addEthereumChain',
     params: [
       {
         chainId: `0x${chainId.toString(16)}` as Hex,
         chainName: network.name,
-        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        nativeCurrency: native,
         // Prefer local proxy → configured RPC. Public RPCs rate-limit often.
         rpcUrls: [walletRpcUrl(chainId)],
         blockExplorerUrls: [network.explorerUrl],

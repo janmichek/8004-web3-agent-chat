@@ -70,6 +70,7 @@ const networkLabels: Record<string, string> = {
   "arbitrum-sepolia": "Arbitrum Sepolia (testnet)",
   "arbitrum-one": "Arbitrum One (mainnet)",
   "mantle": "Mantle (mainnet)",
+  "mantle-sepolia": "Mantle Sepolia (testnet)",
   "robinhood-testnet": "Robinhood Testnet",
 };
 const networkLabel = networkLabels[network] ?? network;

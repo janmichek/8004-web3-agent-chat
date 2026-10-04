@@ -43,10 +43,34 @@ const arbitrumOne = {
   logo: 'https://cryptologos.cc/logos/arbitrum-arb-logo.png',
 }
 
+const mantleMainnet = {
+  chainNamespace: CHAIN_NAMESPACES.EIP155,
+  chainId: '0x1388',
+  rpcTarget: 'https://rpc.mantle.xyz',
+  displayName: 'Mantle',
+  blockExplorerUrl: 'https://mantlescan.io',
+  ticker: 'MNT',
+  tickerName: 'MNT',
+  decimals: 18,
+  logo: 'https://cryptologos.cc/logos/mantle-mnt-logo.png',
+}
+
+const mantleSepolia = {
+  chainNamespace: CHAIN_NAMESPACES.EIP155,
+  chainId: '0x138b',
+  rpcTarget: 'https://rpc.sepolia.mantle.xyz',
+  displayName: 'Mantle Sepolia',
+  blockExplorerUrl: 'https://sepolia.mantlescan.io',
+  ticker: 'MNT',
+  tickerName: 'MNT',
+  decimals: 18,
+  logo: 'https://cryptologos.cc/logos/mantle-mnt-logo.png',
+}
+
 const web3AuthOptions: Web3AuthOptions = {
   clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID,
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
-  chains: [arbitrumSepolia, ethereumSepolia, arbitrumOne],
+  chains: [arbitrumSepolia, ethereumSepolia, arbitrumOne, mantleMainnet, mantleSepolia],
   defaultChainId: '0x66eee',
 }
 

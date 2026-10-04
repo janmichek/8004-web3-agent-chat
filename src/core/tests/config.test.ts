@@ -38,9 +38,9 @@ describe("network scoping", () => {
 
   it("lists the default network first, without duplicates", () => {
     vi.stubEnv("NETWORK", "ethereum-sepolia");
-    expect(getSupportedNetworks()).toEqual(["ethereum-sepolia", "arbitrum-sepolia"]);
+    expect(getSupportedNetworks()).toEqual(["ethereum-sepolia", "arbitrum-sepolia", "mantle-sepolia"]);
     vi.stubEnv("NETWORK", "arbitrum-one");
-    expect(getSupportedNetworks()).toEqual(["arbitrum-one", "arbitrum-sepolia", "ethereum-sepolia"]);
+    expect(getSupportedNetworks()).toEqual(["arbitrum-one", "arbitrum-sepolia", "ethereum-sepolia", "mantle-sepolia"]);
     expect(getSupportedNetworkByChainId("11155111")).toBe("ethereum-sepolia");
     expect(getSupportedNetworkByChainId(1)).toBeUndefined();
   });

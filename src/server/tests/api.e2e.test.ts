@@ -182,7 +182,7 @@ describe("API offline e2e", () => {
       master: { balanceEth?: string };
       networks: { network: string; chainId: number; masterBalanceEth?: string }[];
     };
-    expect(body.networks.map((n) => n.chainId)).toEqual([421614, 11155111]);
+    expect(body.networks.map((n) => n.chainId)).toEqual([421614, 11155111, 5003]);
     expect(body.networks[0]?.chainId).toBe(body.chainId);
     expect(body.networks[1]?.masterBalanceEth).toBe("1.0");
     expect(body.master.balanceEth).toBe("1.0");
