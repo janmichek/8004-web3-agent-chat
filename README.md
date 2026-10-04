@@ -174,7 +174,7 @@ Copy `.env.example` to `.env`.
 | `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | one | LLM key for the chosen provider |
 | `LLM_PROVIDER` | no | `openrouter` (default), `anthropic`, `openai` |
 | `LLM_MODEL` | no | Model override |
-| `NETWORK` | no | Default network: `arbitrum-sepolia` (default), `ethereum-sepolia`, `arbitrum-one`, `robinhood-testnet` |
+| `NETWORK` | no | Default network: `arbitrum-sepolia` (default), `ethereum-sepolia`, `arbitrum-one`, `mantle`, `robinhood-testnet` |
 | `PINATA_JWT` or `IPFS_NODE_URL` | no | IPFS backend for registration files and images |
 | `PINATA_GATEWAY_URL` | no | IPFS gateway override |
 | `MCP_AUTH_TOKEN` | for MCP tool calls | Bearer token for `tools/call` |

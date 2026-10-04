@@ -39,6 +39,15 @@ const NETWORKS: Record<NetworkName, NetworkConfig> = {
     scanSlug: "arbitrum-one",
     testnet: false,
   },
+  "mantle": {
+    name: "Mantle",
+    chainId: 5000,
+    defaultRpcUrl: "https://mantle-mainnet.g.alchemy.com/v2",
+    publicRpcUrl: "https://rpc.mantle.xyz",
+    explorerUrl: "https://mantlescan.io",
+    scanSlug: "mantle",
+    testnet: false,
+  },
   // NOTE: Chain ID 23888 for Robinhood Testnet should be verified before production use.
   "robinhood-testnet": {
     name: "Robinhood Testnet",

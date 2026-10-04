@@ -40,6 +40,15 @@ const NETWORKS: NetworkInfo[] = [
     scanSlug: 'arbitrum-one',
     publicRpcUrl: 'https://arb1.arbitrum.io/rpc',
   },
+  {
+    chainId: 5000,
+    name: 'Mantle',
+    shortName: 'Mantle',
+    explorerUrl: 'https://mantlescan.io',
+    scanUrl: 'https://8004scan.io',
+    scanSlug: 'mantle',
+    publicRpcUrl: 'https://rpc.mantle.xyz',
+  },
 ]
 
 export const DEFAULT_CHAIN_ID = 421614

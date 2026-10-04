@@ -69,6 +69,7 @@ const network = process.env.NETWORK || "arbitrum-sepolia";
 const networkLabels: Record<string, string> = {
   "arbitrum-sepolia": "Arbitrum Sepolia (testnet)",
   "arbitrum-one": "Arbitrum One (mainnet)",
+  "mantle": "Mantle (mainnet)",
   "robinhood-testnet": "Robinhood Testnet",
 };
 const networkLabel = networkLabels[network] ?? network;

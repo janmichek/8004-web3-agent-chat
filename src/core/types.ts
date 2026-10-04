@@ -8,6 +8,7 @@ export type NetworkName =
   | "arbitrum-sepolia"
   | "ethereum-sepolia"
   | "arbitrum-one"
+  | "mantle"
   | "robinhood-testnet";
 
 /** Network configuration entry. */
