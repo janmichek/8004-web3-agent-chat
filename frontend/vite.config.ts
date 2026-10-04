@@ -26,6 +26,14 @@ export default defineConfig({
         target: `http://localhost:${process.env.API_PORT || 8787}`,
         changeOrigin: true,
       },
+      '/a2a': {
+        target: `http://localhost:${process.env.API_PORT || 8787}`,
+        changeOrigin: true,
+      },
+      '/.well-known/agent-card.json': {
+        target: `http://localhost:${process.env.API_PORT || 8787}`,
+        changeOrigin: true,
+      },
     },
   },
 })

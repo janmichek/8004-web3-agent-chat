@@ -12,6 +12,8 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/mcp", "destination": "/api" },
+    { "source": "/a2a", "destination": "/api" },
+    { "source": "/.well-known/agent-card.json", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
