@@ -179,12 +179,6 @@ function triggerSubtitle(agent: AgentSummary | null): string {
   if (!agent) return props.agents.length ? 'Choose an agent' : 'Create your first agent'
   return usageLabel(agent)
 }
-
-function agentIdLabel(agent: AgentSummary): string {
-  if (!agent.agentId) return 'not registered'
-  const token = agent.agentId.split(':').pop()
-  return `ERC-8004 #${token}`
-}
 </script>
 
 <template>
@@ -262,14 +256,8 @@ function agentIdLabel(agent: AgentSummary): string {
               <span class="option-title">
                 <span class="option-name">{{ agent.name }}</span>
                 <span v-if="agent.active" class="live-dot small" title="Agent is active" />
-                <span v-if="agent.name === modelValue" class="check" aria-hidden="true">✓</span>
               </span>
-              <span class="option-desc">{{ agent.description }}</span>
-              <span class="option-meta">
-                <span class="meta-item" :title="agent.lastActive ?? 'No conversations yet'">{{ usageLabel(agent) }}</span>
-                <span class="meta-dot" aria-hidden="true">·</span>
-                <span class="meta-item">{{ agentIdLabel(agent) }}</span>
-              </span>
+              <span class="option-meta" :title="agent.lastActive ?? 'No conversations yet'">{{ usageLabel(agent) }}</span>
             </span>
           </li>
 
@@ -450,6 +438,14 @@ function agentIdLabel(agent: AgentSummary): string {
   background: none;
   border: 0;
   outline: none;
+  box-shadow: none;
+}
+.search:hover,
+.search:focus,
+.search:focus-visible {
+  border: 0;
+  outline: none;
+  box-shadow: none;
 }
 .search::placeholder {
   color: var(--muted);
@@ -484,7 +480,7 @@ function agentIdLabel(agent: AgentSummary): string {
 
 .option {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.55rem;
   padding: 0.45rem 0.5rem;
   border-radius: 0.45rem;
@@ -505,7 +501,6 @@ function agentIdLabel(agent: AgentSummary): string {
   width: 2.1rem;
   height: 2.1rem;
   border-radius: 0.6rem;
-  margin-top: 0.05rem;
 }
 .option-copy {
   display: flex;
@@ -528,36 +523,13 @@ function agentIdLabel(agent: AgentSummary): string {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.check {
-  margin-left: auto;
-  font-size: 0.75rem;
-  color: var(--accent);
-}
-.option-desc {
-  font-size: 0.72rem;
-  color: var(--muted);
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .option-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
   min-width: 0;
   font-size: 0.66rem;
   color: color-mix(in oklab, var(--muted) 80%, var(--ink));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.meta-item {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.meta-dot {
-  opacity: 0.5;
 }
 
 .no-results {
@@ -586,17 +558,17 @@ function agentIdLabel(agent: AgentSummary): string {
   padding: 0.45rem 0.5rem;
   font: inherit;
   text-align: left;
-  color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 8%, var(--surface));
-  border: 1px solid color-mix(in oklab, var(--accent) 26%, var(--border));
+  color: var(--on-accent);
+  background: var(--accent);
+  border: 1px solid var(--accent);
   border-radius: 0.45rem;
   cursor: pointer;
-  transition: background 0.14s ease, border-color 0.14s ease;
+  transition: background 0.14s ease, border-color 0.14s ease, opacity 0.14s ease;
 }
 .create-btn:hover,
 .create-btn.active {
-  background: color-mix(in oklab, var(--accent) 15%, var(--surface));
-  border-color: color-mix(in oklab, var(--accent) 48%, var(--border));
+  background: color-mix(in oklab, var(--accent) 88%, #000);
+  border-color: color-mix(in oklab, var(--accent) 88%, #000);
 }
 .create-btn:focus-visible {
   outline: none;
@@ -613,8 +585,8 @@ function agentIdLabel(agent: AgentSummary): string {
   font-weight: 500;
   line-height: 1;
   border-radius: 0.5rem;
-  background: color-mix(in oklab, var(--accent) 16%, var(--surface-2));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 32%, var(--border));
+  color: inherit;
+  background: rgb(255 255 255 / 0.18);
 }
 .create-copy {
   display: flex;
@@ -629,7 +601,7 @@ function agentIdLabel(agent: AgentSummary): string {
 }
 .create-sub {
   font-size: 0.66rem;
-  color: var(--muted);
+  color: color-mix(in oklab, var(--on-accent) 78%, transparent);
   line-height: 1.2;
 }
 
