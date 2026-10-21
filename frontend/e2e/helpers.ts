@@ -307,12 +307,6 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
         agent: DEMO_AGENT,
         balanceEth: '0.002',
         fundTxHash: '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-        steps: [
-          { step: 'wallet', ok: true, detail: DEMO_AGENT.walletAddress },
-          { step: 'fund', ok: true, detail: 'tx 0xcc' },
-          { step: 'config', ok: true },
-          { step: 'register', ok: true, detail: '42' },
-        ],
       }
       // Keep the list in sync so the picker can select the new agent after creation.
       const newAgent = created ?? (response as { agent?: { name: string } }).agent

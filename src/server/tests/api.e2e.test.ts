@@ -213,6 +213,24 @@ describe("API offline e2e", () => {
     expect(body.error.message).toContain("Unsupported chainId: 1");
   });
 
+  it("POST /api/agents requires the signed-in wallet as owner", async () => {
+    const missing = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "owner-probe-agent", skipRegister: true }),
+    });
+    expect(missing.status).toBe(400);
+    expect(((await missing.json()) as { error: string }).error).toContain("owner is required");
+
+    const invalid = await app.request("/api/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "owner-probe-agent", skipRegister: true, owner: "not-an-address" }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(((await invalid.json()) as { error: string }).error).toContain("valid wallet address");
+  });
+
   it("POST /api/agents rejects an unsupported chainId before side effects", async () => {
     const res = await app.request("/api/agents", {
       method: "POST",

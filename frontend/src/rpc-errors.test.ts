@@ -18,9 +18,14 @@ describe('friendlyFundError', () => {
         new Error('The requested method and/or account has not been authorized by the user.'),
       ),
     ).toBe('Wallet did not authorize this account. Sign out, sign in again, then retry.')
-    expect(friendlyFundError(new Error('insufficient funds for gas'))).toBe(
-      'Wallet has insufficient ETH (need amount + gas).',
-    )
+    expect(friendlyFundError(new Error('insufficient funds for gas'))).toBe('not enough funds')
+    expect(
+      friendlyFundError(
+        new Error(
+          'The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.',
+        ),
+      ),
+    ).toBe('not enough funds')
     expect(friendlyFundError(new Error('insufficient funds for gas'), 'master')).toContain(
       'Master wallet has insufficient ETH.',
     )

@@ -64,6 +64,12 @@ export interface RegisterAgentOptions {
    * 8004-identity-nft `PK` flow: `register()` from the EOA).
    */
   privateKey: string;
+  /**
+   * Final owner of the identity NFT (the signed-in wallet). Defaults to the
+   * `privateKey` signer. When it differs, the NFT is minted by the signer and
+   * then transferred to this address, and it is recorded in the IPFS file.
+   */
+  owner?: string;
   /** Operational agent wallet address (becomes on-chain `agentWallet` via `setAgentWallet`). */
   walletAddress: string;
   /**

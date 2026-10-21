@@ -76,7 +76,9 @@ const networkLabels: Record<string, string> = {
 const networkLabel = networkLabels[network] ?? network;
 
 const faucets: Record<string, string> = {
-  "arbitrum-sepolia": "https://www.alchemy.com/faucets/arbitrum-sepolia",
+  "arbitrum-sepolia": "https://cloud.google.com/application/web3/faucet/ethereum/sepolia",
+  "sepolia": "https://cloud.google.com/application/web3/faucet/ethereum/sepolia",
+  "mantle-sepolia": "https://faucet.sepolia.mantle.xyz",
   "robinhood-testnet": "Check Robinhood Testnet docs for faucet availability",
 };
 

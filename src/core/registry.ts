@@ -66,11 +66,15 @@ export async function registerAgent(
 
   const { Wallet } = await import("ethers");
   const signerAddress = new Wallet(privateKey).address;
+  const ownerAddress = options.owner?.trim() || signerAddress;
+  // The registry has no "mint to" argument: the signer is always the initial
+  // owner, so a different owner means minting and then transferring the NFT.
   const needsAgentWallet =
     walletAddress.toLowerCase() !== signerAddress.toLowerCase();
 
   console.log(`[registry] Registering agent "${name}" on ERC-8004 (${network})...`);
-  console.log(`[registry]   Creator/owner (signer): ${signerAddress}`);
+  console.log(`[registry]   Creator (signer): ${signerAddress}`);
+  console.log(`[registry]   Owner: ${ownerAddress}`);
   console.log(`[registry]   Agent wallet: ${walletAddress}`);
 
   // Get the RPC URL
@@ -104,7 +108,7 @@ export async function registerAgent(
   // creation metadata is DID-bound from birth.
   const updatedAt = Math.floor(Date.now() / 1000);
   const did = buildDID(config.chainId, walletAddress);
-  agent.setMetadata({ ...options.metadata, updatedAt, did });
+  agent.setMetadata({ ...options.metadata, owners: [ownerAddress], owner: ownerAddress, updatedAt, did });
   if (options.endpoints && options.endpoints.length > 0) {
     // Canonical names, well-known A2A URL and protocol `version` meta — the
     // same shape SDK setA2A/setMCP would write.
@@ -141,13 +145,22 @@ export async function registerAgent(
     // updatedAt). Re-pin an enriched file that also carries `metadata` and
     // point the tokenURI at it.
     try {
-      agentURI = await pinEnrichedRegistrationFile(sdk, agent, options, updatedAt, config.chainId);
+      agentURI = await pinEnrichedRegistrationFile(
+        sdk,
+        agent,
+        options,
+        updatedAt,
+        config.chainId,
+        ownerAddress,
+      );
       console.log(`[registry]   Enriched Token URI: ${agentURI}`);
     } catch (err) {
       console.warn(
         `[registry] Enriched metadata pin failed, keeping SDK URI: ${err instanceof Error ? err.message : String(err)}`
       );
     }
+
+    await transferOwnership(agent, ownerAddress, signerAddress);
 
     return { agentId: String(agentId), txHash: String(txHash), agentURI: String(agentURI), updatedAt };
   }
@@ -171,6 +184,7 @@ export async function registerAgent(
   console.log(`[registry]   View on 8004scan: https://8004scan.com/agent/${agentId}`);
 
   await bindAgentWallet(agent, walletAddress, agentWalletPrivateKey, needsAgentWallet);
+  await transferOwnership(agent, ownerAddress, signerAddress);
 
   return { agentId: String(agentId), txHash: String(txHash), agentURI: agentHttpUri, updatedAt: Math.floor(Date.now() / 1000) };
 }
@@ -193,6 +207,7 @@ async function pinEnrichedRegistrationFile(
   options: RegisterAgentOptions,
   updatedAt: number,
   chainId: number,
+  ownerAddress: string,
 ): Promise<string> {
   const file = agent.getRegistrationFile() as {
     name: string;
@@ -225,10 +240,20 @@ async function pinEnrichedRegistrationFile(
       },
     ],
     active: file.active ?? true,
+    // The signed-in wallet is the identity owner. 8004scan derives owners
+    // from the NFT itself, but pinning them keeps the file self-describing.
+    owners: [ownerAddress],
+    owner: ownerAddress,
     // 8004scan reads x402 from this top-level flag and the wallet from the
     // agentWallet service; nothing under `metadata` is parsed for either.
     x402Support,
-    metadata: { ...options.metadata, updatedAt, did: buildDID(chainId, options.walletAddress) },
+    metadata: {
+      ...options.metadata,
+      owners: [ownerAddress],
+      owner: ownerAddress,
+      updatedAt,
+      did: buildDID(chainId, options.walletAddress),
+    },
     // Reputation is always available via ERC-8004 Reputation Registry.
     supportedTrust: file.trustModels?.length ? file.trustModels : ["reputation"],
   };
@@ -239,6 +264,30 @@ async function pinEnrichedRegistrationFile(
   const handle = (await agent.setAgentURI(uri)) as { waitMined: () => Promise<unknown> } | undefined;
   if (handle) await handle.waitMined();
   return uri;
+}
+
+/**
+ * Moves the freshly minted identity NFT from the master signer to the
+ * signed-in owner. The registry mints to `msg.sender`, so this is the only
+ * way to make the connected wallet the on-chain owner.
+ *
+ * Transferring clears the on-chain agentWallet binding in the SDK's local
+ * state, so the transfer runs after `setAgentWallet`; the agent wallet stays
+ * advertised in the IPFS registration file either way.
+ */
+async function transferOwnership(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  agent: { transfer: (...args: any[]) => Promise<any> },
+  ownerAddress: string,
+  signerAddress: string,
+): Promise<void> {
+  if (ownerAddress.toLowerCase() === signerAddress.toLowerCase()) return;
+  console.log(`[registry] Transferring identity NFT to owner ${ownerAddress}...`);
+  const handle = (await agent.transfer(ownerAddress)) as
+    | { waitMined: () => Promise<unknown> }
+    | undefined;
+  if (handle) await handle.waitMined();
+  console.log(`[registry]   NFT owner: ${ownerAddress}`);
 }
 
 /**

@@ -288,6 +288,8 @@ async function publicAgentSummary(name: string, withUsage = false) {
     walletChainId: config?.walletChainId ?? getNetworkConfig().chainId,
     agentId: config?.agentId,
     agentURI: config?.agentURI,
+    owners: config?.owners ?? [],
+    operators: config?.operators ?? [],
     actions: config?.metadata?.actions ?? [],
     tools: config?.metadata?.tools ?? [],
     oasfDomains: (config?.metadata?.oasfDomains as string[] | undefined) ?? [],
@@ -846,6 +848,12 @@ app.get("/api/catalog", async (c) => {
 app.get("/api/agents", async (c) => {
   const names = await listExistingAgents();
   const agents = await Promise.all(names.map((name) => publicAgentSummary(name, true)));
+  // Latest conversation first; never-used agents keep their relative order.
+  agents.sort((a, b) => {
+    const aTs = a.lastActive ? Date.parse(a.lastActive) : 0;
+    const bTs = b.lastActive ? Date.parse(b.lastActive) : 0;
+    return (Number.isFinite(bTs) ? bTs : 0) - (Number.isFinite(aTs) ? aTs : 0);
+  });
   return c.json({ agents });
 });
 
@@ -885,6 +893,7 @@ app.post("/api/upload/image", async (c) => {
 app.post("/api/agents", async (c) => {
   let body: {
     name?: string;
+    owner?: string;
     description?: string;
     imageUri?: string;
     actions?: string[];
@@ -1030,7 +1039,16 @@ app.post("/api/agents", async (c) => {
   }
   // Normalize ipfs:// to https gateway so on-chain metadata `image` is resolvable.
   if (imageUri) imageUri = toGatewayUrl(imageUri);
-  const steps: { step: string; ok: boolean; detail?: string }[] = [];
+
+  // Creation is authenticated by the signed-in wallet: its address becomes
+  // the identity NFT owner and is recorded in the pinned registration file.
+  const owner = body.owner?.trim();
+  if (!owner) {
+    return c.json({ error: "owner is required — connect and sign in with a wallet" }, 400);
+  }
+  if (!ethers.isAddress(owner)) {
+    return c.json({ error: "owner must be a valid wallet address" }, 400);
+  }
 
   let masterWallet: ReturnType<typeof getMasterWallet>;
   try {
@@ -1044,10 +1062,9 @@ app.post("/api/agents", async (c) => {
   let agentWallet: ReturnType<typeof getOrCreateAgentWallet>;
   try {
     agentWallet = getOrCreateAgentWallet({ agentName: name });
-    steps.push({ step: "wallet", ok: true, detail: agentWallet.address });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: `Wallet creation failed: ${msg}`, steps }, 500);
+    return c.json({ error: `Wallet creation failed: ${msg}` }, 500);
   }
 
   // --- Fund ---
@@ -1059,18 +1076,10 @@ app.post("/api/agents", async (c) => {
         amountEth: fundEth,
       });
       const provider = getProvider();
-      const receipt = await provider.waitForTransaction(fundTxHash);
-      steps.push({
-        step: "fund",
-        ok: true,
-        detail: `tx ${fundTxHash} (block ${receipt?.blockNumber ?? "?"})`,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      steps.push({ step: "fund", ok: false, detail: msg });
+      await provider.waitForTransaction(fundTxHash);
+    } catch {
+      // Funding failure is non-fatal: the agent exists and can be funded later.
     }
-  } else {
-    steps.push({ step: "fund", ok: true, detail: "skipped — fund after creation" });
   }
 
   // --- Persist config ---
@@ -1082,7 +1091,7 @@ app.post("/api/agents", async (c) => {
     walletChainId: getChainId(),
     endpoints: endpoints as AgentConfig["endpoints"],
     trustModels: [],
-    owners: [masterWallet.address],
+    owners: [owner],
     operators: [agentWallet.address],
     active,
     x402support,
@@ -1098,10 +1107,9 @@ app.post("/api/agents", async (c) => {
 
   try {
     saveAgentConfig(name, config);
-    steps.push({ step: "config", ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: `Failed to save config: ${msg}`, steps }, 500);
+    return c.json({ error: `Failed to save config: ${msg}` }, 500);
   }
 
   // --- Register ---
@@ -1111,6 +1119,7 @@ app.post("/api/agents", async (c) => {
         name: config.name,
         description: config.description,
         privateKey: masterWallet.privateKey,
+        owner,
         walletAddress: agentWallet.address,
         agentWalletPrivateKey: agentWallet.privateKey,
         active,
@@ -1129,13 +1138,10 @@ app.post("/api/agents", async (c) => {
       config.metadata.updatedAt = reg.updatedAt;
       config.updatedAt = Math.floor(Date.now() / 1000);
       saveAgentConfig(name, config);
-      steps.push({ step: "register", ok: true, detail: String(reg.agentId) });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      steps.push({ step: "register", ok: false, detail: msg });
+    } catch {
+      // Registration failure is non-fatal: the config is saved and the agent
+      // can be registered later.
     }
-  } else {
-    steps.push({ step: "register", ok: true, detail: "skipped" });
   }
 
   let balanceEth = "0";
@@ -1157,7 +1163,6 @@ app.post("/api/agents", async (c) => {
     agent: await publicAgentSummary(name),
     balanceEth,
     fundTxHash,
-    steps,
     ...(ephemeral
       ? {
           ephemeral: true,

@@ -17,6 +17,22 @@ test.describe('agent picker', () => {
     await expect(page.getByTestId('agent-create-option')).toContainText('Create agent')
   })
 
+  test('lists agents with most recently used first', async ({ page }) => {
+    const older = { ...DEMO_AGENT, lastActive: '2024-01-01T00:00:00.000Z', messageCount: 2, sessionCount: 1 }
+    const newer = { ...SECOND_AGENT, lastActive: '2025-06-01T12:00:00.000Z', messageCount: 5, sessionCount: 2 }
+    const never = { ...DEMO_AGENT, name: 'zeta', agentId: '421614:99', lastActive: null }
+    // API returns never-used / older first; UI should reorder latest → oldest → never.
+    await setupOffline(page, { agents: [never, older, newer] })
+    await page.goto('/')
+    await openAgentPanel(page)
+    await expect(page.getByTestId('agent-select')).toHaveAttribute('data-value', 'bravo')
+    await page.getByTestId('agent-select').click()
+    const names = await page.getByTestId('agent-menu').getByRole('option').evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-agent-name')),
+    )
+    expect(names).toEqual(['bravo', 'demo', 'zeta'])
+  })
+
   test('search filters agents by name and capability', async ({ page }) => {
     await setupOffline(page, { agents: [DEMO_AGENT, SECOND_AGENT] })
     await gotoWithAgent(page)
@@ -167,105 +183,41 @@ test.describe('fund agent', () => {
   })
 
   test('successful fund shows tx prefix status', async ({ page }) => {
-    const seen: unknown[] = []
-    await setupOffline(page, {
-      capture: { fund: seen },
-      fund: {
-        ok: true,
-        txHash: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-        amountEth: '0.001',
-        to: DEMO_AGENT.walletAddress,
-        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      },
-    })
+    await setupOffline(page, {})
     await gotoWithAgent(page)
     await openFundAgent(page)
+    await expect(page.getByText('Connected wallet')).toBeVisible()
     await page.getByTestId('fund-amount').fill('0.001')
     await page.getByTestId('fund-submit').click()
-    await expect(page.getByTestId('fund-status')).toContainText('Sent 0xeeeeee')
-    expect(seen).toHaveLength(1)
-    expect(seen[0]).toMatchObject({ amountEth: '0.001' })
+    // setupOffline stubs __E2E_SEND_TX → 0xdddd…
+    await expect(page.getByTestId('fund-status')).toContainText('Sent 0xdddddd')
   })
 
-  test('fund error surfaces the backend message', async ({ page }) => {
-    await setupOffline(page, { fundStatus: 500 })
+  test('fund error surfaces not-enough-funds mapping', async ({ page }) => {
+    await setupOffline(page, {})
     await gotoWithAgent(page)
     await openFundAgent(page)
+    await page.evaluate(() => {
+      ;(window as unknown as { __E2E_SEND_TX?: () => never }).__E2E_SEND_TX = () => {
+        throw new Error(
+          'The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.',
+        )
+      }
+    })
     await page.getByTestId('fund-amount').fill('0.001')
     await page.getByTestId('fund-submit').click()
-    await expect(page.getByTestId('fund-status')).toContainText('insufficient ETH')
+    await expect(page.getByTestId('fund-status')).toContainText('not enough funds')
   })
 
   test('maps RPC rate-limit errors to a friendly retry hint', async ({ page }) => {
-    await page.route('**/api/rpc', async (route: Route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
-    })
-    await page.route('**/api/health', async (route: Route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ok: true, network: 'x', chainId: 421614, master: {} }),
-      })
-    })
-    await page.route('**/api/agents', async (route: Route) => {
-      if (route.request().method() !== 'GET') {
-        await route.fallback()
-        return
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ agents: [DEMO_AGENT] }),
-      })
-    })
-    await page.route('**/api/agents/*', async (route: Route) => {
-      await route.fallback()
-    })
-    await page.route('**/api/agents/*/memory', async (route: Route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          agent: 'demo',
-          exists: true,
-          empty: true,
-          threads: [],
-          checkpointCount: 0,
-          firstActive: null,
-          lastActive: null,
-          stats: {
-            totalMessages: 0,
-            humanCount: 0,
-            aiCount: 0,
-            toolCount: 0,
-            toolCallsByName: {},
-            uniqueRecipients: [],
-            txHashes: [],
-            totalEthSent: '0',
-          },
-          summary: '',
-          preview: [],
-          recentTxHashes: [],
-          sessions: [],
-        }),
-      })
-    })
-    await page.route('**/api/reputation**', async (route: Route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ agentId: '421614:42', count: 0, averageValue: 0 }),
-      })
-    })
-    await page.route('**/api/agents/*/fund', async (route: Route) => {
-      await route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: 'exceeds defined limit -32005 rate limited' }),
-      })
-    })
+    await setupOffline(page, {})
     await gotoWithAgent(page)
     await openFundAgent(page)
+    await page.evaluate(() => {
+      ;(window as unknown as { __E2E_SEND_TX?: () => never }).__E2E_SEND_TX = () => {
+        throw new Error('exceeds defined limit -32005 rate limited')
+      }
+    })
     await page.getByTestId('fund-amount').fill('0.001')
     await page.getByTestId('fund-submit').click()
     await expect(page.getByTestId('fund-status')).toContainText('RPC rate limit hit')

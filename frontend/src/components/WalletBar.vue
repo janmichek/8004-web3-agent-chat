@@ -157,7 +157,7 @@ async function onChainPicked(event: Event) {
     <div class="brand">
       <div class="brand-mark">
         <slot name="menu" />
-        <img class="mark" src="/favicon.svg" alt="Web3 Agent Chat logo" width="32" height="32" />
+        <img class="mark" src="/logo-light.svg" alt="Web3 Agent Chat logo" width="32" height="32" />
       </div>
       <div>
         <p class="name">Web3 Agent Chat</p>

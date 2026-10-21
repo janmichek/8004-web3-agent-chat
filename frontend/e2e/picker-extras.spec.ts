@@ -42,30 +42,24 @@ test.describe('agent picker extras', () => {
   })
 
   test('fund input is locked while the request is in flight', async ({ page }) => {
-    await setupOffline(page, {
-      fund: async (route: Route) => {
-        await new Promise((r) => setTimeout(r, 1200))
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            ok: true,
-            txHash: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-            amountEth: '0.001',
-            to: DEMO_AGENT.walletAddress,
-            from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          }),
-        })
-      },
-    })
+    await setupOffline(page, {})
     await gotoWithAgent(page)
     await openFundAgent(page)
+    await page.evaluate(() => {
+      ;(window as unknown as { __E2E_SEND_TX?: () => Promise<string> }).__E2E_SEND_TX = () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () => resolve('0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'),
+            1200,
+          )
+        })
+    })
     await page.getByTestId('fund-amount').fill('0.01')
     await page.getByTestId('fund-submit').click()
     await expect(page.getByTestId('fund-submit')).toBeDisabled()
     await expect(page.getByTestId('fund-submit')).toContainText('Sending…')
     await expect(page.getByTestId('fund-amount')).toBeDisabled()
-    await expect(page.getByTestId('fund-status')).toContainText('0xeeee')
+    await expect(page.getByTestId('fund-status')).toContainText('0xdddd')
   })
 
   test('delete button is locked while deleting', async ({ page }) => {

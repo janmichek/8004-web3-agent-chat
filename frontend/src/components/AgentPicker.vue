@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, unref, watch } from 'vue'
-import { useBalance } from '@wagmi/vue'
-import { formatEther, isAddress, type Address } from 'viem'
+import { useAccount, useBalance, useConfig } from '@wagmi/vue'
+import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt } from '@wagmi/vue/actions'
+import { formatEther, isAddress, parseEther, type Address } from 'viem'
 import { errorLine, friendlyFundError } from '../rpc-errors'
+import { ensureChain, prepareNativeTransfer } from '../chain'
 import { addressExplorerUrl, networkInfo } from '../networks'
 import AgentSelect from './AgentSelect.vue'
-import { fetchAgents, fetchHealth, fetchReputation, fundAgent, deleteAgent, deleteAgentBackup, type AgentSummary } from '../api'
+import {
+  fetchAgents,
+  fetchReputation,
+  deleteAgent,
+  deleteAgentBackup,
+  sortAgentsByLastUsed,
+  type AgentSummary,
+} from '../api'
 
 const props = defineProps<{
   selectName?: string | null
@@ -14,6 +23,18 @@ const props = defineProps<{
   scanUrl?: string | null
   refreshKey?: number
 }>()
+
+const wagmiConfig = useConfig()
+const { address: wagmiAddress } = useAccount()
+
+/** Playwright can set window.__E2E_CONNECTED_ADDRESS to simulate a connected wallet. */
+const connectedAddress = computed<Address | undefined>(() => {
+  if (typeof window !== 'undefined') {
+    const forced = (window as unknown as { __E2E_CONNECTED_ADDRESS?: string }).__E2E_CONNECTED_ADDRESS
+    if (forced && isAddress(forced)) return forced as Address
+  }
+  return wagmiAddress.value ?? getAccount(wagmiConfig).address
+})
 
 const addr = computed<Address | undefined>(() =>
   props.agent?.walletAddress && isAddress(props.agent.walletAddress)
@@ -41,10 +62,10 @@ const walletScanUrl = computed(() => {
   return addressExplorerUrl(address, props.agent?.walletChainId)
 })
 
-const masterScanUrl = computed(() => {
-  if (!masterAddress.value) return null
-  // The master wallet funds the agent on the agent's chain.
-  return addressExplorerUrl(masterAddress.value, props.agent?.walletChainId)
+const connectedScanUrl = computed(() => {
+  if (!connectedAddress.value) return null
+  // Fund the agent on the agent's chain from the connected wallet.
+  return addressExplorerUrl(connectedAddress.value, props.agent?.walletChainId)
 })
 
 const metadataUrl = computed(() => {
@@ -54,7 +75,7 @@ const metadataUrl = computed(() => {
 })
 
 const canSend = computed(() => {
-  if (!props.agent?.name || !addr.value || fundBusy.value) return false
+  if (!props.agent?.name || !addr.value || !connectedAddress.value || fundBusy.value) return false
   const n = Number(fundAmount.value)
   return Number.isFinite(n) && n > 0 && n <= 1
 })
@@ -69,20 +90,73 @@ function x402Title(mode?: string): string {
     : 'The server has no X402_FACILITATOR_URL, so A2A payments are accepted without being charged.'
 }
 
+async function awaitFundSettlement(hash: `0x${string}`, chainId: number) {
+  fundStatusText.value = 'Submitted — waiting for confirmation…'
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId })
+  if (receipt.status !== 'success') {
+    throw new Error('Funding transaction reverted on-chain.')
+  }
+}
+
+/** Fund the selected agent from the user's connected wallet. */
 async function fund() {
-  if (!canSend.value || !props.agent?.name) return
-  fundStatusText.value = 'Sending from master wallet…'
+  if (!canSend.value || !props.agent?.name || !addr.value || !connectedAddress.value) return
+  fundStatusText.value = 'Waiting for wallet signature…'
   fundStatusKind.value = 'info'
   fundBusy.value = true
   try {
-    const r = await fundAgent(props.agent.name, fundAmount.value)
-    fundStatusText.value = `Sent ${r.txHash.slice(0, 10)}…`
+    const chainId = agentChainId.value
+    const amount = fundAmount.value.trim()
+    const value = parseEther(amount as `${number}`)
+    const to = addr.value
+    const account = connectedAddress.value
+
+    // Playwright has no real wallet: let tests stub the send + skip RPC prep.
+    const stub = (window as unknown as { __E2E_SEND_TX?: () => string | Promise<string> }).__E2E_SEND_TX
+    if (stub) {
+      const hash = (await stub()) as `0x${string}`
+      fundStatusText.value = `Sent ${hash.slice(0, 10)}…`
+      fundStatusKind.value = 'ok'
+      emit('funded', hash)
+      return
+    }
+
+    await ensureChain(wagmiConfig, chainId)
+
+    fundStatusText.value = 'Estimating gas…'
+    const prepared = await prepareNativeTransfer({
+      account,
+      to,
+      value,
+      chainId,
+    })
+    const feeCap = prepared.maxFeePerGas ?? 0n
+    const gasBudget = prepared.gas * feeCap
+    const bal = await getBalance(wagmiConfig, { address: account, chainId })
+    if (bal.value < value + gasBudget) {
+      throw new Error('insufficient funds for gas')
+    }
+
+    fundStatusText.value = 'Waiting for wallet signature…'
+    const hash = await sendTransaction(wagmiConfig, {
+      account,
+      to,
+      value,
+      chainId,
+      gas: prepared.gas,
+      maxFeePerGas: prepared.maxFeePerGas,
+      maxPriorityFeePerGas: prepared.maxPriorityFeePerGas,
+    })
+    await awaitFundSettlement(hash, chainId)
+    fundStatusText.value = `Sent ${hash.slice(0, 10)}…`
     fundStatusKind.value = 'ok'
-    emit('funded', r.txHash)
+    emit('funded', hash)
   } catch (err) {
-    fundStatusText.value = friendlyFundError(err, 'master', agentNetworkName.value)
+    fundStatusText.value = friendlyFundError(err, 'wallet')
     fundStatusKind.value = 'error'
-  } finally { fundBusy.value = false }
+  } finally {
+    fundBusy.value = false
+  }
 }
 
 watch(
@@ -105,7 +179,6 @@ const fundBusy = ref(false)
 const deleteBusy = ref(false)
 const deleteStatusText = ref('')
 const deleteConfirm = ref(false)
-const masterAddress = ref('')
 const ratingText = ref('')
 const ratingLoading = ref(false)
 const listLoading = ref(false)
@@ -145,7 +218,7 @@ async function loadAgents() {
   listLoading.value = true
   try {
     const data = await fetchAgents()
-    agents.value = data.agents
+    agents.value = sortAgentsByLastUsed(data.agents)
     if (props.selectName && agents.value.some((a) => a.name === props.selectName)) {
       selected.value = props.selectName
     } else if (!selected.value && agents.value[0]) {
@@ -217,11 +290,6 @@ watch(
 onMounted(() => {
   void loadAgents()
   void loadRating(props.agent?.agentId)
-  void fetchHealth()
-    .then((h) => {
-      if (h.master?.address) masterAddress.value = h.master.address
-    })
-    .catch(() => {})
 })
 </script>
 
@@ -385,22 +453,23 @@ onMounted(() => {
       <div v-show="fundOpen" class="collapsible-body">
         <p v-if="!agent" class="hint">Select an agent to fund it.</p>
         <template v-else>
-          <div v-if="masterAddress" class="master">
-            <dt>Master wallet</dt>
+          <div v-if="connectedAddress" class="from-wallet">
+            <dt>Connected wallet</dt>
             <dd class="mono">
               <a
-                v-if="masterScanUrl"
-                :href="masterScanUrl"
+                v-if="connectedScanUrl"
+                :href="connectedScanUrl"
                 target="_blank"
                 rel="noopener noreferrer"
-                :title="masterAddress"
-                >{{ shortAddr(masterAddress) }} ↗</a
+                :title="connectedAddress"
+                >{{ shortAddr(connectedAddress) }} ↗</a
               >
-              <span v-else :title="masterAddress">{{ shortAddr(masterAddress) }}</span>
+              <span v-else :title="connectedAddress">{{ shortAddr(connectedAddress) }}</span>
             </dd>
           </div>
+          <p v-else class="hint">Connect a wallet to fund this agent.</p>
           <p v-if="!addr" class="hint">Select an agent with a wallet address.</p>
-          <template v-else>
+          <template v-else-if="connectedAddress">
             <form class="form" @submit.prevent="fund">
               <label class="field">
                 <span>Amount (ETH)</span>
@@ -517,6 +586,8 @@ onMounted(() => {
 
 .chev {
   display: inline-block;
+  font-size: 0.75rem;
+  color: var(--muted);
   transition: transform 0.25s var(--ease-spring);
 }
 .chev.closed {
@@ -524,6 +595,9 @@ onMounted(() => {
 }
 
 .collapsible-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   animation: row-in 0.3s var(--ease-out) both;
 }
 
@@ -573,10 +647,10 @@ a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border
 .danger-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding-bottom: 0.1rem; }
 .danger-zone .status { margin: 0; font-size: 0.78rem; color: var(--muted); word-break: break-all; }
 .btn.danger { color: var(--danger-ink); border-color: color-mix(in oklab, var(--danger-ink) 40%, var(--border)); }
-.master dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-.master dd { margin: 0.15rem 0 0; font-size: 0.85rem; word-break: break-all; }
-.master dd a { color: var(--accent); text-decoration: none; }
-.master dd a:hover { text-decoration: underline; }
+.from-wallet dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.from-wallet dd { margin: 0.15rem 0 0; font-size: 0.85rem; word-break: break-all; }
+.from-wallet dd a { color: var(--accent); text-decoration: none; }
+.from-wallet dd a:hover { text-decoration: underline; }
 .form { display: flex; flex-direction: column; gap: 0.6rem; }
 .field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.75rem; color: var(--muted); }
 .field input { font: inherit; font-family: var(--font-mono); font-size: 0.9rem; padding: 0.6rem 0.75rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--ink); }
@@ -600,7 +674,4 @@ a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border
 .title-toggle h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
 .sub-section { display: flex; flex-direction: column; gap: 0.6rem; }
 .sub-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.chev { font-size: 0.75rem; color: var(--muted); transition: transform 0.15s ease; }
-.chev.closed { transform: rotate(-90deg); }
-.collapsible-body { display: flex; flex-direction: column; gap: 0.75rem; }
 </style>

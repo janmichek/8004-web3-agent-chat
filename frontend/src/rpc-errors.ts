@@ -23,10 +23,14 @@ export function friendlyFundError(
   if (/not been authorized|unauthorized|4100/i.test(line)) {
     return 'Wallet did not authorize this account. Sign out, sign in again, then retry.'
   }
-  if (/insufficient funds|insufficient balance/i.test(line)) {
+  if (
+    /insufficient funds|insufficient balance|exceeds the balance of the account|total cost \(gas/i.test(
+      line,
+    )
+  ) {
     return payer === 'master'
       ? `Master wallet has insufficient ETH. Fund it on ${networkName}, then retry.`
-      : 'Wallet has insufficient ETH (need amount + gas).'
+      : 'not enough funds'
   }
   if (/out of gas|intrinsic gas too low/i.test(line)) {
     return 'Funding transaction ran out of gas. Retry — gas will be re-estimated.'

@@ -29,6 +29,15 @@ export type AgentSummary = {
   sessionCount?: number
 }
 
+/** Latest `lastActive` first; agents with no activity keep their relative order. */
+export function sortAgentsByLastUsed<T extends { lastActive?: string | null }>(agents: T[]): T[] {
+  return [...agents].sort((a, b) => {
+    const aTs = a.lastActive ? Date.parse(a.lastActive) : 0
+    const bTs = b.lastActive ? Date.parse(b.lastActive) : 0
+    return (Number.isFinite(bTs) ? bTs : 0) - (Number.isFinite(aTs) ? aTs : 0)
+  })
+}
+
 export type ReputationSummary = {
   count: number
   averageValue: number
@@ -92,6 +101,8 @@ export type CreateAgentService = {
 
 export type CreateAgentRequest = {
   name: string
+  /** Connected (signed-in) wallet that will own the identity NFT. */
+  owner: string
   /** Chain to create the agent on; the server default when omitted. */
   chainId?: number
   description?: string
@@ -109,18 +120,11 @@ export type CreateAgentRequest = {
   a2aEndpoint?: string
 }
 
-export type CreateAgentStep = {
-  step: string
-  ok: boolean
-  detail?: string
-}
-
 export type CreateAgentResponse = {
   ok: boolean
   agent: AgentSummary
   balanceEth: string
   fundTxHash?: string
-  steps: CreateAgentStep[]
   ephemeral?: boolean
   privateKey?: string
   privateKeyEnvVar?: string

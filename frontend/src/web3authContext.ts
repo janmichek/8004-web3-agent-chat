@@ -67,11 +67,23 @@ const mantleSepolia = {
   logo: 'https://cryptologos.cc/logos/mantle-mnt-logo.png',
 }
 
+/** Absolute asset URL so Web3Auth modal (and any iframe) can load the app mark. */
+function assetUrl(path: string): string {
+  if (typeof window === 'undefined') return path
+  return new URL(path, window.location.origin).href
+}
+
 const web3AuthOptions: Web3AuthOptions = {
   clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID,
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
   chains: [arbitrumSepolia, ethereumSepolia, arbitrumOne, mantleMainnet, mantleSepolia],
   defaultChainId: '0x66eee',
+  uiConfig: {
+    appName: 'Web3 Agent Chat',
+    logoLight: assetUrl('/logo-light.svg'),
+    logoDark: assetUrl('/favicon.svg'),
+    mode: 'auto',
+  },
 }
 
 const web3AuthContextConfig: Web3AuthContextConfig = {

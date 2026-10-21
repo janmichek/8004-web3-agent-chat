@@ -15,7 +15,10 @@ test.describe('create agent wizard', () => {
     await openCreateDialog(page)
     // env from catalog
     await expect(page.getByTestId('create-dialog')).toContainText('Arbitrum Sepolia')
-    await expect(page.getByTestId('create-dialog')).toContainText('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+    // the signed-in wallet is the owner
+    await expect(page.getByTestId('create-owner-address')).toHaveText(
+      '0x9999999999999999999999999999999999999999',
+    )
 
     const input = page.getByTestId('create-name-input')
     const next = page.getByTestId('create-name-continue')
@@ -84,12 +87,6 @@ test.describe('create agent wizard', () => {
         ok: true,
         agent: newAgent,
         balanceEth: '0.002',
-        steps: [
-          { step: 'wallet', ok: true },
-          { step: 'fund', ok: true },
-          { step: 'config', ok: true },
-          { step: 'register', ok: true, detail: '42' },
-        ],
       },
     })
     await gotoWithAgent(page)
@@ -131,17 +128,16 @@ test.describe('create agent wizard', () => {
     }
     await setupOffline(page, {
       capture: { create: created },
-      create: { ok: true, agent: newAgent, balanceEth: '0', steps: [{ step: 'wallet', ok: true }] },
+      create: { ok: true, agent: newAgent, balanceEth: '0' },
     })
     await gotoWithAgent(page)
     await openCreateDialog(page)
 
-    // defaults to the server's network, with the master balance there
+    // defaults to the server's network; switcher picks the create chain
     const network = page.getByTestId('create-network')
     await expect(network).toHaveValue('421614')
-    await expect(page.getByTestId('create-master-balance')).toContainText('1.234')
     await network.selectOption('11155111')
-    await expect(page.getByTestId('create-master-balance')).toContainText('0.5')
+    await expect(network).toHaveValue('11155111')
 
     await page.getByTestId('create-name-input').fill('my-agent')
     await page.getByTestId('create-name-continue').click()
@@ -163,11 +159,6 @@ test.describe('create agent wizard', () => {
         ok: true,
         agent: newAgent,
         balanceEth: '0',
-        steps: [
-          { step: 'wallet', ok: true },
-          { step: 'config', ok: true },
-          { step: 'register', ok: true, detail: '42' },
-        ],
       },
     })
     await gotoWithAgent(page)
@@ -202,11 +193,6 @@ test.describe('create agent wizard', () => {
         ok: true,
         agent: newAgent,
         balanceEth: '0',
-        steps: [
-          { step: 'wallet', ok: true },
-          { step: 'config', ok: true },
-          { step: 'register', ok: true, detail: '42' },
-        ],
       },
       fund: {
         ok: true,

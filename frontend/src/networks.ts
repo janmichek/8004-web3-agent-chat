@@ -25,7 +25,7 @@ const NETWORKS: NetworkInfo[] = [
     scanUrl: 'https://testnet.8004scan.io',
     scanSlug: 'arbitrum-sepolia',
     publicRpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
-    faucetUrl: 'https://www.alchemy.com/faucets/arbitrum-sepolia',
+    faucetUrl: 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia',
   },
   {
     chainId: 11155111,
@@ -35,7 +35,7 @@ const NETWORKS: NetworkInfo[] = [
     scanUrl: 'https://testnet.8004scan.io',
     scanSlug: 'sepolia',
     publicRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
-    faucetUrl: 'https://www.alchemy.com/faucets/ethereum-sepolia',
+    faucetUrl: 'https://cloud.google.com/application/web3/faucet/ethereum/sepolia',
   },
   {
     chainId: 42161,

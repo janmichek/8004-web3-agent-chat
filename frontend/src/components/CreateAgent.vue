@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt } from '@wagmi/vue/actions'
-import { useConfig } from '@wagmi/vue'
-import { parseEther } from 'viem'
+import { useAccount, useConfig } from '@wagmi/vue'
+import { isAddress, parseEther, type Address } from 'viem'
 import {
   createAgent,
   fetchCatalog,
@@ -13,7 +13,6 @@ import {
   type AgentSummary,
   type CatalogNetwork,
   type CatalogResponse,
-  type CreateAgentStep,
 } from '../api'
 import { ensureChain, prepareNativeTransfer } from '../chain'
 import { DEFAULT_CHAIN_ID, addressExplorerUrl, networkInfo, txExplorerUrl } from '../networks'
@@ -35,6 +34,16 @@ const emit = defineEmits<{
 }>()
 
 const wagmiConfig = useConfig()
+const { address: wagmiAddress } = useAccount()
+
+/** The signed-in wallet becomes the owner of the identity NFT. */
+const connectedAddress = computed<Address | undefined>(() => {
+  if (typeof window !== 'undefined') {
+    const forced = (window as unknown as { __E2E_CONNECTED_ADDRESS?: string }).__E2E_CONNECTED_ADDRESS
+    if (forced && isAddress(forced)) return forced as Address
+  }
+  return wagmiAddress.value ?? getAccount(wagmiConfig).address
+})
 const phase = ref<Phase>('env')
 const bodyRef = ref<HTMLElement | null>(null)
 
@@ -55,7 +64,6 @@ const networks = computed<CatalogNetwork[]>(() => {
     ]
   )
 })
-const selectedNetwork = computed(() => networks.value.find((n) => n.chainId === selectedChainId.value))
 const createError = ref('')
 const busy = ref(false)
 
@@ -85,7 +93,7 @@ const headTitle = computed(() => {
 const headSubtitle = computed(() => {
   switch (phase.value) {
     case 'env':
-      return 'Three quick steps — most details are already filled in.'
+      return ''
     case 'configure':
       return 'Toggle what it can do. Anything here can be changed later.'
     case 'oasf':
@@ -127,6 +135,7 @@ const fundEth = ref('0.002')
 const fundBusy = ref<'master' | 'wallet' | null>(null)
 const fundStatus = ref('')
 const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
+const fundSource = ref<'master' | 'wallet' | null>(null)
 const fundTxHash = ref('')
 const webEndpoint = ref('https://example.com')
 const emailEndpoint = ref('e@mail.fun')
@@ -230,7 +239,6 @@ function removeImage() {
   imageError.value = ''
 }
 
-const createSteps = ref<CreateAgentStep[]>([])
 const createdAgent = ref<AgentSummary | null>(null)
 const createdBalance = ref('')
 const createdPrivateKey = ref('')
@@ -274,6 +282,18 @@ const fundAmountValid = computed(() => {
   const n = Number(fundEth.value)
   return Number.isFinite(n) && n > 0 && n <= 1
 })
+
+const fundAmountLabel = computed(() => {
+  const amount = fundEth.value.trim()
+  return amount ? `${amount} ETH` : 'ETH'
+})
+
+/** Show progress or the settled result inside the button that started it. */
+function fundButtonLabel(source: 'master' | 'wallet'): string {
+  if (fundBusy.value === source) return fundStatus.value || 'Sending…'
+  if (fundSource.value === source && fundStatusKind.value === 'ok') return fundStatus.value
+  return source === 'master' ? `Master · ${fundAmountLabel.value}` : `Fund ${fundAmountLabel.value}`
+}
 
 const oasfDomains = ref<OasfDomain[]>([])
 const oasfLoading = ref(false)
@@ -427,14 +447,22 @@ function toggleTool(name: string) {
 
 function goConfigure() {
   if (!nameValid.value) return
+  if (!connectedAddress.value) {
+    createError.value = 'Connect and sign in with a wallet to create an agent.'
+    return
+  }
   phase.value = 'configure'
 }
 
 async function submitCreate() {
   if (busy.value) return
+  if (!connectedAddress.value) {
+    createError.value = 'Connect and sign in with a wallet to create an agent.'
+    phase.value = 'error'
+    return
+  }
   phase.value = 'creating'
   createError.value = ''
-  createSteps.value = []
   createdAgent.value = null
   createdPrivateKey.value = ''
   createdPrivateKeyEnvVar.value = ''
@@ -442,6 +470,7 @@ async function submitCreate() {
   privateKeyVisible.value = false
   privateKeyCopied.value = false
   fundStatus.value = ''
+  fundSource.value = null
   fundTxHash.value = ''
   busy.value = true
 
@@ -472,6 +501,7 @@ async function submitCreate() {
 
     const res = await createAgent({
       name: agentName.value.trim(),
+      owner: connectedAddress.value,
       chainId: selectedChainId.value,
       description: agentDescription.value.trim() || undefined,
       imageUri: imageUriToSend,
@@ -482,7 +512,6 @@ async function submitCreate() {
       services,
       x402support: x402Enabled.value,
     })
-    createSteps.value = res.steps
     createdAgent.value = res.agent
     createdBalance.value = res.balanceEth
     createdPrivateKey.value = res.privateKey ?? ''
@@ -554,14 +583,15 @@ function bumpBalance(amountEth: string) {
 async function fundFromMaster() {
   if (!createdAgent.value || !fundAmountValid.value || fundBusy.value) return
   fundBusy.value = 'master'
+  fundSource.value = 'master'
   fundStatusKind.value = 'info'
-  fundStatus.value = 'Sending from master wallet…'
+  fundStatus.value = 'Sending…'
   fundTxHash.value = ''
   try {
     const res = await fundAgent(createdAgent.value.name, fundEth.value.trim())
     fundTxHash.value = res.txHash
     fundStatusKind.value = 'ok'
-    fundStatus.value = `Confirmed ${res.amountEth} ETH (tx ${res.txHash.slice(0, 10)}…)`
+    fundStatus.value = `Confirmed ${res.amountEth} ETH · ${res.txHash.slice(0, 10)}…`
     bumpBalance(res.amountEth)
   } catch (err) {
     fundStatusKind.value = 'error'
@@ -578,7 +608,7 @@ async function fundFromMaster() {
  */
 async function awaitFundSettlement(hash: `0x${string}`, chainId: number) {
   fundStatusKind.value = 'info'
-  fundStatus.value = 'Submitted — waiting for confirmation…'
+  fundStatus.value = 'Confirming…'
   const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId })
   if (receipt.status !== 'success') {
     throw new Error('Funding transaction reverted on-chain.')
@@ -589,8 +619,9 @@ async function awaitFundSettlement(hash: `0x${string}`, chainId: number) {
 async function fundFromWallet() {
   if (!createdAgent.value?.walletAddress || !fundAmountValid.value || fundBusy.value) return
   fundBusy.value = 'wallet'
+  fundSource.value = 'wallet'
   fundStatusKind.value = 'info'
-  fundStatus.value = 'Waiting for wallet signature…'
+  fundStatus.value = 'Confirm in wallet…'
   fundTxHash.value = ''
   try {
     // The agent wallet is funded on the chain the agent was created on.
@@ -619,7 +650,7 @@ async function fundFromWallet() {
 
     // Playwright has no real wallet: let tests stub the send + settlement.
     const stub = (window as unknown as { __E2E_SEND_TX?: () => string | Promise<string> }).__E2E_SEND_TX
-    fundStatus.value = 'Waiting for wallet signature…'
+    fundStatus.value = 'Confirm in wallet…'
     const hash = stub
       ? ((await stub()) as `0x${string}`)
       : await sendTransaction(wagmiConfig, {
@@ -802,9 +833,15 @@ async function fundFromWallet() {
                 @keydown.enter.prevent="goConfigure"
               />
             </label>
-            <p class="hint">Letters, numbers, . _ - (1–63 chars)</p>
+            <p
+              v-if="agentName.trim() && !nameValid"
+              class="hint error"
+              data-testid="create-name-error"
+            >
+              Use letters, numbers and . _ - (1–63 chars).
+            </p>
             <label class="field">
-              <span>Description <span class="optional">optional</span></span>
+              <span>Description</span>
               <textarea
                 v-model="agentDescription"
                 rows="3"
@@ -817,39 +854,28 @@ async function fundFromWallet() {
       </section>
 
       <section class="panel">
-        <div class="panel-head">
-          <div>
-            <p class="section-title">Network &amp; wallet</p>
-            <p class="hint">The agent gets its own wallet on the network you pick.</p>
-          </div>
-        </div>
-        <div v-if="catalog" class="detail-row">
-          <label class="mini-card network-card">
-            <span class="mini-label">Network</span>
-            <select
-              v-model.number="selectedChainId"
-              class="network-select"
-              aria-label="Network"
-              data-testid="create-network"
-              :disabled="networks.length < 2"
-            >
-              <option v-for="n in networks" :key="n.chainId" :value="n.chainId">
-                {{ n.name }} ({{ n.network }})
-              </option>
-            </select>
-          </label>
-          <div class="mini-card wallet-card">
-            <span class="mini-label">Funded by</span>
-            <span class="mono wallet-addr">{{ catalog.master.address }}</span>
-          </div>
-          <div class="mini-card balance-card">
-            <span class="mini-label">Available</span>
-            <strong class="mono" data-testid="create-master-balance">
-              {{ selectedNetwork?.masterBalanceEth ?? '—' }} ETH
-            </strong>
-          </div>
-        </div>
+        <label v-if="catalog" class="field">
+          <span>Network</span>
+          <select
+            v-model.number="selectedChainId"
+            class="network-select"
+            aria-label="Network"
+            data-testid="create-network"
+            :disabled="networks.length < 2"
+          >
+            <option v-for="n in networks" :key="n.chainId" :value="n.chainId">
+              {{ n.name }} ({{ n.network }})
+            </option>
+          </select>
+        </label>
         <p v-else class="hint">Loading environment…</p>
+        <p v-if="catalog && connectedAddress" class="hint">
+          <span class="mini-label">Owner</span>
+          <span class="mono" data-testid="create-owner-address">{{ connectedAddress }}</span>
+        </p>
+        <p v-if="!connectedAddress" class="note warn" data-testid="create-owner-warning">
+          Connect a wallet first — it becomes the owner of the identity NFT.
+        </p>
       </section>
 
       <section class="panel">
@@ -940,7 +966,7 @@ async function fundFromWallet() {
           type="button"
           class="btn primary"
           data-testid="create-name-continue"
-          :disabled="!catalog || !nameValid"
+          :disabled="!catalog || !nameValid || !connectedAddress"
           @click="goConfigure"
         >
           Next →
@@ -1045,77 +1071,79 @@ async function fundFromWallet() {
 
     <!-- OASF domains & skills (step 3) -->
     <div v-else-if="phase === 'oasf'" ref="bodyRef" class="body">
-      <div class="panel-head">
-        <div>
-          <p class="section-title">Skills &amp; taxonomy <span class="optional">optional</span></p>
-          <p class="hint">
-            Stored in the agent metadata so others can discover it.
-            <a :href="oasfSchemaUrl" target="_blank" rel="noopener noreferrer">OASF schema ↗</a>
-          </p>
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="section-title">Skills &amp; taxonomy <span class="optional">optional</span></p>
+            <p class="hint">
+              Stored in the agent metadata so others can discover it.
+              <a :href="oasfSchemaUrl" target="_blank" rel="noopener noreferrer">OASF schema ↗</a>
+            </p>
+          </div>
+          <span class="count-pill">{{ selectedOasfSkills.length }} skills</span>
         </div>
-        <span class="count-pill">{{ selectedOasfSkills.length }} skills</span>
-      </div>
-      <label class="field search-field">
-        <span class="search-icon" aria-hidden="true">
-          <svg viewBox="0 0 16 16">
-            <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6" />
-            <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-          </svg>
-        </span>
-        <input
-          v-model="oasfSearch"
-          type="text"
-          placeholder="Search domains & skills…"
-          spellcheck="false"
-          data-testid="create-oasf-search"
-        />
-      </label>
-      <p v-if="oasfLoading" class="hint" data-testid="create-oasf-loading">Loading OASF taxonomy…</p>
-      <p v-else-if="oasfError" class="banner" data-testid="create-oasf-error">
-        {{ oasfError }}
-        <button type="button" class="btn ghost" @click="loadOasf">Retry</button>
-      </p>
-      <div v-else class="oasf-grid">
-        <div class="oasf-col">
-          <p class="group-label">Domains</p>
-          <ul class="domain-list">
-            <li v-for="d in visibleDomains" :key="`oasf-domain-${d.id}`">
-              <label class="domain-chip" :class="{ partial: domainSkillState(d.id) === 'some' }">
-                <input
-                  type="checkbox"
-                  :data-testid="`create-oasf-domain-${d.id}`"
-                  :checked="domainSkillState(d.id) !== 'none'"
-                  :indeterminate="domainSkillState(d.id) === 'some'"
-                  @change="toggleOasfDomain(d.id)"
-                />
-                <span class="domain-name">{{ d.name }}</span>
-                <span class="domain-count">{{ d.skills.length }}</span>
-              </label>
-            </li>
-          </ul>
-          <p v-if="!visibleDomains.length" class="hint">No domains match your search.</p>
+        <label class="field search-field">
+          <span class="search-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+              <path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+          </span>
+          <input
+            v-model="oasfSearch"
+            type="text"
+            placeholder="Search domains & skills…"
+            spellcheck="false"
+            data-testid="create-oasf-search"
+          />
+        </label>
+        <p v-if="oasfLoading" class="hint" data-testid="create-oasf-loading">Loading OASF taxonomy…</p>
+        <p v-else-if="oasfError" class="banner" data-testid="create-oasf-error">
+          {{ oasfError }}
+          <button type="button" class="btn ghost" @click="loadOasf">Retry</button>
+        </p>
+        <div v-else class="oasf-grid">
+          <div class="oasf-col">
+            <p class="group-label">Domains</p>
+            <ul class="domain-list">
+              <li v-for="d in visibleDomains" :key="`oasf-domain-${d.id}`">
+                <label class="domain-chip" :class="{ partial: domainSkillState(d.id) === 'some' }">
+                  <input
+                    type="checkbox"
+                    :data-testid="`create-oasf-domain-${d.id}`"
+                    :checked="domainSkillState(d.id) !== 'none'"
+                    :indeterminate="domainSkillState(d.id) === 'some'"
+                    @change="toggleOasfDomain(d.id)"
+                  />
+                  <span class="domain-name">{{ d.name }}</span>
+                  <span class="domain-count">{{ d.skills.length }}</span>
+                </label>
+              </li>
+            </ul>
+            <p v-if="!visibleDomains.length" class="hint">No domains match your search.</p>
+          </div>
+          <div class="oasf-col">
+            <p class="group-label">Skills <span>{{ selectedOasfSkills.length }} selected</span></p>
+            <ul class="skill-list">
+              <li v-for="s in visibleSkills" :key="`oasf-skill-${s.id}`">
+                <label class="skill-chip">
+                  <input
+                    type="checkbox"
+                    :data-testid="`create-oasf-skill-${s.id}`"
+                    :checked="selectedOasfSkills.includes(s.id)"
+                    @change="toggleOasfSkill(s.id)"
+                  />
+                  <span class="skill-body">
+                    <strong>{{ s.name }}</strong>
+                    <em>{{ s.domainName }}</em>
+                  </span>
+                </label>
+              </li>
+            </ul>
+            <p v-if="!visibleSkills.length" class="hint">No skills match your search.</p>
+          </div>
         </div>
-        <div class="oasf-col">
-          <p class="group-label">Skills <span>{{ selectedOasfSkills.length }} selected</span></p>
-          <ul class="skill-list">
-            <li v-for="s in visibleSkills" :key="`oasf-skill-${s.id}`">
-              <label class="skill-chip">
-                <input
-                  type="checkbox"
-                  :data-testid="`create-oasf-skill-${s.id}`"
-                  :checked="selectedOasfSkills.includes(s.id)"
-                  @change="toggleOasfSkill(s.id)"
-                />
-                <span class="skill-body">
-                  <strong>{{ s.name }}</strong>
-                  <em>{{ s.domainName }}</em>
-                </span>
-              </label>
-            </li>
-          </ul>
-          <p v-if="!visibleSkills.length" class="hint">No skills match your search.</p>
-        </div>
-      </div>
+      </section>
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
         <div class="nav-end">
@@ -1124,7 +1152,7 @@ async function fundFromWallet() {
             type="button"
             class="btn primary"
             data-testid="create-agent-submit"
-            :disabled="busy"
+            :disabled="busy || !connectedAddress"
             @click="submitCreate"
           >
             Create agent
@@ -1213,6 +1241,88 @@ async function fundFromWallet() {
             {{ idCopied ? 'ID copied' : `Copy #${createdScanId}` }}
           </button>
         </div>
+      </div>
+
+      <div class="fund-panel" data-testid="create-fund-panel">
+        <div class="fund-head">
+          <p class="fund-title">Fund wallet <span class="optional">optional</span></p>
+          <p class="fund-sub">Enough for gas — top up anytime from the agent card.</p>
+        </div>
+        <div class="fund-presets">
+          <button
+            v-for="preset in ['0.001', '0.002', '0.005']"
+            :key="preset"
+            type="button"
+            class="preset"
+            :class="{ on: fundEth === preset }"
+            :disabled="fundBusy !== null"
+            @click="fundEth = preset"
+          >
+            {{ preset }}
+          </button>
+        </div>
+        <div class="fund-row">
+          <label class="fund-amount">
+            <span class="visually-hidden">Amount in ETH</span>
+            <input
+              v-model="fundEth"
+              type="text"
+              inputmode="decimal"
+              placeholder="0.002"
+              spellcheck="false"
+              data-testid="create-fund-amount"
+              :disabled="fundBusy !== null"
+            />
+            <span class="fund-unit" aria-hidden="true">ETH</span>
+          </label>
+          <button
+            type="button"
+            class="btn primary fund-submit"
+            data-testid="create-fund-wallet"
+            :disabled="!fundAmountValid || fundBusy !== null"
+            @click="fundFromWallet"
+          >
+            <span
+              v-if="fundBusy === 'wallet' || (fundSource === 'wallet' && fundStatusKind === 'ok')"
+              data-testid="create-fund-status"
+              >{{ fundButtonLabel('wallet') }}</span
+            >
+            <template v-else>{{ fundButtonLabel('wallet') }}</template>
+          </button>
+        </div>
+        <div class="fund-foot">
+          <button
+            type="button"
+            class="fund-alt"
+            data-testid="create-fund-master"
+            :disabled="!fundAmountValid || fundBusy !== null"
+            @click="fundFromMaster"
+          >
+            <span
+              v-if="fundBusy === 'master' || (fundSource === 'master' && fundStatusKind === 'ok')"
+              data-testid="create-fund-status"
+              >{{ fundButtonLabel('master') }}</span
+            >
+            <template v-else>{{ fundButtonLabel('master') }}</template>
+          </button>
+          <a
+            v-if="fundTxUrl"
+            :href="fundTxUrl"
+            class="fund-tx-link"
+            target="_blank"
+            rel="noopener"
+            data-testid="create-fund-tx-link"
+            >View tx ↗</a
+          >
+        </div>
+        <p
+          v-if="fundStatusKind === 'error' && fundStatus"
+          class="fund-error"
+          data-testid="create-fund-status"
+          role="alert"
+        >
+          {{ fundStatus }}
+        </p>
       </div>
 
       <div v-if="createdPrivateKey" class="ephemeral-key" data-testid="create-ephemeral-key">
@@ -1341,109 +1451,22 @@ async function fundFromWallet() {
         </ul>
       </div>
 
-      <ul v-if="createSteps.length" class="steps">
-        <li v-for="s in createSteps" :key="s.step" :class="{ fail: !s.ok }">
-          <span class="step-mark" :class="{ fail: !s.ok }"></span>
-          <span class="mono">{{ s.step }}</span>
-          <span class="step-status">{{ s.ok ? 'ok' : 'failed' }}</span>
-          <template v-if="s.detail"> · {{ s.detail }}</template>
-        </li>
-      </ul>
-
       <ol class="next-steps">
         <li>
           <span class="ns-num">1</span>
-          <span>
-            <strong>Fund the wallet</strong>
-            <em>Optional — so it can pay for transactions.</em>
-          </span>
-        </li>
-        <li>
-          <span class="ns-num">2</span>
           <span>
             <strong>Say hello</strong>
             <em>Open chat and give it a first job.</em>
           </span>
         </li>
         <li>
-          <span class="ns-num">3</span>
+          <span class="ns-num">2</span>
           <span>
             <strong>Get rated</strong>
             <em>Feedback builds its on-chain reputation.</em>
           </span>
         </li>
       </ol>
-
-      <div class="fund-panel" data-testid="create-fund-panel">
-        <div class="panel-head">
-          <div>
-            <p class="section-title">Fund the agent wallet <span class="optional">optional</span></p>
-            <p class="hint">Give it a little ETH so it can pay for transactions.</p>
-          </div>
-        </div>
-        <div class="fund-presets">
-          <button
-            v-for="preset in ['0.001', '0.002', '0.005']"
-            :key="preset"
-            type="button"
-            class="preset"
-            :class="{ on: fundEth === preset }"
-            :disabled="fundBusy !== null"
-            @click="fundEth = preset"
-          >
-            {{ preset }} ETH
-          </button>
-        </div>
-        <label class="field">
-          <span>Amount (ETH)</span>
-          <input
-            v-model="fundEth"
-            type="text"
-            inputmode="decimal"
-            placeholder="0.002"
-            spellcheck="false"
-            data-testid="create-fund-amount"
-            :disabled="fundBusy !== null"
-          />
-        </label>
-        <div class="fund-actions">
-          <button
-            type="button"
-            class="btn ghost"
-            data-testid="create-fund-master"
-            :disabled="!fundAmountValid || fundBusy !== null"
-            @click="fundFromMaster"
-          >
-            {{ fundBusy === 'master' ? 'Sending…' : 'Fund from Master wallet' }}
-          </button>
-          <button
-            type="button"
-            class="btn primary"
-            data-testid="create-fund-wallet"
-            :disabled="!fundAmountValid || fundBusy !== null"
-            @click="fundFromWallet"
-          >
-            {{
-              fundBusy === 'wallet'
-                ? fundTxHash
-                  ? 'Confirming…'
-                  : 'Waiting…'
-                : 'Fund from connected wallet'
-            }}
-          </button>
-        </div>
-        <p v-if="fundStatus" class="hint" :class="fundStatusKind" data-testid="create-fund-status">
-          {{ fundStatus }}
-          <a
-            v-if="fundTxUrl"
-            :href="fundTxUrl"
-            class="fund-tx-link"
-            target="_blank"
-            rel="noopener"
-            data-testid="create-fund-tx-link"
-          >View tx</a>
-        </p>
-      </div>
 
       <div class="nav">
         <button type="button" class="btn ghost" @click="emit('cancel')">Close</button>
@@ -1518,12 +1541,19 @@ async function fundFromWallet() {
 
 .network-select {
   font: inherit;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
   color: var(--ink);
-  background: var(--surface-2);
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 0.35rem;
-  padding: 0.3rem 0.5rem;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
   max-width: 100%;
+}
+
+.network-select:focus {
+  outline: 2px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  outline-offset: 1px;
 }
 
 .env dt {
@@ -1720,17 +1750,11 @@ async function fundFromWallet() {
 .fund-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--bg);
-}
-
-.fund-actions {
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--border));
+  border-radius: 0.8rem;
+  background: color-mix(in oklab, var(--surface-2) 45%, transparent);
 }
 
 .menu {
@@ -1903,17 +1927,6 @@ async function fundFromWallet() {
   color: var(--danger-ink);
 }
 
-.steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 0.78rem;
-  color: var(--muted);
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
 .ephemeral-key {
   display: flex;
   flex-direction: column;
@@ -1952,10 +1965,6 @@ async function fundFromWallet() {
   border-radius: 0.4rem;
   background: var(--bg);
   color: var(--ink);
-}
-
-.steps .fail {
-  color: var(--danger-ink);
 }
 
 .creating-pulse {
@@ -2030,6 +2039,7 @@ async function fundFromWallet() {
 .stepper {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
   padding: 0.35rem 1.35rem 1rem;
 }
@@ -2038,7 +2048,7 @@ async function fundFromWallet() {
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -2070,9 +2080,9 @@ async function fundFromWallet() {
 }
 
 .stepper-line {
-  flex: 1;
+  flex: 0 0 auto;
+  width: 3rem;
   height: 1px;
-  min-width: 0.5rem;
   background: var(--border);
   transition: background 0.2s ease;
 }
@@ -2352,18 +2362,6 @@ async function fundFromWallet() {
   word-break: break-all;
 }
 
-.network-card .network-select {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-size: 0.92rem;
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.network-card .network-select:focus {
-  box-shadow: none;
-}
 
 .field-grid {
   display: grid;
@@ -2717,8 +2715,7 @@ async function fundFromWallet() {
   margin-right: -1.35rem;
   margin-bottom: -1.35rem;
   padding: 0.85rem 1.35rem;
-  background: color-mix(in oklab, var(--surface) 86%, transparent);
-  backdrop-filter: blur(14px);
+  background: var(--surface);
 }
 
 .nav-note {
@@ -2859,48 +2856,130 @@ async function fundFromWallet() {
   word-break: break-all;
 }
 
-.steps {
-  gap: 0.3rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.55rem;
-  background: var(--bg);
-  font-size: 0.72rem;
-}
-
-.steps li {
+.fund-head {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
-.step-mark {
-  width: 0.42rem;
-  height: 0.42rem;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--ok-ink);
+.fund-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
-.step-mark.fail {
-  background: var(--danger-base);
-}
-
-.step-status {
+.fund-sub {
+  margin: 0;
+  font-size: 0.76rem;
   color: var(--muted);
-}
-
-.fund-panel {
-  gap: 0.7rem;
-  padding: 0.9rem;
-  border-radius: 0.8rem;
-  background: color-mix(in oklab, var(--surface-2) 45%, transparent);
 }
 
 .fund-presets {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+}
+
+.fund-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.fund-amount {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.fund-amount:focus-within {
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+.fund-amount input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  padding: 0.6rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.fund-amount input:focus {
+  outline: none;
+}
+
+.fund-amount:has(input:disabled) {
+  opacity: 0.6;
+}
+
+.fund-unit {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.fund-submit {
+  flex-shrink: 0;
+  min-width: 10rem;
+}
+
+.fund-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 1.2rem;
+}
+
+.fund-alt {
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in oklab, var(--muted) 45%, transparent);
+  transition: color 0.16s ease;
+}
+
+.fund-alt:hover:not(:disabled) {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+.fund-alt:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fund-tx-link {
+  font-size: 0.74rem;
+  color: var(--accent);
+}
+
+.fund-error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--danger-ink);
+  word-break: break-word;
 }
 
 .preset {

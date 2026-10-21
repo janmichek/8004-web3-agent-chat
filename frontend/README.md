@@ -24,7 +24,7 @@ Set `VITE_WEB3AUTH_CLIENT_ID` in `frontend/.env` for Web3Auth sign-in.
   (web, email, MCP, A2A), optional x402 charging for A2A, funding
 - Agent Info: ERC-8004 id, metadata, wallet, rating, services, x402 mode
 - Chat with tool calls shown inline, conversation history
-- Fund from the master wallet, rate an agent, delete an agent
+- Fund from the connected wallet, rate an agent, delete an agent
 
 ## Tests
 
