@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { fetchMemory, type MemorySummary, type AgentSummary } from '../api'
 import { networkInfo } from '../networks'
+import CollapsibleSection from './CollapsibleSection.vue'
 
 const props = defineProps<{
   agent?: AgentSummary | null
@@ -11,7 +12,6 @@ const props = defineProps<{
 const memory = ref<MemorySummary | null>(null)
 const loading = ref(false)
 const error = ref('')
-const open = ref(false)
 
 function timeAgo(iso: string | null): string {
   if (!iso) return '—'
@@ -67,19 +67,7 @@ const topTools = computed(() => {
 
 <template>
   <section class="card stats" data-testid="agent-stats">
-    <div class="sub-section">
-      <button
-        type="button"
-        class="title-toggle"
-        @click="open = !open"
-        :aria-expanded="open ? 'true' : 'false'"
-        title="Toggle Chat Stats section"
-      >
-        <span class="chev" :class="{ closed: !open }" aria-hidden="true">▾</span>
-        <span class="sub-title">Chat Stats</span>
-      </button>
-
-      <div v-show="open" class="collapsible-body">
+    <CollapsibleSection title="Chat Stats">
     <p v-if="!agent?.name" class="hint">Select an agent to see its stats.</p>
 
     <template v-else>
@@ -166,8 +154,7 @@ const topTools = computed(() => {
         </template>
       </template>
     </template>
-      </div>
-    </div>
+    </CollapsibleSection>
   </section>
 </template>
 
@@ -202,22 +189,6 @@ const topTools = computed(() => {
 .addr { font-size: 0.73rem; color: var(--accent); text-decoration: none; padding: 0.18rem 0.4rem; border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--border)); border-radius: 0.3rem; background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
 .addr:hover { text-decoration: underline; }
 .more { font-size: 0.72rem; color: var(--muted); }
-.title-toggle { display: inline-flex; align-items: center; gap: 0.4rem; background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; }
-.sub-section { display: flex; flex-direction: column; gap: 0.6rem; }
-.sub-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.chev {
-  display: inline-block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  transition: transform 0.25s var(--ease-spring);
-}
-.chev.closed { transform: rotate(-90deg); }
-.collapsible-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  animation: row-in 0.3s var(--ease-out) both;
-}
 @keyframes row-in {
   from { opacity: 0; transform: translateX(-0.5rem); }
 }

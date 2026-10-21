@@ -21,6 +21,8 @@ const narrowQuery = window.matchMedia('(max-width: 860px)')
 const narrow = ref(narrowQuery.matches)
 const pendingSelect = ref<string | null>(null)
 const recalledSession = ref<MemorySession | null>(null)
+/** Bumped when the conversations drawer closes without a new recall, to replay chat pop-in. */
+const chatReplayKey = ref(0)
 const queryClient = useQueryClient()
 
 function extractNumericId(agentId: string): string {
@@ -65,8 +67,11 @@ function onMemoryChat() {
 }
 
 function onRecall(session: MemorySession) {
+  const same = recalledSession.value?.id === session.id
   recalledSession.value = session
   showConvos.value = false
+  // Same session: watcher won't rebuild bubbles, so replay pop-in explicitly.
+  if (same) chatReplayKey.value += 1
 }
 
 function syncNarrow() {
@@ -80,8 +85,13 @@ function toggleSide() {
 }
 
 function toggleConvos() {
-  showConvos.value = !showConvos.value
-  if (showConvos.value) showSide.value = false
+  if (showConvos.value) {
+    showConvos.value = false
+    chatReplayKey.value += 1
+    return
+  }
+  showConvos.value = true
+  showSide.value = false
 }
 
 function onNewChat() {
@@ -189,6 +199,7 @@ onBeforeUnmount(() => {
                 <AgentChat
                   :agent="selectedAgent"
                   :recalled-session="recalledSession"
+                  :replay-key="chatReplayKey"
                   @chat="onMemoryChat"
                 />
               </div>
@@ -392,6 +403,24 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
+/* Staggered fade/slide-in when the drawer opens (matches .stat row-in). */
+.convos.open :deep(.convos-top) {
+  animation: convo-row-in 0.4s var(--ease-out) both;
+}
+.convos.open :deep(.session-card) {
+  animation: convo-row-in 0.4s var(--ease-out) both;
+}
+.convos.open :deep(.session-card:nth-child(1)) { animation-delay: 0.04s; }
+.convos.open :deep(.session-card:nth-child(2)) { animation-delay: 0.08s; }
+.convos.open :deep(.session-card:nth-child(3)) { animation-delay: 0.12s; }
+.convos.open :deep(.session-card:nth-child(4)) { animation-delay: 0.16s; }
+.convos.open :deep(.session-card:nth-child(5)) { animation-delay: 0.2s; }
+.convos.open :deep(.session-card:nth-child(6)) { animation-delay: 0.24s; }
+.convos.open :deep(.session-card:nth-child(n + 7)) { animation-delay: 0.28s; }
+@keyframes convo-row-in {
+  from { opacity: 0; transform: translateX(-0.5rem); }
+}
+
 .chat-col {
   flex: 1;
   min-width: 0;
@@ -470,20 +499,26 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* Closed conversations panel slides off the chat, then drops out of hit testing. */
+/* Conversations drawer slides in over the chat; closed it parks off-canvas. */
 @media (min-width: 861px) {
-  .convos:not(.open) {
+  .convos {
     position: absolute;
     z-index: 20;
     top: 0;
     bottom: 0;
     left: 0;
     background: var(--bg);
-    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.35);
     transform: translateX(-105%);
     visibility: hidden;
     pointer-events: none;
     transition: transform 0.22s ease, visibility 0s linear 0.22s;
+  }
+  .convos.open {
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.4);
+    transition: transform 0.22s ease, visibility 0s;
   }
 }
 
@@ -549,7 +584,6 @@ onBeforeUnmount(() => {
     background: var(--bg);
     height: 100%;
     width: min(20rem, 85%);
-    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.4);
     transform: translateX(-105%);
     visibility: hidden;
     pointer-events: none;
@@ -559,6 +593,7 @@ onBeforeUnmount(() => {
     transform: none;
     visibility: visible;
     pointer-events: auto;
+    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.4);
     transition: transform 0.22s ease, visibility 0s;
   }
 }

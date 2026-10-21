@@ -25,6 +25,8 @@ const props = defineProps<{
   /** @deprecated use `agent` */
   agentName?: string | null
   recalledSession?: MemorySession | null
+  /** Increment to remount bubbles and replay pop-in without reloading the session. */
+  replayKey?: number
 }>()
 
 const emit = defineEmits<{
@@ -41,6 +43,15 @@ const input = ref('')
 const busy = ref(false)
 const bubbles = ref<Bubble[]>([])
 const scroller = ref<HTMLElement | null>(null)
+const animEpoch = ref(0)
+
+watch(
+  () => props.replayKey,
+  (key, prev) => {
+    if (key == null || key === prev) return
+    animEpoch.value += 1
+  },
+)
 
 watch(
   () => props.agent?.name ?? props.agentName,
@@ -222,17 +233,8 @@ function onKey(e: KeyboardEvent) {
           </button>
         </div>
         <div class="welcome-chips">
-          <button type="button" class="chip" @click="input = 'Find an agent that can swap tokens'; send()">
-            Find an agent that can swap tokens
-          </button>
-          <button type="button" class="chip" @click="input = 'Show me the top-rated agents on Base'; send()">
-            Show me the top-rated agents on Base
-          </button>
           <button type="button" class="chip" @click="input = 'What is the ETH balance of 0x0000000000000000000000000000000000000000?'; send()">
             What is the ETH balance of an address?
-          </button>
-          <button type="button" class="chip" @click="input = 'Resolve vitalik.eth'; send()">
-            Resolve vitalik.eth
           </button>
           <button type="button" class="chip" @click="input = 'Send 0.01 ETH to 0x0000000000000000000000000000000000000000'; send()">
             Send 0.01 ETH to an address
@@ -243,7 +245,7 @@ function onKey(e: KeyboardEvent) {
         </div>
       </section>
 
-      <template v-for="(b, i) in bubbles" :key="i">
+      <template v-for="(b, i) in bubbles" :key="`${animEpoch}-${i}`">
         <div v-if="b.kind === 'user'" class="bubble user md" data-testid="chat-bubble-user" v-html="renderMarkdown(b.text)"></div>
         <div v-else-if="b.kind === 'agent'" class="bubble agent md" data-testid="chat-bubble-agent" v-html="renderMarkdown(b.text)"></div>
         <div v-else-if="b.kind === 'error'" class="bubble error" data-testid="chat-bubble-error">{{ b.text }}</div>
@@ -479,8 +481,6 @@ function onKey(e: KeyboardEvent) {
 }
 .event {
   animation: fade-in 0.4s ease both;
-  border-left: 2px solid color-mix(in oklab, var(--accent) 35%, var(--border));
-  margin-left: 0.25rem;
 }
 @keyframes pop-in {
   from { opacity: 0; transform: translateY(0.6rem) scale(0.92); }

@@ -27,11 +27,13 @@ export { createFileCheckpointer } from "./core/file-checkpoint.js";
 export {
   TransferEthAction,
   EnsNameAction,
+  ContractCallAction,
   sendEthTool,
   tokenBalanceTool,
   transferEthSkill,
   tokenBalanceSkill,
   ensNameSkill,
+  contractCallSkill,
   fetchContractAbiTool,
   callContractTool,
   resolveEnsTool,

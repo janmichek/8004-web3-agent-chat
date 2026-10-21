@@ -17,6 +17,7 @@ import {
 import { ensureChain, prepareNativeTransfer } from '../chain'
 import { DEFAULT_CHAIN_ID, addressExplorerUrl, networkInfo, txExplorerUrl } from '../networks'
 import { friendlyFundError } from '../rpc-errors'
+import NetworkSelect from './NetworkSelect.vue'
 
 import { OASF_SCHEMA_URL, fetchOasfDomains, type OasfDomain } from '../oasf'
 
@@ -102,13 +103,6 @@ const headSubtitle = computed(() => {
       return ''
   }
 })
-const activeServiceCount = computed(
-  () =>
-    [webEndpoint.value, emailEndpoint.value, mcpEndpoint.value, a2aEndpoint.value].filter(
-      (endpoint) => endpoint.trim().length > 0,
-    ).length,
-)
-
 const UPPERCASE_WORDS = new Set(['eth', 'ens', 'abi', 'mcp', 'a2a', 'oasf', 'ipfs', 'usdc', 'api', 'erc', 'nft'])
 function humanize(name: string): string {
   return name
@@ -777,28 +771,30 @@ async function fundFromWallet() {
                 @change="onFileChosen"
               />
             </div>
-            <div v-else class="image-preview" data-testid="create-image-preview">
-              <img :src="imagePreviewUrl" alt="Agent image preview" />
-              <div class="image-meta">
-                <strong class="image-name">{{ imageFile.name }}</strong>
-                <span
-                  v-if="imageStatus === 'uploading'"
-                  class="image-status"
-                  data-testid="create-image-uploading"
-                >
-                  Uploading to IPFS…
-                </span>
-                <span
-                  v-else-if="imageStatus === 'error'"
-                  class="image-status fail"
-                  data-testid="create-image-error"
-                >
-                  {{ imageError }}
-                </span>
-                <span v-else class="image-status" data-testid="create-image-ready">
-                  Ready — uploads when you create the agent
-                </span>
-              </div>
+            <div
+              v-else
+              class="image-preview"
+              data-testid="create-image-preview"
+              :aria-busy="imageStatus === 'uploading'"
+            >
+              <img :src="imagePreviewUrl" :alt="imageFile.name || 'Agent image preview'" />
+              <span
+                v-if="imageStatus === 'uploading'"
+                class="visually-hidden"
+                data-testid="create-image-uploading"
+              >
+                Uploading to IPFS…
+              </span>
+              <span
+                v-else-if="imageStatus === 'error'"
+                class="visually-hidden"
+                data-testid="create-image-error"
+              >
+                {{ imageError }}
+              </span>
+              <span v-else class="visually-hidden" data-testid="create-image-ready">
+                Ready — uploads when you create the agent
+              </span>
               <button
                 type="button"
                 class="btn ghost small icon-btn image-remove"
@@ -820,19 +816,32 @@ async function fundFromWallet() {
           </div>
 
           <div class="identity-fields">
-            <label class="field">
-              <span>Agent name</span>
-              <input
-                v-model="agentName"
-                type="text"
-                class="input-lg"
-                placeholder="my-agent"
-                spellcheck="false"
-                autofocus
-                data-testid="create-name-input"
-                @keydown.enter.prevent="goConfigure"
-              />
-            </label>
+            <div class="name-network-row">
+              <label class="field name-field">
+                <span>Agent name</span>
+                <input
+                  v-model="agentName"
+                  type="text"
+                  class="input-lg"
+                  placeholder="my-agent"
+                  spellcheck="false"
+                  autofocus
+                  data-testid="create-name-input"
+                  @keydown.enter.prevent="goConfigure"
+                />
+              </label>
+              <label v-if="catalog" class="field network-field">
+                <span>Network</span>
+                <NetworkSelect
+                  v-model="selectedChainId"
+                  :networks="networks"
+                  :disabled="networks.length < 2"
+                  aria-label="Network"
+                  test-id="create-network"
+                />
+              </label>
+              <p v-else class="hint network-loading">Loading environment…</p>
+            </div>
             <p
               v-if="agentName.trim() && !nameValid"
               class="hint error"
@@ -851,126 +860,107 @@ async function fundFromWallet() {
             </label>
           </div>
         </div>
+      <p v-if="catalog && connectedAddress" class="owner-line">
+        <span class="mini-label">Owner</span>
+        <span class="mono" data-testid="create-owner-address">{{ connectedAddress }}</span>
+      </p>
+      <p v-if="!connectedAddress" class="note warn" data-testid="create-owner-warning">
+        Connect a wallet first — it becomes the owner of the identity NFT.
+      </p>
       </section>
 
-      <section class="panel">
-        <label v-if="catalog" class="field">
-          <span>Network</span>
-          <select
-            v-model.number="selectedChainId"
-            class="network-select"
-            aria-label="Network"
-            data-testid="create-network"
-            :disabled="networks.length < 2"
-          >
-            <option v-for="n in networks" :key="n.chainId" :value="n.chainId">
-              {{ n.name }} ({{ n.network }})
-            </option>
-          </select>
-        </label>
-        <p v-else class="hint">Loading environment…</p>
-        <p v-if="catalog && connectedAddress" class="hint">
-          <span class="mini-label">Owner</span>
-          <span class="mono" data-testid="create-owner-address">{{ connectedAddress }}</span>
-        </p>
-        <p v-if="!connectedAddress" class="note warn" data-testid="create-owner-warning">
-          Connect a wallet first — it becomes the owner of the identity NFT.
-        </p>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <div>
-            <p class="section-title">Connections</p>
-            <p class="hint">Where people and other agents can reach yours.</p>
-          </div>
-          <span class="count-pill">{{ activeServiceCount }} active</span>
+      <div class="panel-head">
+        <div>
+          <p class="section-title">Connections</p>
+          <p class="hint">Where people and other agents can reach yours.</p>
         </div>
-        <div class="field-grid">
-          <label class="field">
-            <span>Web</span>
-            <input
-              v-model="webEndpoint"
-              type="text"
-              placeholder="https://example.com"
-              spellcheck="false"
-              data-testid="create-web-endpoint"
-            />
-          </label>
-          <label class="field">
-            <span>Email</span>
-            <input
-              v-model="emailEndpoint"
-              type="text"
-              placeholder="e@mail.fun"
-              spellcheck="false"
-              data-testid="create-email-endpoint"
-            />
-          </label>
-          <label class="field field-wide">
-            <span>MCP <span class="optional">tool discovery</span></span>
-            <input
-              v-model="mcpEndpoint"
-              type="text"
-              placeholder="https://your-host/api/mcp"
-              spellcheck="false"
-              data-testid="create-mcp-endpoint"
-            />
-          </label>
-          <label class="field field-wide">
-            <span>A2A <span class="optional">agent-to-agent</span></span>
-            <input
-              v-model="a2aEndpoint"
-              type="text"
-              placeholder="https://your-host/api/a2a"
-              spellcheck="false"
-              data-testid="create-a2a-endpoint"
-            />
-          </label>
-        </div>
-        <p v-if="mcpMissingWarning" class="note warn" data-testid="create-mcp-warning">
-          No MCP endpoint set — abilities will run in chat only and won't be advertised on
-          8004scan. Add an https://…/api/mcp URL to publish them.
-        </p>
-        <p class="hint subtle" data-testid="create-a2a-hint">
-          <template v-if="hasA2a">
-            A2A callers get read-only tools only — this agent never sends funds or signs
-            transactions for outside callers.
-          </template>
-          <template v-else>No A2A endpoint — other agents can't reach this one, and x402 is off.</template>
-        </p>
-        <label class="check" :class="{ disabled: !hasA2a }">
+      </div>
+      <div class="field-grid">
+        <label class="field">
+          <span>Web</span>
           <input
-            v-model="x402Enabled"
-            type="checkbox"
-            :disabled="!hasA2a"
-            data-testid="create-x402"
+            v-model="webEndpoint"
+            type="text"
+            placeholder="https://example.com"
+            spellcheck="false"
+            data-testid="create-web-endpoint"
           />
-          <span>
-            <strong>Charge for A2A requests (x402)</strong>
-            <em v-if="x402Live" data-testid="create-x402-hint">
-              Callers pay 0.01 USDC on Base Sepolia to the agent wallet per request. The agent
-              is only paid after it has answered.
-            </em>
-            <em v-else data-testid="create-x402-hint">
-              Test mode — payments are simulated and nobody is charged. It still shows as
-              x402-ready on 8004scan.
-            </em>
-          </span>
         </label>
-      </section>
+        <label class="field">
+          <span>Email</span>
+          <input
+            v-model="emailEndpoint"
+            type="text"
+            placeholder="e@mail.fun"
+            spellcheck="false"
+            data-testid="create-email-endpoint"
+          />
+        </label>
+        <label class="field field-wide">
+          <span>MCP <span class="optional">tool discovery</span></span>
+          <input
+            v-model="mcpEndpoint"
+            type="text"
+            placeholder="https://your-host/api/mcp"
+            spellcheck="false"
+            data-testid="create-mcp-endpoint"
+          />
+        </label>
+        <label class="field field-wide">
+          <span>A2A <span class="optional">agent-to-agent</span></span>
+          <input
+            v-model="a2aEndpoint"
+            type="text"
+            placeholder="https://your-host/api/a2a"
+            spellcheck="false"
+            data-testid="create-a2a-endpoint"
+          />
+        </label>
+      </div>
+      <p v-if="mcpMissingWarning" class="note warn" data-testid="create-mcp-warning">
+        No MCP endpoint set — abilities will run in chat only and won't be advertised on
+        8004scan. Add an https://…/api/mcp URL to publish them.
+      </p>
+      <p class="hint subtle" data-testid="create-a2a-hint">
+        <template v-if="hasA2a">
+          A2A callers get read-only tools only — this agent never sends funds or signs
+          transactions for outside callers.
+        </template>
+        <template v-else>No A2A endpoint — other agents can't reach this one, and x402 is off.</template>
+      </p>
+      <label class="check" :class="{ disabled: !hasA2a }">
+        <input
+          v-model="x402Enabled"
+          type="checkbox"
+          :disabled="!hasA2a"
+          data-testid="create-x402"
+        />
+        <span>
+          <strong>Charge for A2A requests (x402)</strong>
+          <em v-if="x402Live" data-testid="create-x402-hint">
+            Callers pay 0.01 USDC on Base Sepolia to the agent wallet per request. The agent
+            is only paid after it has answered.
+          </em>
+          <em v-else data-testid="create-x402-hint">
+            Test mode — payments are simulated and nobody is charged. It still shows as
+            x402-ready on 8004scan.
+          </em>
+        </span>
+      </label>
 
       <div class="nav">
-        <span class="nav-note">Step 1 of 3</span>
-        <button
-          type="button"
-          class="btn primary"
-          data-testid="create-name-continue"
-          :disabled="!catalog || !nameValid || !connectedAddress"
-          @click="goConfigure"
-        >
-          Next →
-        </button>
+        <div class="nav-end">
+          <span class="nav-note">Step 1 of 3</span>
+          <button
+            type="button"
+            class="btn primary"
+            data-testid="create-name-continue"
+            :disabled="!catalog || !nameValid || !connectedAddress"
+            @click="goConfigure"
+          >
+            Next →
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1071,8 +1061,7 @@ async function fundFromWallet() {
 
     <!-- OASF domains & skills (step 3) -->
     <div v-else-if="phase === 'oasf'" ref="bodyRef" class="body">
-      <section class="panel">
-        <div class="panel-head">
+      <div class="panel-head">
           <div>
             <p class="section-title">Skills &amp; taxonomy <span class="optional">optional</span></p>
             <p class="hint">
@@ -1143,7 +1132,6 @@ async function fundFromWallet() {
             <p v-if="!visibleSkills.length" class="hint">No skills match your search.</p>
           </div>
         </div>
-      </section>
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
         <div class="nav-end">
@@ -1539,23 +1527,6 @@ async function fundFromWallet() {
   gap: 0.55rem;
 }
 
-.network-select {
-  font: inherit;
-  font-family: var(--font-body);
-  font-size: 0.9rem;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 0.6rem 0.75rem;
-  max-width: 100%;
-}
-
-.network-select:focus {
-  outline: 2px solid color-mix(in oklab, var(--accent) 45%, transparent);
-  outline-offset: 1px;
-}
-
 .env dt {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -1680,36 +1651,22 @@ async function fundFromWallet() {
 }
 
 .image-preview {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.75rem;
+  align-items: stretch;
+  aspect-ratio: 1;
+  padding: 0.4rem;
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   background: var(--bg);
+  overflow: hidden;
 }
 
 .image-preview img {
-  width: 56px;
-  height: 56px;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
-  border-radius: 0.4rem;
-  flex-shrink: 0;
-}
-
-.image-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.image-name {
-  font-size: 0.82rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border-radius: 0.55rem;
 }
 
 .image-status {
@@ -1889,7 +1846,7 @@ async function fundFromWallet() {
   bottom: -1.25rem;
   z-index: 1;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
   margin-top: auto;
@@ -2131,11 +2088,14 @@ async function fundFromWallet() {
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.9rem;
   padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.8rem;
-  background: color-mix(in oklab, var(--surface-2) 45%, transparent);
+  border: 1px solid color-mix(in oklab, var(--border) 82%, var(--muted));
+  border-radius: 0.9rem;
+  background: var(--surface-2);
+  box-shadow:
+    0 1px 2px rgb(var(--shadow-rgb) / 0.08),
+    0 14px 32px -20px rgb(var(--shadow-rgb) / 0.55);
 }
 
 .panel-head {
@@ -2182,10 +2142,10 @@ async function fundFromWallet() {
 }
 
 .dropzone {
-  flex: 1;
+  aspect-ratio: 1;
   justify-content: center;
   gap: 0.3rem;
-  min-height: 8.5rem;
+  width: 100%;
   padding: 0.75rem 0.5rem;
   border-radius: 0.75rem;
 }
@@ -2218,29 +2178,9 @@ async function fundFromWallet() {
   letter-spacing: 0.02em;
 }
 
-.image-preview {
-  flex: 1;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.4rem;
-  padding: 0.4rem;
-  border-radius: 0.75rem;
-  position: relative;
-}
-
-.image-preview img {
+.avatar-col .image-preview {
   width: 100%;
-  flex: 1;
-  min-height: 6.2rem;
-  border-radius: 0.55rem;
-}
-
-.image-preview .image-meta {
-  padding: 0 0.2rem 0.15rem;
-}
-
-.image-preview .image-name {
-  font-size: 0.72rem;
+  flex: none;
 }
 
 .image-remove {
@@ -2256,6 +2196,47 @@ async function fundFromWallet() {
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
+}
+
+.name-network-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(11rem, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+}
+
+/* Match the two-line NetworkSelect trigger so the pair sits flush. */
+.name-field .input-lg,
+.network-field :deep(.trigger) {
+  box-sizing: border-box;
+  min-height: 3.15rem;
+}
+
+.name-network-row .network-loading {
+  align-self: end;
+  padding-bottom: 0.7rem;
+}
+
+.owner-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.owner-line .mini-label {
+  flex-shrink: 0;
+}
+
+.owner-line .mono {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .field span:first-child {
@@ -3022,11 +3003,16 @@ async function fundFromWallet() {
 
   .avatar-col {
     flex-direction: row;
+    max-width: 8.5rem;
   }
 
   .avatar-col .dropzone,
   .avatar-col .image-preview {
-    flex: 1;
+    width: 100%;
+  }
+
+  .name-network-row {
+    grid-template-columns: 1fr;
   }
 
   .field-grid,

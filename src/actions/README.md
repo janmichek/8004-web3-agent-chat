@@ -89,7 +89,8 @@ const systemPrompt = `You are an onchain agent.\n\n${transfer.skill.context}`
 |-------------------|---------------------------------|----------------------------------------------------------|
 | `TransferEthAction()` | `send_eth`, `get_token_balance` | Transfer ETH with balance checks and safety confirmations |
 | `EnsNameAction()` | `resolve_ens`, `lookup_ens`, `register_ens`, `set_primary_ens` | Resolve names, register a `.eth` name on Ethereum Sepolia, and set the agent primary name |
-| `RateFeedbackAction()` | `give_feedback`, `get_reputation` | Rate ERC-8004 agents and read reputation. Importable here; the create-agent wizard offers `transfer-eth` and `ens-name`, and MCP exposes these two tools on its own |
+| `ContractCallAction()` | `fetch_contract_abi`, `call_contract` | Discover a verified contract's functions and call them, with confirmation before state-changing calls |
+| `RateFeedbackAction()` | `give_feedback`, `get_reputation` | Rate ERC-8004 agents and read reputation. Importable here; the create-agent wizard offers `transfer-eth`, `ens-name`, and `contract-call`, and MCP exposes these two tools on its own |
 
 ## Using tools directly (Level 2)
 

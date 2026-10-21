@@ -11,6 +11,7 @@ import type { Action } from "../actions/types.js"
 import {
   TransferEthAction,
   EnsNameAction,
+  ContractCallAction,
   sendEthTool,
   tokenBalanceTool,
   fetchContractAbiTool,
@@ -53,6 +54,13 @@ export const ACTION_REGISTRY: ActionEntry[] = [
     toolNames: ["resolve_ens", "lookup_ens", "register_ens", "set_primary_ens"],
     skillName: "ens-name",
     factory: EnsNameAction,
+  },
+  {
+    name: "contract-call",
+    description: "Discover a verified contract's functions and call them on the agent's chain",
+    toolNames: ["fetch_contract_abi", "call_contract"],
+    skillName: "contract-call",
+    factory: ContractCallAction,
   },
 ]
 

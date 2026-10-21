@@ -238,7 +238,7 @@ export const GUIDE_PAGES: GuidePage[] = [
         id: 'tools',
         kicker: 'Wizard',
         label: 'Actions and tools',
-        detail: 'transfer-eth bundles send_eth and get_token_balance. ens-name bundles resolve, lookup, register, and set-primary. You can also tick individual tools such as fetch_contract_abi and call_contract.',
+        detail: 'transfer-eth bundles send_eth and get_token_balance. ens-name bundles resolve, lookup, register, and set-primary. contract-call bundles fetch_contract_abi and call_contract. You can also tick individual tools instead.',
         step: 1,
         x: 36,
         y: 42,
@@ -488,7 +488,7 @@ export const GUIDE_PAGES: GuidePage[] = [
         id: 'action',
         kicker: 'Action',
         label: 'transfer-eth',
-        detail: 'Level 1. Factory returns a skill plus send_eth and get_token_balance. ens-name is the other action: resolve_ens, lookup_ens, register_ens, set_primary_ens.',
+        detail: 'Level 1. Factory returns a skill plus send_eth and get_token_balance. The other actions are ens-name (resolve_ens, lookup_ens, register_ens, set_primary_ens) and contract-call (fetch_contract_abi, call_contract).',
         step: 0,
         x: 18,
         y: 22,
@@ -551,7 +551,7 @@ export const GUIDE_PAGES: GuidePage[] = [
     steps: [
       {
         title: 'An action is the bundle',
-        body: 'transfer-eth and ens-name are the two actions in the wizard. Rate-and-read exists in code (give_feedback, get_reputation) but the wizard does not offer it. Those two show up on the MCP server instead.',
+        body: 'transfer-eth, ens-name, and contract-call are the actions in the wizard. Rate-and-read exists in code (give_feedback, get_reputation) but the wizard does not offer it. Those two show up on the MCP server instead.',
         on: ['action', 'e-skill', 'e-send', 'e-bal', 'skill', 'send', 'bal'],
       },
       {

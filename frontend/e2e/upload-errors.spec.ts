@@ -18,7 +18,8 @@ async function stageImageAndSubmit(page: import('@playwright/test').Page, name: 
       mimeType: 'image/png',
       buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
     })
-  await expect(page.getByTestId('create-image-ready')).toContainText('uploads when you create')
+  await expect(page.getByTestId('create-image-preview')).toBeVisible()
+  await expect(page.getByTestId('create-image-ready')).toBeAttached()
   await page.getByTestId('create-name-continue').click()
   await expect(page.getByTestId('create-action-transfer-eth')).toBeVisible()
   const dialog = page.getByTestId('create-dialog')

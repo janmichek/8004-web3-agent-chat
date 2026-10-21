@@ -95,6 +95,20 @@ body::after {
   opacity: 0.05;
   animation: drift-b 32s ease-in-out infinite alternate;
 }
+
+/* Light mode: softer accent washes / orbs so the page reads airier. */
+:root[data-theme='light'] body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, color-mix(in oklab, var(--accent) 4%, transparent), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, color-mix(in oklab, #0b5cab 3%, transparent), transparent 50%),
+    var(--bg);
+}
+:root[data-theme='light'] body::before {
+  opacity: 0.03;
+}
+:root[data-theme='light'] body::after {
+  opacity: 0.02;
+}
 @keyframes drift-a {
   to { transform: translate(14rem, 8rem) scale(1.15); }
 }

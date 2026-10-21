@@ -135,9 +135,10 @@ test.describe('create agent wizard', () => {
 
     // defaults to the server's network; switcher picks the create chain
     const network = page.getByTestId('create-network')
-    await expect(network).toHaveValue('421614')
-    await network.selectOption('11155111')
-    await expect(network).toHaveValue('11155111')
+    await expect(network).toHaveAttribute('data-value', '421614')
+    await network.click()
+    await page.getByTestId('create-network-option-11155111').click()
+    await expect(network).toHaveAttribute('data-value', '11155111')
 
     await page.getByTestId('create-name-input').fill('my-agent')
     await page.getByTestId('create-name-continue').click()
@@ -389,8 +390,12 @@ test.describe('create agent — step 1 image & description', () => {
       })
 
     // Picking an image only stages it locally — the upload happens at creation time.
-    await expect(page.getByTestId('create-image-ready')).toContainText('uploads when you create')
-    await expect(page.getByTestId('create-image-preview')).toContainText('avatar.png')
+    await expect(page.getByTestId('create-image-preview')).toBeVisible()
+    await expect(page.getByTestId('create-image-ready')).toBeAttached()
+    await expect(page.getByTestId('create-image-preview').locator('img')).toHaveAttribute(
+      'alt',
+      'avatar.png',
+    )
 
     // Continue is not gated on the staged image
     const next = page.getByTestId('create-name-continue')
@@ -434,9 +439,13 @@ test.describe('create agent — step 1 image & description', () => {
       dropzone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
     })
 
-    await expect(page.getByTestId('create-image-ready')).toContainText('uploads when you create')
+    await expect(page.getByTestId('create-image-preview')).toBeVisible()
+    await expect(page.getByTestId('create-image-ready')).toBeAttached()
     expect(seen.value).toBe(false)
-    await expect(page.getByTestId('create-image-preview')).toContainText('dropped.png')
+    await expect(page.getByTestId('create-image-preview').locator('img')).toHaveAttribute(
+      'alt',
+      'dropped.png',
+    )
   })
 
   test('rejects unsupported file types without uploading', async ({ page }) => {

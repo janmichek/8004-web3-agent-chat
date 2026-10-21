@@ -31,6 +31,8 @@ const authPending = computed(
     !initError.value &&
     !showAccount.value &&
     (!isInitialized.value ||
+      isConnected.value ||
+      !!address.value ||
       accountStatus.value === 'reconnecting' ||
       accountStatus.value === 'connecting'),
 )
@@ -153,7 +155,7 @@ async function onChainPicked(event: Event) {
 </script>
 
 <template>
-  <header class="bar">
+  <header class="bar" :class="{ 'menu-open': menuOpen }">
     <div class="brand">
       <div class="brand-mark">
         <slot name="menu" />
@@ -329,6 +331,11 @@ async function onChainPicked(event: Event) {
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+/* Elevate the sticky bar stacking context so .account-panel clears app drawers/dialogs. */
+.bar.menu-open {
+  z-index: 100;
 }
 
 .brand {

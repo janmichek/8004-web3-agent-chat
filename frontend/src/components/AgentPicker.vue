@@ -7,6 +7,7 @@ import { errorLine, friendlyFundError } from '../rpc-errors'
 import { ensureChain, prepareNativeTransfer } from '../chain'
 import { addressExplorerUrl, networkInfo } from '../networks'
 import AgentSelect from './AgentSelect.vue'
+import CollapsibleSection from './CollapsibleSection.vue'
 import {
   fetchAgents,
   fetchReputation,
@@ -170,8 +171,6 @@ watch(
 const agents = ref<AgentSummary[]>([])
 const selected = ref('')
 const loadError = ref('')
-const open = ref(false)
-const fundOpen = ref(false)
 const fundAmount = ref('0.001')
 const fundStatusText = ref('')
 const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
@@ -308,20 +307,7 @@ onMounted(() => {
       @create="emit('create')"
     />
 
-    <div class="sub-section">
-      <button
-        type="button"
-        class="title-toggle"
-        @click="open = !open"
-        :aria-expanded="open ? 'true' : 'false'"
-        title="Toggle Agent Info section"
-      >
-        <span class="chev" :class="{ closed: !open }" aria-hidden="true">▾</span>
-        <span class="sub-title">Agent Info</span>
-      </button>
-
-      <div v-show="open" class="collapsible-body">
-
+    <CollapsibleSection title="Agent Info">
     <p v-if="loadError" class="banner" data-testid="picker-error">{{ loadError }}</p>
     <p v-else-if="!agents.length" class="hint">
       No agents yet — create one to get started (same flow as <code>npm run create-agent</code>).
@@ -433,24 +419,11 @@ onMounted(() => {
       </button>
       <p v-if="deleteStatusText" class="status" data-testid="delete-status">{{ deleteStatusText }}</p>
     </div>
-      </div>
-    </div>
+    </CollapsibleSection>
   </section>
 
   <section class="card" data-testid="fund-agent-section">
-    <div class="sub-section">
-      <button
-        type="button"
-        class="title-toggle"
-        @click="fundOpen = !fundOpen"
-        :aria-expanded="fundOpen ? 'true' : 'false'"
-        title="Toggle Fund Agent section"
-      >
-        <span class="chev" :class="{ closed: !fundOpen }" aria-hidden="true">▾</span>
-        <span class="sub-title">Fund Agent</span>
-      </button>
-
-      <div v-show="fundOpen" class="collapsible-body">
+    <CollapsibleSection title="Fund Agent">
         <p v-if="!agent" class="hint">Select an agent to fund it.</p>
         <template v-else>
           <div v-if="connectedAddress" class="from-wallet">
@@ -480,8 +453,7 @@ onMounted(() => {
             <p v-if="fundStatusText" class="status" data-testid="fund-status" :class="fundStatusKind">{{ fundStatusText }}</p>
           </template>
         </template>
-      </div>
-    </div>
+    </CollapsibleSection>
   </section>
 </template>
 
@@ -584,23 +556,6 @@ onMounted(() => {
   background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
 }
 
-.chev {
-  display: inline-block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  transition: transform 0.25s var(--ease-spring);
-}
-.chev.closed {
-  transform: rotate(-90deg);
-}
-
-.collapsible-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  animation: row-in 0.3s var(--ease-out) both;
-}
-
 .details dd a {
   transition: color 0.15s ease, letter-spacing 0.2s ease;
 }
@@ -659,19 +614,4 @@ a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border
 .status.ok { color: var(--ok-ink); }
 .status.error { color: var(--danger-ink); }
 
-.title-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.title-toggle h2 { margin: 0; font-size: 0.95rem; font-weight: 600; }
-.sub-section { display: flex; flex-direction: column; gap: 0.6rem; }
-.sub-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 </style>

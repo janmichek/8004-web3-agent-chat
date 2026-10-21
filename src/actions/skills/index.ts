@@ -3,3 +3,4 @@
 export { transferEthSkill } from "./transfer-eth.skill.js"
 export { tokenBalanceSkill } from "./token-balance.skill.js"
 export { ensNameSkill } from "./ens-name.skill.js"
+export { contractCallSkill } from "./contract-call.skill.js"
