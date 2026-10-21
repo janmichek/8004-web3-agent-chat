@@ -193,7 +193,7 @@ async function prepareFeedbackOnActiveNetwork(options: PrepareFeedbackOptions): 
   let feedbackHash = `0x${"00".repeat(32)}`;
   if (comment && sdk.ipfsClient) {
     const file: Record<string, unknown> = {
-      agentRegistry: `eip155:${config.chainId}:${await sdk.identityRegistryAddress()}`,
+      agentRegistry: `eip155:${config.chainId}:${sdk.identityRegistryAddress()}`,
       agentId: tokenId.toString(),
       clientAddress: `eip155:${config.chainId}:${clientAddress}`,
       createdAt: new Date().toISOString(),

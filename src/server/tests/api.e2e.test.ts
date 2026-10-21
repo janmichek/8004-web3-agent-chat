@@ -41,6 +41,7 @@ describe("API offline e2e", () => {
 
   beforeAll(async () => {
     process.env.RPC_URL = process.env.RPC_URL || "http://localhost:8545";
+    process.env.X402_FACILITATOR_URL = "";
     const mod = await import("../api.js");
     app = mod.app;
   });
@@ -123,14 +124,14 @@ describe("API offline e2e", () => {
     }
   });
 
-  it("POST /api/agents/:name/feedback validates input without spending gas", async () => {
+  it("POST /api/agents/:name/feedback/prepare validates input without spending gas", async () => {
     const list = (await (await app.request("/api/agents")).json()) as {
       agents: { name: string }[];
     };
     // If no agents on disk, unknown-agent path must 404 (still no gas spent).
     const target = list.agents[0]?.name ?? "ghost-agent";
-    const expected = list.agents.length > 0 ? 400 : 404;
-    const missing = await app.request(`/api/agents/${target}/feedback`, {
+    const expected = list.agents.length > 0 ? 401 : 404;
+    const missing = await app.request(`/api/agents/${target}/feedback/prepare`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -138,10 +139,14 @@ describe("API offline e2e", () => {
     expect(missing.status).toBe(expected);
 
     if (list.agents.length > 0) {
-      const badValue = await app.request(`/api/agents/${target}/feedback`, {
+      const badValue = await app.request(`/api/agents/${target}/feedback/prepare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: "421614:204", value: "high" }),
+        body: JSON.stringify({
+          agentId: "421614:204",
+          clientAddress: "0x0000000000000000000000000000000000000001",
+          value: "high",
+        }),
       });
       expect(badValue.status).toBe(400);
     }
@@ -417,6 +422,8 @@ describe("API offline e2e", () => {
     expect(body.tools.filter((t) => t.readOnly).map((t) => t.name)).toEqual([
       "get_token_balance",
       "fetch_contract_abi",
+      "resolve_ens",
+      "lookup_ens",
     ]);
   });
 
