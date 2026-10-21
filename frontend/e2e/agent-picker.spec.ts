@@ -1,16 +1,33 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentInfo, openAgentPanel, openFundAgent, setupOffline } from './helpers'
+import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentInfo, openAgentPanel, openFundAgent, selectAgent, setupOffline } from './helpers'
 
 test.describe('agent picker', () => {
   test('lists agents and auto-selects the first', async ({ page }) => {
     await setupOffline(page, { agents: [DEMO_AGENT, SECOND_AGENT] })
     await gotoWithAgent(page)
     const select = page.getByTestId('agent-select')
-    await expect(select).toHaveValue('demo')
-    await expect(select.locator('option')).toHaveCount(2)
-    await expect(select.locator('option').nth(0)).toHaveText('demo')
-    await expect(select.locator('option').nth(1)).toHaveText('bravo')
+    await expect(select).toHaveAttribute('data-value', 'demo')
+    await openAgentPanel(page)
+    await select.click()
+    const options = page.getByTestId('agent-menu').getByRole('option')
+    await expect(options).toHaveCount(2)
+    await expect(page.getByTestId('agent-option-demo')).toContainText('demo')
+    await expect(page.getByTestId('agent-option-bravo')).toContainText('bravo')
+    await expect(page.getByTestId('agent-create-option')).toContainText('Create agent')
+  })
+
+  test('search filters agents by name and capability', async ({ page }) => {
+    await setupOffline(page, { agents: [DEMO_AGENT, SECOND_AGENT] })
+    await gotoWithAgent(page)
+    await openAgentPanel(page)
+    await page.getByTestId('agent-select').click()
+    await page.getByTestId('agent-search').fill('send_eth')
+    await expect(page.getByTestId('agent-option-demo')).toBeVisible()
+    await expect(page.getByTestId('agent-option-bravo')).toHaveCount(0)
+    await page.getByTestId('agent-search').fill('nothing-matches')
+    await expect(page.getByText(/No agents match/)).toBeVisible()
+    await expect(page.getByTestId('agent-create-option')).toBeVisible()
   })
 
   test('shows an error banner when the agents API is down', async ({ page }) => {
@@ -27,7 +44,7 @@ test.describe('agent picker', () => {
     await page.goto('/')
     await openAgentPanel(page)
     await expect(page.getByTestId('agent-select')).toBeVisible()
-    await expect(page.getByTestId('agent-select')).toBeDisabled()
+    await expect(page.getByTestId('agent-select')).toContainText('Create your first agent')
     await openAgentInfo(page)
     await expect(page.getByText('No agents yet')).toBeVisible()
   })
@@ -46,10 +63,9 @@ test.describe('agent picker', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   })
 
-  test('refresh button reloads the agent list', async ({ page }) => {
+  test('reloads the agent list automatically when the select opens', async ({ page }) => {
     let calls = 0
     await setupOffline(page, { agents: [DEMO_AGENT] })
-    // count list fetches on top of the default mock
     await page.route('**/api/health', async (route: Route) => {
       await route.fulfill({
         status: 200,
@@ -57,15 +73,23 @@ test.describe('agent picker', () => {
         body: JSON.stringify({ ok: true, network: 'arbitrum-sepolia', chainId: 421614, master: {} }),
       })
     })
+    await page.route('**/api/agents**', async (route: Route) => {
+      calls += 1
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ agents: [DEMO_AGENT] }),
+      })
+    })
     await gotoWithAgent(page)
     await openAgentPanel(page)
-    await page.getByTestId('picker-refresh').click()
+    await page.getByTestId('agent-select').click()
+    await expect.poll(() => calls).toBeGreaterThanOrEqual(2)
     // refresh keeps the selection and shows no error
-    await expect(page.getByTestId('agent-select')).toHaveValue('demo')
+    await expect(page.getByTestId('agent-select')).toHaveAttribute('data-value', 'demo')
+    await page.keyboard.press('Escape')
     await openAgentInfo(page)
     await expect(page.getByTestId('picker-error')).toHaveCount(0)
-    calls += 1
-    expect(calls).toBeGreaterThanOrEqual(1)
   })
 
   test('rating line shows mappings for 0 / 1 / N ratings', async ({ page }) => {
@@ -269,7 +293,7 @@ test.describe('delete agent', () => {
     await page.getByTestId('picker-delete').click()
     await page.getByTestId('picker-delete').click()
     await expect(page.getByTestId('delete-status')).toContainText('delete failed')
-    await expect(page.getByTestId('agent-select')).toHaveValue('demo')
+    await expect(page.getByTestId('agent-select')).toHaveAttribute('data-value', 'demo')
   })
 
   test('switching selection resets a stale delete confirmation', async ({ page }) => {
@@ -278,7 +302,7 @@ test.describe('delete agent', () => {
     await openAgentInfo(page)
     await page.getByTestId('picker-delete').click()
     await expect(page.getByTestId('delete-status')).toContainText('Click Delete again')
-    await page.getByTestId('agent-select').selectOption('bravo')
+    await selectAgent(page, 'bravo')
     await expect(page.getByTestId('picker-delete')).toContainText('Delete')
     await expect(page.getByTestId('delete-status')).toHaveCount(0)
   })

@@ -1,4 +1,4 @@
-import type { Page, Route } from '@playwright/test'
+import { expect, type Page, type Route } from '@playwright/test'
 import { decodeFunctionData, encodeFunctionResult } from 'viem'
 
 export const DEMO_AGENT = {
@@ -465,14 +465,28 @@ export async function gotoWithAgent(page: Page, name = 'demo') {
   // agents list loaded (may be empty string when no agents)
   await page.waitForFunction(
     (expected) => {
-      const el = document.querySelector('[data-testid="agent-select"]') as HTMLSelectElement | null
+      const el = document.querySelector('[data-testid="agent-select"]') as HTMLElement | null
       if (!el) return false
       if (expected === '') return true
-      return el.value !== '' || el.options.length > 1
+      return (el.getAttribute('data-value') ?? '') !== ''
     },
     name,
     { timeout: 15000 },
   )
+  // The picker emits the selection to App on the next tick; wait for the chat
+  // column to leave its no-agent state so later fills aren't wiped by the swap.
+  if (name) await expect(page.getByTestId('chat-empty-no-agent')).toHaveCount(0)
+}
+
+/** Open the advanced agent select and pick an agent by name. */
+export async function selectAgent(page: Page, name: string) {
+  await openAgentPanel(page)
+  const trigger = page.getByTestId('agent-select')
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click()
+  await page.getByTestId('agent-search').fill(name)
+  await page.getByTestId(`agent-option-${name}`).click()
+  await expect(trigger).toHaveAttribute('data-value', name)
+  await expect(page.getByTestId('chat-empty-no-agent')).toHaveCount(0)
 }
 
 /** Expand the collapsed "Agent Info" section in the picker. */
@@ -507,10 +521,12 @@ export async function openConversations(page: Page) {
   await page.getByTestId('agent-memory').waitFor({ state: 'visible' })
 }
 
-/** Open the Create-agent dialog. */
+/** Open the Create-agent dialog from the last option in the agent select. */
 export async function openCreateDialog(page: Page) {
   await openAgentPanel(page)
-  await page.getByTestId('picker-create').click()
+  const trigger = page.getByTestId('agent-select')
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click()
+  await page.getByTestId('agent-create-option').click()
   await page.getByTestId('create-dialog').waitFor({ state: 'visible' })
 }
 

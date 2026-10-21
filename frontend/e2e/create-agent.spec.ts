@@ -118,7 +118,7 @@ test.describe('create agent wizard', () => {
     await page.getByRole('button', { name: 'Open chat' }).click()
     await expect(page.getByTestId('create-dialog')).toHaveCount(0)
     // wizard selected the new agent in the picker
-    await expect(page.getByTestId('agent-select')).toHaveValue('fresh-agent', { timeout: 15000 })
+    await expect(page.getByTestId('agent-select')).toHaveAttribute('data-value', 'fresh-agent', { timeout: 15000 })
   })
 
   test('creates the agent on the picked network and links its explorer', async ({ page }) => {
@@ -223,7 +223,9 @@ test.describe('create agent wizard', () => {
     await expect(page.getByText('Agent created')).toBeVisible({ timeout: 15000 })
     await page.getByTestId('create-fund-amount').fill('0.001')
     await page.getByTestId('create-fund-master').click()
+    await expect(page.getByTestId('create-fund-status')).toContainText('Confirmed')
     await expect(page.getByTestId('create-fund-status')).toContainText('0xeeeeee')
+    await expect(page.getByTestId('create-fund-tx-link')).toHaveAttribute('href', /\/tx\/0xeeeeee/)
     expect(funded).toHaveLength(1)
   })
 

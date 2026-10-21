@@ -37,7 +37,7 @@ test.describe('chat reputation after successful tx', () => {
     await page.goto('/')
     await openAgentPanel(page)
     await expect(page.getByTestId('agent-select')).toBeVisible()
-    await expect(page.getByTestId('agent-select')).not.toHaveValue('')
+    await expect(page.getByTestId('agent-select')).not.toHaveAttribute('data-value', '')
     await closeAgentPanel(page)
 
     await page.getByTestId('chat-input').fill('Send 0.0001 ETH to 0x1111…')

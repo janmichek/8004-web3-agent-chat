@@ -131,9 +131,8 @@ test.describe('agent stats', () => {
     await page.getByTestId('chat-input').fill('make history')
     await page.getByTestId('chat-send').click()
     await expect(page.getByTestId('chat-bubble-agent').first()).toBeVisible()
-    // picker refresh re-triggers stats load via refreshKey
+    // chat completion bumps refreshKey, which reloads stats automatically
     await openAgentPanel(page)
-    await page.getByTestId('picker-refresh').click()
     await expect(page.getByTestId('agent-stats')).toContainText('Messages', { timeout: 15000 })
     expect(calls).toBeGreaterThan(0)
   })

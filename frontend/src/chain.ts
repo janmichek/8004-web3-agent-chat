@@ -72,10 +72,13 @@ export async function prepareNativeTransfer(params: {
     }),
     client.estimateFeesPerGas(),
   ])
+  // ~20% headroom — Sepolia fresh-account funding sits near the estimate
+  // (~204k/207k); Web3Auth's 21_000 default OOGs every time without this.
+  const gasWithBuffer = gas + gas / 5n
   return {
     to: params.to,
     value: params.value,
-    gas,
+    gas: gasWithBuffer,
     maxFeePerGas: fees.maxFeePerGas,
     maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
     chainId: params.chainId,

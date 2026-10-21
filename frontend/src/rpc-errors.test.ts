@@ -19,10 +19,19 @@ describe('friendlyFundError', () => {
       ),
     ).toBe('Wallet did not authorize this account. Sign out, sign in again, then retry.')
     expect(friendlyFundError(new Error('insufficient funds for gas'))).toBe(
-      'Wallet has insufficient ETH.',
+      'Wallet has insufficient ETH (need amount + gas).',
     )
     expect(friendlyFundError(new Error('insufficient funds for gas'), 'master')).toContain(
       'Master wallet has insufficient ETH.',
+    )
+    expect(friendlyFundError(new Error('Funding transaction reverted on-chain.'))).toBe(
+      'Funding transaction failed on-chain. Check the explorer link and retry.',
+    )
+    expect(friendlyFundError(new Error('Transaction creation failed.'))).toBe(
+      'Funding transaction failed on-chain. Check the explorer link and retry.',
+    )
+    expect(friendlyFundError(new Error('Out of gas'))).toBe(
+      'Funding transaction ran out of gas. Retry — gas will be re-estimated.',
     )
   })
 

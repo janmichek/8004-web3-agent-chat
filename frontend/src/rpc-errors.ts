@@ -26,7 +26,13 @@ export function friendlyFundError(
   if (/insufficient funds|insufficient balance/i.test(line)) {
     return payer === 'master'
       ? `Master wallet has insufficient ETH. Fund it on ${networkName}, then retry.`
-      : 'Wallet has insufficient ETH.'
+      : 'Wallet has insufficient ETH (need amount + gas).'
+  }
+  if (/out of gas|intrinsic gas too low/i.test(line)) {
+    return 'Funding transaction ran out of gas. Retry — gas will be re-estimated.'
+  }
+  if (/reverted|execution reverted|cancelled|transaction creation failed/i.test(line)) {
+    return 'Funding transaction failed on-chain. Check the explorer link and retry.'
   }
   if (RATE_LIMIT_RE.test(line)) {
     return 'RPC rate limit hit. Wait a few seconds and retry.'

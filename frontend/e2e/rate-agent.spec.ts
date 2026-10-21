@@ -79,8 +79,8 @@ test.describe('rate agent (mocked feedback)', () => {
       await openAgentPanel(page)
       await page.getByTestId('agent-select').waitFor({ state: 'visible' })
       await page.waitForFunction(() => {
-        const el = document.querySelector('[data-testid="agent-select"]') as HTMLSelectElement | null
-        return !!el && el.value !== ''
+        const el = document.querySelector('[data-testid="agent-select"]') as HTMLElement | null
+        return !!el && (el.getAttribute('data-value') ?? '') !== ''
       })
       await sendChat(page, `use ${tool}`)
       await expect(page.getByTestId('rate-agent')).toBeVisible({ timeout: 15000 })

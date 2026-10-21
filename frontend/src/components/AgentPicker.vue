@@ -4,6 +4,7 @@ import { useBalance } from '@wagmi/vue'
 import { formatEther, isAddress, type Address } from 'viem'
 import { errorLine, friendlyFundError } from '../rpc-errors'
 import { addressExplorerUrl, networkInfo } from '../networks'
+import AgentSelect from './AgentSelect.vue'
 import { fetchAgents, fetchHealth, fetchReputation, fundAgent, deleteAgent, deleteAgentBackup, type AgentSummary } from '../api'
 
 const props = defineProps<{
@@ -107,6 +108,7 @@ const deleteConfirm = ref(false)
 const masterAddress = ref('')
 const ratingText = ref('')
 const ratingLoading = ref(false)
+const listLoading = ref(false)
 
 watch(
   () => props.agent?.agentId,
@@ -140,6 +142,7 @@ const emit = defineEmits<{
 
 async function loadAgents() {
   loadError.value = ''
+  listLoading.value = true
   try {
     const data = await fetchAgents()
     agents.value = data.agents
@@ -155,6 +158,8 @@ async function loadAgents() {
       err instanceof Error
         ? err.message
         : 'API unavailable — run npm run serve'
+  } finally {
+    listLoading.value = false
   }
 }
 
@@ -177,9 +182,7 @@ watch(
 async function refreshAll() {
   if (hasTarget.value) void eth.refetch()
   await loadAgents()
-}
-
-async function removeAgent() {
+}async function removeAgent() {
   const name = props.agent?.name
   if (!name || deleteBusy.value) return
   if (!deleteConfirm.value) {
@@ -226,22 +229,16 @@ onMounted(() => {
   <section class="card">
     <header class="card-head">
       <h2>Agent</h2>
-      <div class="head-actions">
-        <button type="button" class="btn ghost small icon-only" title="Refresh" aria-label="Refresh" data-testid="picker-refresh" @click="refreshAll">↻</button>
-        <button type="button" class="btn primary small" data-testid="picker-create" @click="emit('create')">
-          Create agent
-        </button>
-      </div>
+      <span v-if="agents.length" class="agent-count">{{ agents.length }}</span>
     </header>
 
-    <div class="pick">
-      <select id="agent-select" v-model="selected" data-testid="agent-select" :disabled="!agents.length" aria-label="Select agent">
-        <option v-if="!agents.length" value="">No agents</option>
-        <option v-for="a in agents" :key="a.name" :value="a.name">
-          {{ a.name }}
-        </option>
-      </select>
-    </div>
+    <AgentSelect
+      v-model="selected"
+      :agents="agents"
+      :loading="listLoading"
+      @open="refreshAll"
+      @create="emit('create')"
+    />
 
     <div class="sub-section">
       <button
@@ -443,31 +440,19 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.pick {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.pick select {
-  font: inherit;
-  font-size: 0.9rem;
-  padding: 0.45rem 0.55rem;
-  border-radius: 0.35rem;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--ink);
-}
-
-.pick select:disabled {
-  opacity: 0.6;
-}
-
-.pick .status {
-  margin: 0;
-  font-size: 0.78rem;
+.agent-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
   color: var(--muted);
-  word-break: break-all;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
 
 .banner {
@@ -542,10 +527,6 @@ onMounted(() => {
   animation: row-in 0.3s var(--ease-out) both;
 }
 
-.pick select {
-  cursor: pointer;
-}
-
 .details dd a {
   transition: color 0.15s ease, letter-spacing 0.2s ease;
 }
@@ -603,13 +584,6 @@ a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border
 .status.info { color: var(--muted); }
 .status.ok { color: var(--ok-ink); }
 .status.error { color: var(--danger-ink); }
-
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex-shrink: 0;
-}
 
 .title-toggle {
   display: inline-flex;

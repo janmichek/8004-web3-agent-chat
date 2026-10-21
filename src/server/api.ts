@@ -253,7 +253,7 @@ async function ensureAgentLoaded(name: string): Promise<boolean> {
   return listExistingAgentsSync().includes(name);
 }
 
-async function publicAgentSummary(name: string) {
+async function publicAgentSummary(name: string, withUsage = false) {
   const config = loadAgentConfig(name);
   let walletAddress: string | undefined = config?.walletAddress;
   // Try env private key first
@@ -276,9 +276,14 @@ async function publicAgentSummary(name: string) {
     }
   }
 
+  const usage = withUsage
+    ? await readAgentMemoryAsync(name).catch(() => null)
+    : null;
+
   return {
     name,
     description: config?.description ?? `Agent ${name}`,
+    image: config?.image ? toGatewayUrl(config.image) : undefined,
     walletAddress,
     walletChainId: config?.walletChainId ?? getNetworkConfig().chainId,
     agentId: config?.agentId,
@@ -292,6 +297,13 @@ async function publicAgentSummary(name: string) {
     ...(config?.x402support ? { x402Mode: x402Mode() } : {}),
     endpoints: config?.endpoints ?? [],
     services: (config?.endpoints ?? []).map((e) => ({ name: e.type, endpoint: e.value })),
+    ...(usage
+      ? {
+          lastActive: usage.lastActive,
+          messageCount: usage.stats.totalMessages,
+          sessionCount: usage.sessions.length,
+        }
+      : {}),
   };
 }
 
@@ -833,7 +845,7 @@ app.get("/api/catalog", async (c) => {
 
 app.get("/api/agents", async (c) => {
   const names = await listExistingAgents();
-  const agents = await Promise.all(names.map(publicAgentSummary));
+  const agents = await Promise.all(names.map((name) => publicAgentSummary(name, true)));
   return c.json({ agents });
 });
 

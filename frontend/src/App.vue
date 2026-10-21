@@ -437,8 +437,8 @@ onBeforeUnmount(() => {
 }
 
 .dialog {
-  width: min(36rem, 100%);
-  max-height: min(42rem, 90vh);
+  width: min(46rem, 100%);
+  max-height: min(46rem, 90vh);
   display: flex;
   flex-direction: column;
   overflow: hidden;

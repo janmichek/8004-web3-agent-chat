@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, closeAgentPanel, gotoWithAgent, openAgentInfo, openFundAgent, setupOffline } from './helpers'
+import { DEMO_AGENT, SECOND_AGENT, closeAgentPanel, gotoWithAgent, openAgentInfo, openFundAgent, selectAgent, setupOffline } from './helpers'
 
 test.describe('agent picker extras', () => {
   test('Agent Info shows ERC-8004 id, wallet, balance and tool chips', async ({ page }) => {
@@ -25,12 +25,13 @@ test.describe('agent picker extras', () => {
     await expect(info).toContainText('none')
   })
 
-  test('agent select is disabled when there are no agents', async ({ page }) => {
+  test('agent select offers create when there are no agents', async ({ page }) => {
     await setupOffline(page, { agents: [] })
     await page.goto('/')
-    await expect(page.getByTestId('agent-select')).toBeDisabled()
+    await expect(page.getByTestId('agent-select')).toBeVisible()
     await expect(page.getByTestId('picker-delete')).toHaveCount(0)
-    await expect(page.getByTestId('picker-create')).toBeEnabled()
+    await page.getByTestId('agent-select').click()
+    await expect(page.getByTestId('agent-create-option')).toBeVisible()
   })
 
   test('fund controls disappear with no agent selected', async ({ page }) => {
@@ -95,7 +96,7 @@ test.describe('agent picker extras', () => {
     await setupOffline(page, { agents: [DEMO_AGENT, SECOND_AGENT] })
     await gotoWithAgent(page, 'demo')
     await openAgentInfo(page)
-    await page.getByTestId('agent-select').selectOption('bravo')
+    await selectAgent(page, 'bravo')
     await expect(page.locator('.details')).toContainText('#77')
     await closeAgentPanel(page)
     await page.getByTestId('chat-input').fill('hello bravo')

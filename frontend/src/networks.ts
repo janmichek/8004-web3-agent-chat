@@ -12,6 +12,8 @@ export type NetworkInfo = {
   publicRpcUrl: string
   /** Native gas token (defaults to ETH when omitted). */
   nativeCurrency?: { name: string; symbol: string; decimals: number }
+  /** Testnet faucet for the native gas token, when one exists. */
+  faucetUrl?: string
 }
 
 const NETWORKS: NetworkInfo[] = [
@@ -23,6 +25,7 @@ const NETWORKS: NetworkInfo[] = [
     scanUrl: 'https://testnet.8004scan.io',
     scanSlug: 'arbitrum-sepolia',
     publicRpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
+    faucetUrl: 'https://www.alchemy.com/faucets/arbitrum-sepolia',
   },
   {
     chainId: 11155111,
@@ -32,6 +35,7 @@ const NETWORKS: NetworkInfo[] = [
     scanUrl: 'https://testnet.8004scan.io',
     scanSlug: 'sepolia',
     publicRpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    faucetUrl: 'https://www.alchemy.com/faucets/ethereum-sepolia',
   },
   {
     chainId: 42161,
@@ -61,6 +65,7 @@ const NETWORKS: NetworkInfo[] = [
     scanSlug: 'mantle-sepolia',
     publicRpcUrl: 'https://rpc.sepolia.mantle.xyz',
     nativeCurrency: { name: 'MNT', symbol: 'MNT', decimals: 18 },
+    faucetUrl: 'https://faucet.sepolia.mantle.xyz',
   },
 ]
 

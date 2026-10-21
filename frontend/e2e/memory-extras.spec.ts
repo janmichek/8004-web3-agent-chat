@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentPanel, openConversations, setupOffline } from './helpers'
+import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentPanel, openConversations, selectAgent, setupOffline } from './helpers'
 import type { SetupOfflineOptions } from './helpers'
 
 function multiSessionMemory(): SetupOfflineOptions['memory'] {
@@ -221,7 +221,7 @@ test.describe('agent memory extras', () => {
     await gotoWithAgent(page)
     await openConversations(page)
     await openAgentPanel(page)
-    await page.getByTestId('agent-select').selectOption('bravo')
+    await selectAgent(page, 'bravo')
     await expect(page.locator('[data-testid="agent-memory"]')).toContainText('no', { ignoreCase: true })
     expect(requests).toContain('bravo')
   })

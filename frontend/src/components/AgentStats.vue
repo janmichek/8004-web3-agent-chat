@@ -182,7 +182,10 @@ const topTools = computed(() => {
 .empty-title { margin: 0; font-size: 0.85rem; font-weight: 600; }
 .empty-meta { margin: 0; display: flex; gap: 0.8rem; font-size: 0.72rem; color: var(--muted); list-style: none; padding: 0; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-.stat { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.65rem; border: 1px solid var(--border); border-radius: 0.45rem; background: var(--bg); min-width: 0; }
+.stat { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.65rem; border: 1px solid var(--border); border-radius: 0.45rem; background: var(--bg); min-width: 0; animation: row-in 0.35s var(--ease-out) both; }
+.stat:nth-child(2) { animation-delay: 0.05s; }
+.stat:nth-child(3) { animation-delay: 0.1s; }
+.stat:nth-child(4) { animation-delay: 0.15s; }
 .stat .k { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .stat .v { font-size: 1rem; font-weight: 700; line-height: 1.1; color: var(--ink); }
 .stat .v.small { font-size: 0.85rem; }
@@ -204,5 +207,8 @@ const topTools = computed(() => {
 .sub-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .chev { font-size: 0.75rem; color: var(--muted); transition: transform 0.15s ease; }
 .chev.closed { transform: rotate(-90deg); }
-.collapsible-body { display: flex; flex-direction: column; gap: 0.75rem; }
+.collapsible-body { display: flex; flex-direction: column; gap: 0.75rem; animation: row-in 0.3s var(--ease-out) both; }
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(-0.4rem); }
+}
 </style>

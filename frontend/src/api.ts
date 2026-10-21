@@ -3,6 +3,8 @@ import { chainIdOfAgentId, networkInfo, txExplorerUrl } from './networks'
 export type AgentSummary = {
   name: string
   description: string
+  /** Public avatar URL (https gateway form when the config stores ipfs://). */
+  image?: string
   walletAddress?: string
   walletChainId: number
   agentId?: string
@@ -19,6 +21,12 @@ export type AgentSummary = {
   services?: CreateAgentService[]
   oasfDomains?: string[]
   oasfSkills?: string[]
+  /** Last conversation checkpoint (list endpoint only). */
+  lastActive?: string | null
+  /** Total human + agent + tool messages across sessions (list endpoint only). */
+  messageCount?: number
+  /** Number of detected conversation sessions (list endpoint only). */
+  sessionCount?: number
 }
 
 export type ReputationSummary = {

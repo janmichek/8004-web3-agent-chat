@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentPanel, sendChat, setupOffline } from './helpers'
+import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentPanel, selectAgent, sendChat, setupOffline } from './helpers'
 
 test.describe('chat composer + thread', () => {
   test('shows no-agent empty state when no agents exist', async ({ page }) => {
@@ -196,7 +196,7 @@ test.describe('chat composer + thread', () => {
     // wait for the reply so the in-flight request can't repopulate the thread after switching
     await expect(page.getByTestId('chat-bubble-agent')).toContainText('ok')
     await openAgentPanel(page)
-    await page.getByTestId('agent-select').selectOption('bravo')
+    await selectAgent(page, 'bravo')
     await expect(page.getByTestId('chat-empty')).toBeVisible()
     await expect(page.getByTestId('chat-bubble-user')).toHaveCount(0)
   })
