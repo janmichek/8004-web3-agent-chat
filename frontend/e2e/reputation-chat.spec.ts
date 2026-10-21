@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, gotoWithAgent, sendChat, setupOffline } from './helpers'
+import { DEMO_AGENT, closeAgentPanel, gotoWithAgent, openAgentPanel, sendChat, setupOffline } from './helpers'
 
 /**
- * Chat rate UI after a successful tool tx + real on-chain feedback via RATER_PRIVATE_KEY.
+ * Chat rate UI after a successful tool tx + real on-chain feedback from the connected wallet.
  *
  * Prerequisites: API on :8787 (with RATER_PRIVATE_KEY + RPC), Vite on :5173.
  * Chat is mocked so we don't depend on the LLM; feedback hits testnet for real.
@@ -35,15 +35,17 @@ test.describe('chat reputation after successful tx', () => {
     })
 
     await page.goto('/')
+    await openAgentPanel(page)
     await expect(page.getByTestId('agent-select')).toBeVisible()
     await expect(page.getByTestId('agent-select')).not.toHaveValue('')
+    await closeAgentPanel(page)
 
     await page.getByTestId('chat-input').fill('Send 0.0001 ETH to 0x1111…')
     await page.getByTestId('chat-send').click()
 
     await expect(page.getByTestId('rate-agent')).toBeVisible({ timeout: 20_000 })
 
-    // Not connected as owner → submit enabled (signed server-side by RATER_PRIVATE_KEY)
+    // Not connected as owner → submit enabled (signed by the connected wallet)
     await expect(page.getByTestId('rate-submit')).toBeEnabled()
     await expect(page.getByTestId('rate-disabled')).toHaveCount(0)
 

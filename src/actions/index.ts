@@ -13,7 +13,7 @@ export * from "./skills/index.js"
 import { sendEthTool } from "./tools/send-eth.tool.js"
 import { tokenBalanceTool } from "./tools/token-balance.tool.js"
 import { giveFeedbackTool, getReputationTool } from "./tools/feedback.tool.js"
-import { resolveEnsTool, lookupEnsTool, setPrimaryEnsTool } from "./tools/ens.tool.js"
+import { resolveEnsTool, lookupEnsTool, setPrimaryEnsTool, registerEnsTool } from "./tools/ens.tool.js"
 import { transferEthSkill } from "./skills/transfer-eth.skill.js"
 import { rateFeedbackSkill } from "./skills/rate-feedback.skill.js"
 import { ensNameSkill } from "./skills/ens-name.skill.js"
@@ -43,13 +43,12 @@ export const RateFeedbackAction = (): Action => ({
 })
 
 /**
- * @notice Action for ENS resolve / lookup / primary-name setup.
- * Bundles resolve_ens, lookup_ens, and set_primary_ens with the ens-name skill.
- * Does not purchase or register .eth names.
+ * @notice Action for ENS resolve / lookup / registration / primary-name setup.
+ * Bundles resolve_ens, lookup_ens, register_ens, and set_primary_ens with the ens-name skill.
  */
 export const EnsNameAction = (): Action => ({
   name: "ens-name",
-  description: "Resolve ENS names, look up primary names, and set the agent wallet primary ENS name",
-  tools: [resolveEnsTool, lookupEnsTool, setPrimaryEnsTool],
+  description: "Resolve ENS names, look up primary names, register .eth names, and set the agent wallet primary ENS name",
+  tools: [resolveEnsTool, lookupEnsTool, registerEnsTool, setPrimaryEnsTool],
   skill: ensNameSkill,
 })

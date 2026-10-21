@@ -2,7 +2,9 @@ import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
 import {
   EMPTY_MEMORY,
+  closeAgentPanel,
   gotoWithAgent,
+  openAgentPanel,
   openChatStats,
   openConversations,
   sessionMemory,
@@ -30,6 +32,7 @@ test.describe('agent memory (conversations)', () => {
     await expect(page.getByTestId('chat-bubble-agent').first()).toContainText('hi there')
     await expect(page.getByTestId('chat-event').first()).toContainText('get_token_balance')
     await expect(card).toHaveClass(/selected/)
+    await expect(page.getByTestId('agent-memory')).toBeHidden()
   })
 
   test('+ New chat clears the recalled thread', async ({ page }) => {
@@ -38,6 +41,8 @@ test.describe('agent memory (conversations)', () => {
     await openConversations(page)
     await page.locator('.session-card').first().click()
     await expect(page.getByTestId('chat-bubble-user')).toHaveCount(1)
+    await expect(page.getByTestId('agent-memory')).toBeHidden()
+    await openConversations(page)
     await page.getByRole('button', { name: '+ New chat' }).click()
     await expect(page.getByTestId('chat-bubble-user')).toHaveCount(0)
     await expect(page.getByTestId('chat-empty')).toBeVisible()
@@ -87,6 +92,7 @@ test.describe('agent stats', () => {
   test('Chat Stats section collapses and expands', async ({ page }) => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
+    await openAgentPanel(page)
     const toggle = page.getByRole('button', { name: /Chat Stats/ })
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
     await toggle.click()
@@ -112,6 +118,7 @@ test.describe('agent stats', () => {
     await gotoWithAgent(page)
     await openChatStats(page)
     await expect(page.getByTestId('agent-stats')).toContainText('No history yet')
+    await closeAgentPanel(page)
     // next memory fetch returns a session (simulates checkpoint written by chat)
     await page.route('**/api/agents/*/memory', async (route: Route) => {
       calls += 1
@@ -125,6 +132,7 @@ test.describe('agent stats', () => {
     await page.getByTestId('chat-send').click()
     await expect(page.getByTestId('chat-bubble-agent').first()).toBeVisible()
     // picker refresh re-triggers stats load via refreshKey
+    await openAgentPanel(page)
     await page.getByTestId('picker-refresh').click()
     await expect(page.getByTestId('agent-stats')).toContainText('Messages', { timeout: 15000 })
     expect(calls).toBeGreaterThan(0)

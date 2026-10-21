@@ -5,6 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AGENTS_DIR } from "./wallet.js";
+import { loadRemoteMemory, remoteMemoryEnabled } from "./memory-store.js";
 
 type RawMessage = {
   lc: number;
@@ -117,9 +118,20 @@ function collectMemoryPaths(agentName: string): string[] {
   return fallback ? [primary, fallback] : [primary];
 }
 
+type RawMemory = { storage?: Record<string, Record<string, Record<string, [string, string, string | null]>>>; writes?: unknown };
+
+/** Read memory from the remote store when configured, else from disk. */
+export async function readAgentMemoryAsync(agentName: string): Promise<MemorySummary> {
+  if (remoteMemoryEnabled()) {
+    const text = await loadRemoteMemory(agentName);
+    if (text) return summarizeMemory(agentName, JSON.parse(text), "remote");
+  }
+  return readAgentMemory(agentName);
+}
+
 export function readAgentMemory(agentName: string): MemorySummary {
   const paths = collectMemoryPaths(agentName);
-  let raw: { storage?: Record<string, Record<string, Record<string, [string, string, string | null]>>>; writes?: unknown } | null = null;
+  let raw: RawMemory | null = null;
   let loadedPath: string | null = null;
   for (const p of paths) {
     if (!fs.existsSync(p)) continue;
@@ -131,6 +143,10 @@ export function readAgentMemory(agentName: string): MemorySummary {
       continue;
     }
   }
+  return summarizeMemory(agentName, raw, loadedPath);
+}
+
+function summarizeMemory(agentName: string, raw: RawMemory | null, loadedPath: string | null): MemorySummary {
 
   if (!raw || !raw.storage || Object.keys(raw.storage).length === 0) {
     return {

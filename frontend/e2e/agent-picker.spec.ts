@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentInfo, setupOffline } from './helpers'
+import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentInfo, openAgentPanel, openFundAgent, setupOffline } from './helpers'
 
 test.describe('agent picker', () => {
   test('lists agents and auto-selects the first', async ({ page }) => {
@@ -16,6 +16,7 @@ test.describe('agent picker', () => {
   test('shows an error banner when the agents API is down', async ({ page }) => {
     await setupOffline(page, { agentsStatus: 500, agentsError: 'API unavailable — run npm run serve' })
     await page.goto('/')
+    await openAgentPanel(page)
     await expect(page.getByTestId('agent-select')).toBeVisible()
     await openAgentInfo(page)
     await expect(page.getByTestId('picker-error')).toContainText('API unavailable')
@@ -24,6 +25,7 @@ test.describe('agent picker', () => {
   test('shows empty state when no agents exist', async ({ page }) => {
     await setupOffline(page, { agents: [] })
     await page.goto('/')
+    await openAgentPanel(page)
     await expect(page.getByTestId('agent-select')).toBeVisible()
     await expect(page.getByTestId('agent-select')).toBeDisabled()
     await openAgentInfo(page)
@@ -33,11 +35,13 @@ test.describe('agent picker', () => {
   test('Agent Info section collapses and expands', async ({ page }) => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
+    await openAgentPanel(page)
     const toggle = page.getByRole('button', { name: /Agent Info/ })
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    await expect(page.getByTestId('fund-amount')).toBeVisible()
+    await expect(page.getByTestId('agent-rating')).toBeVisible()
+    await expect(page.getByTestId('fund-amount')).toBeHidden()
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   })
@@ -54,6 +58,7 @@ test.describe('agent picker', () => {
       })
     })
     await gotoWithAgent(page)
+    await openAgentPanel(page)
     await page.getByTestId('picker-refresh').click()
     // refresh keeps the selection and shows no error
     await expect(page.getByTestId('agent-select')).toHaveValue('demo')
@@ -102,10 +107,25 @@ test.describe('agent picker', () => {
 })
 
 test.describe('fund agent', () => {
+  test('Fund Agent section collapses and expands', async ({ page }) => {
+    await setupOffline(page, {})
+    await gotoWithAgent(page)
+    await openAgentPanel(page)
+    const toggle = page.getByRole('button', { name: /Fund Agent/ })
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('fund-amount')).toBeHidden()
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByTestId('fund-amount')).toBeVisible()
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('fund-amount')).toBeHidden()
+  })
+
   test('validates amount: only (0, 1] enables Send', async ({ page }) => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
-    await openAgentInfo(page)
+    await openFundAgent(page)
     const amount = page.getByTestId('fund-amount')
     const submit = page.getByTestId('fund-submit')
     await expect(submit).toBeEnabled() // default 0.001
@@ -135,7 +155,7 @@ test.describe('fund agent', () => {
       },
     })
     await gotoWithAgent(page)
-    await openAgentInfo(page)
+    await openFundAgent(page)
     await page.getByTestId('fund-amount').fill('0.001')
     await page.getByTestId('fund-submit').click()
     await expect(page.getByTestId('fund-status')).toContainText('Sent 0xeeeeee')
@@ -146,7 +166,7 @@ test.describe('fund agent', () => {
   test('fund error surfaces the backend message', async ({ page }) => {
     await setupOffline(page, { fundStatus: 500 })
     await gotoWithAgent(page)
-    await openAgentInfo(page)
+    await openFundAgent(page)
     await page.getByTestId('fund-amount').fill('0.001')
     await page.getByTestId('fund-submit').click()
     await expect(page.getByTestId('fund-status')).toContainText('insufficient ETH')
@@ -221,7 +241,7 @@ test.describe('fund agent', () => {
       })
     })
     await gotoWithAgent(page)
-    await openAgentInfo(page)
+    await openFundAgent(page)
     await page.getByTestId('fund-amount').fill('0.001')
     await page.getByTestId('fund-submit').click()
     await expect(page.getByTestId('fund-status')).toContainText('RPC rate limit hit')

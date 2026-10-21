@@ -38,30 +38,41 @@ test.describe('create agent wizard', () => {
     await expect(page.getByTestId('create-load-error')).toContainText('catalog boom')
   })
 
-  test('transfer-eth action is mutually exclusive with its tools', async ({ page }) => {
+  test('an action is mutually exclusive with the tools it bundles', async ({ page }) => {
     await setupOffline(page, {})
     await gotoWithAgent(page)
     await toConfigure(page)
 
-    const actionBox = page.getByTestId('create-action-transfer-eth')
-    const sendBox = page.getByTestId('create-tool-send_eth')
-    const balBox = page.getByTestId('create-tool-get_token_balance')
-    const actionLabel = page.locator('label', { has: actionBox })
+    const bundles = [
+      { action: 'transfer-eth', tools: ['send_eth', 'get_token_balance'] },
+      { action: 'ens-name', tools: ['resolve_ens', 'lookup_ens', 'register_ens', 'set_primary_ens'] },
+    ]
 
-    // pick both standalone tools -> action goes pale
-    await sendBox.check()
-    await balBox.check()
-    await expect(actionLabel).toHaveClass(/pale/)
+    for (const bundle of bundles) {
+      const actionBox = page.getByTestId(`create-action-${bundle.action}`)
+      const actionLabel = page.locator('label', { has: actionBox })
+      const toolBoxes = bundle.tools.map((name) => page.getByTestId(`create-tool-${name}`))
+      const unrelated = page.getByTestId('create-tool-fetch_contract_abi')
 
-    // picking the action deselects the standalone tools
-    await actionBox.check()
-    await expect(sendBox).not.toBeChecked()
-    await expect(balBox).not.toBeChecked()
+      await toolBoxes[0].check()
+      await expect(actionBox).toBeDisabled()
+      await expect(actionLabel).toHaveClass(/disabled/)
+      await expect(unrelated).toBeEnabled()
 
-    // picking a constituent tool deselects the action again
-    await sendBox.check()
-    await expect(actionBox).not.toBeChecked()
-    await expect(actionLabel).toHaveClass(/pale/)
+      await toolBoxes[0].uncheck()
+      await expect(actionBox).toBeEnabled()
+
+      await actionBox.check()
+      for (const box of toolBoxes) {
+        await expect(box).not.toBeChecked()
+        await expect(box).toBeDisabled()
+      }
+      await expect(unrelated).toBeEnabled()
+      await expect(unrelated).not.toBeChecked()
+
+      await actionBox.uncheck()
+      for (const box of toolBoxes) await expect(box).toBeEnabled()
+    }
   })
 
   test('completes the wizard and opens chat for the new agent', async ({ page }) => {

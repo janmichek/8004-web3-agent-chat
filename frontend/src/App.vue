@@ -16,6 +16,9 @@ const selectedAgent = ref<AgentSummary | null>(null)
 const refreshKey = ref(0)
 const showCreate = ref(false)
 const showConvos = ref(false)
+const showSide = ref(false)
+const narrowQuery = window.matchMedia('(max-width: 860px)')
+const narrow = ref(narrowQuery.matches)
 const pendingSelect = ref<string | null>(null)
 const recalledSession = ref<MemorySession | null>(null)
 const queryClient = useQueryClient()
@@ -63,11 +66,22 @@ function onMemoryChat() {
 
 function onRecall(session: MemorySession) {
   recalledSession.value = session
-  // keep the Conversations panel open so the selection stays visible
+  showConvos.value = false
+}
+
+function syncNarrow() {
+  narrow.value = narrowQuery.matches
+  if (!narrow.value) showSide.value = false
+}
+
+function toggleSide() {
+  showSide.value = !showSide.value
+  if (showSide.value) showConvos.value = false
 }
 
 function toggleConvos() {
   showConvos.value = !showConvos.value
+  if (showConvos.value) showSide.value = false
 }
 
 function onNewChat() {
@@ -83,52 +97,91 @@ function onCreated(agent: AgentSummary) {
 }
 
 function onDialogKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && showCreate.value) showCreate.value = false
+  if (e.key !== 'Escape') return
+  if (showCreate.value) {
+    showCreate.value = false
+    return
+  }
+  if (narrow.value && showSide.value) showSide.value = false
 }
 
-onMounted(() => window.addEventListener('keydown', onDialogKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
+onMounted(() => {
+  window.addEventListener('keydown', onDialogKeydown)
+  narrowQuery.addEventListener('change', syncNarrow)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onDialogKeydown)
+  narrowQuery.removeEventListener('change', syncNarrow)
+})
 </script>
 
 <template>
   <Web3AuthProvider :config="web3AuthContextConfig">
     <WagmiProvider>
       <div class="shell">
-        <WalletBar />
+        <WalletBar>
+          <template #menu>
+            <button
+              type="button"
+              class="side-toggle"
+              data-testid="agent-panel-toggle"
+              aria-label="Agent"
+              :aria-expanded="showSide ? 'true' : 'false'"
+              aria-controls="agent-panel"
+              @click="toggleSide"
+            >
+              <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
+            </button>
+          </template>
+        </WalletBar>
 
         <main class="layout">
-          <aside class="side">
-            <AgentPicker
-              :select-name="pendingSelect"
-              :agent="selectedAgent"
-              :scan-id="scanId"
-              :scan-url="scanUrl"
-              :refresh-key="refreshKey"
-              @select="onSelect"
-              @create="showCreate = true"
-              @funded="onFunded"
-              @deleted="onDeleted"
+          <div class="main-toolbar">
+            <button
+              type="button"
+              class="convo-btn"
+              :aria-expanded="showConvos ? 'true' : 'false'"
+              :aria-pressed="showConvos ? 'true' : 'false'"
+              @click="toggleConvos"
+            >
+              <span class="caret" :class="{ open: showConvos }" aria-hidden="true">▸</span>
+              Conversations
+            </button>
+          </div>
+
+          <div class="stage">
+            <button
+              v-if="narrow && showSide"
+              type="button"
+              class="side-backdrop"
+              aria-label="Close agent panel"
+              @click="showSide = false"
             />
 
-            <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
-          </aside>
+            <aside
+              id="agent-panel"
+              class="side"
+              :class="{ open: showSide }"
+              :aria-hidden="narrow && !showSide ? 'true' : undefined"
+              :inert="narrow && !showSide"
+            >
+              <AgentPicker
+                :select-name="pendingSelect"
+                :agent="selectedAgent"
+                :scan-id="scanId"
+                :scan-url="scanUrl"
+                :refresh-key="refreshKey"
+                @select="onSelect"
+                @create="showCreate = true"
+                @funded="onFunded"
+                @deleted="onDeleted"
+              />
 
-          <div class="main">
-            <div class="main-toolbar">
-              <button
-                type="button"
-                class="btn ghost convo-btn"
-                :aria-expanded="showConvos ? 'true' : 'false'"
-                :aria-pressed="showConvos ? 'true' : 'false'"
-                @click="toggleConvos"
-              >
-                <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
-                Conversations
-              </button>
-            </div>
+              <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
+            </aside>
 
             <div class="main-body">
-              <div v-show="showConvos" class="convos">
+              <div class="convos" :class="{ open: showConvos }" :inert="!showConvos">
                 <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" @new-chat="onNewChat" />
               </div>
 
@@ -174,6 +227,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(16rem, 21rem) 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   max-width: none;
   width: 100%;
   margin: 0;
@@ -181,13 +235,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   box-sizing: border-box;
 }
 
+/* Stage is a pass-through on desktop so the sidebar spans both rows. */
+.stage {
+  display: contents;
+}
+
 .side {
+  grid-column: 1;
+  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   min-height: 0;
   overflow-y: auto;
   padding: 1.25rem 1.25rem 2rem;
+  border-right: 1px solid var(--border);
 }
 
 /* strip card chrome inside aside -> plain sections */
@@ -199,27 +261,77 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   padding: 0;
 }
 
-.main {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-left: 1px solid var(--border);
-}
-
 .main-toolbar {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.65rem 1rem;
   border-bottom: none;
   flex-shrink: 0;
+  background: transparent;
+}
+
+.side-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.side-toggle:hover {
+  background: var(--surface-2);
+}
+.side-toggle[aria-expanded='true'] {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
 .convo-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.15rem 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.convo-btn {
+  padding: 0.3rem 0.6rem;
+  border-radius: 2rem;
+  transition: color 0.18s ease;
+}
+.convo-btn:hover {
+  background: none;
+  color: var(--ink);
+  text-decoration: none;
+}
+.caret {
+  display: inline-block;
+  font-size: 0.72rem;
+  line-height: 1;
+  text-decoration: none;
+  transition: transform 0.25s var(--ease-spring);
+}
+.convo-btn:hover .caret {
+  text-decoration: none;
+}
+.caret.open {
+  transform: rotate(90deg);
 }
 
 .burger {
@@ -228,22 +340,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   gap: 3px;
 }
 .burger i {
+  transition: transform 0.25s var(--ease-spring), opacity 0.2s ease;
   display: block;
   width: 14px;
   height: 2px;
   background: currentColor;
   border-radius: 2px;
 }
+.side-toggle[aria-expanded='true'] .burger i:nth-child(1) { transform: translateY(5px) rotate(45deg); }
+.side-toggle[aria-expanded='true'] .burger i:nth-child(2) { opacity: 0; }
+.side-toggle[aria-expanded='true'] .burger i:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
 .stats-icon {
   font-size: 0.9rem;
   line-height: 1;
 }
 .convo-btn[aria-pressed='true'] {
-  border-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .main-body {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -310,8 +428,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  background: rgb(4 8 12 / 0.65);
+  background: var(--backdrop);
   backdrop-filter: blur(4px);
+  animation: fade-bg 0.25s ease both;
+}
+@keyframes fade-bg {
+  from { opacity: 0; }
 }
 
 .dialog {
@@ -323,7 +445,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 0.5);
+  box-shadow: 0 24px 64px rgb(var(--shadow-rgb) / 0.5), 0 0 0 1px color-mix(in oklab, var(--accent) 10%, transparent);
+  animation: dialog-in 0.45s var(--ease-spring) both;
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(1.5rem) scale(0.94); }
 }
 
 /* wizard fills the dialog instead of acting as its own card */
@@ -334,29 +460,106 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onDialogKeydown))
   min-height: 0;
 }
 
+.side-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  border: 0;
+  padding: 0;
+  background: var(--backdrop);
+  cursor: pointer;
+}
+
+/* Closed conversations panel slides off the chat, then drops out of hit testing. */
+@media (min-width: 861px) {
+  .convos:not(.open) {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    background: var(--bg);
+    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.35);
+    transform: translateX(-105%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+  }
+}
+
 @media (max-width: 860px) {
   .layout {
+    position: relative;
     grid-template-columns: 1fr;
-    overflow-y: auto;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .main-toolbar {
+    grid-column: 1;
+    grid-row: 1;
+    position: relative;
+    z-index: 40;
+  }
+  .side-toggle {
+    display: inline-flex;
+  }
+  /* Static so the agent drawer positions against .layout and covers the toolbar. */
+  .stage {
+    display: block;
+    position: static;
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    overflow: visible;
+  }
+  .side-backdrop {
+    z-index: 41;
   }
   .side {
-    overflow: visible;
-    border-bottom: 1px solid var(--border);
+    position: absolute;
+    z-index: 42;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(22rem, calc(100% - 2.75rem));
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+    transform: translateX(-105%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.2s ease, visibility 0s linear 0.2s;
   }
-  .main {
-    border-left: none;
-    min-height: 30rem;
+  .side.open {
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+    box-shadow: 12px 0 32px rgb(var(--shadow-rgb) / 0.45);
+    transition: transform 0.2s ease, visibility 0s;
+  }
+  .main-body {
+    height: 100%;
+  }
+  .chat-col {
+    padding: 0.75rem 0.85rem 0.35rem;
   }
   .convos {
     position: absolute;
     z-index: 20;
+    top: 0;
+    left: 0;
     background: var(--bg);
     height: 100%;
     width: min(20rem, 85%);
-    box-shadow: 8px 0 24px rgb(0 0 0 / 0.4);
+    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.4);
+    transform: translateX(-105%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
   }
-  .main-body {
-    position: relative;
+  .convos.open {
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+    transition: transform 0.22s ease, visibility 0s;
   }
 }
 </style>

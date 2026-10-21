@@ -20,6 +20,9 @@ export function friendlyFundError(
   if (/user rejected|denied|rejected the request/i.test(line)) {
     return 'Wallet signature rejected.'
   }
+  if (/not been authorized|unauthorized|4100/i.test(line)) {
+    return 'Wallet did not authorize this account. Sign out, sign in again, then retry.'
+  }
   if (/insufficient funds|insufficient balance/i.test(line)) {
     return payer === 'master'
       ? `Master wallet has insufficient ETH. Fund it on ${networkName}, then retry.`

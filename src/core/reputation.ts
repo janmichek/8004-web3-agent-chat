@@ -4,6 +4,7 @@
  */
 
 import { SDK } from "@blockbyvlog/agent0-sdk";
+import { encodeFunctionData, keccak256, toBytes } from "viem";
 import {
   findNetworkByAgentId,
   getActiveNetwork,
@@ -122,6 +123,105 @@ async function giveFeedbackOnActiveNetwork(options: GiveFeedbackOptions): Promis
       (feedbackURI ? ` uri=${feedbackURI}` : ""),
   );
   return { txHash: String(txHash), agentId, value, ...(feedbackURI ? { feedbackURI } : {}) };
+}
+
+const GIVE_FEEDBACK_ABI = [
+  {
+    type: "function",
+    name: "giveFeedback",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "agentId", type: "uint256" },
+      { name: "value", type: "int128" },
+      { name: "valueDecimals", type: "uint8" },
+      { name: "tag1", type: "string" },
+      { name: "tag2", type: "string" },
+      { name: "endpoint", type: "string" },
+      { name: "feedbackURI", type: "string" },
+      { name: "feedbackHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+export interface PreparedFeedback {
+  to: string;
+  data: string;
+  chainId: number;
+  agentId: string;
+  value: number;
+  feedbackURI?: string;
+}
+
+export interface PrepareFeedbackOptions extends Omit<GiveFeedbackOptions, "privateKey"> {
+  /** The connected wallet that will sign and send the tx (becomes the feedback author). */
+  clientAddress: string;
+}
+
+/**
+ * Builds unsigned giveFeedback calldata so the user's own wallet signs it and
+ * the feedback is attributed to that address (no server key involved).
+ */
+export async function prepareFeedback(options: PrepareFeedbackOptions): Promise<PreparedFeedback> {
+  if (!options.agentId) throw new Error("agentId is required");
+  return onAgentNetwork(options.agentId, () => prepareFeedbackOnActiveNetwork(options));
+}
+
+async function prepareFeedbackOnActiveNetwork(options: PrepareFeedbackOptions): Promise<PreparedFeedback> {
+  const { agentId, tag, endpoint, comment, clientAddress } = options;
+  const value = normalizeRating(options.value);
+  const config = getNetworkConfig(getActiveNetwork());
+  const pinataJwt = process.env.PINATA_JWT?.trim();
+  const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
+  // Read-only SDK: only needed for the registry address and optional IPFS upload.
+  const sdk = new SDK({
+    chainId: config.chainId,
+    rpcUrl: getRpcUrl(),
+    ...(pinataJwt
+      ? { ipfs: "pinata" as const, pinataJwt }
+      : ipfsNodeUrl
+        ? { ipfs: "node" as const, ipfsNodeUrl }
+        : {}),
+  });
+  const tokenId = BigInt(agentId.includes(":") ? agentId.split(":").pop()! : agentId);
+  const hasIpfs = Boolean(sdk.ipfsClient);
+  const tag1 = "starred";
+  const tag2 =
+    (tag && tag !== "starred" ? tag : comment && !hasIpfs ? comment : undefined)?.slice(0, 32) || "";
+
+  let feedbackURI = "";
+  let feedbackHash = `0x${"00".repeat(32)}`;
+  if (comment && sdk.ipfsClient) {
+    const file: Record<string, unknown> = {
+      agentRegistry: `eip155:${config.chainId}:${await sdk.identityRegistryAddress()}`,
+      agentId: tokenId.toString(),
+      clientAddress: `eip155:${config.chainId}:${clientAddress}`,
+      createdAt: new Date().toISOString(),
+      value,
+      valueDecimals: 0,
+      tag1,
+      ...(tag2 ? { tag2 } : {}),
+      ...(endpoint ? { endpoint } : {}),
+      text: comment,
+    };
+    const cid = await sdk.ipfsClient.addJson(file, "feedback.json");
+    feedbackURI = `ipfs://${cid}`;
+    feedbackHash = keccak256(toBytes(JSON.stringify(file, Object.keys(file).sort())));
+  }
+
+  const data = encodeFunctionData({
+    abi: GIVE_FEEDBACK_ABI,
+    functionName: "giveFeedback",
+    args: [tokenId, BigInt(value), 0, tag1, tag2, endpoint ?? "", feedbackURI, feedbackHash as `0x${string}`],
+  });
+  return {
+    to: sdk.reputationRegistryAddress(),
+    data,
+    chainId: config.chainId,
+    agentId,
+    value,
+    ...(feedbackURI ? { feedbackURI } : {}),
+  };
 }
 
 export async function getReputationSummary(agentId: string, tag?: string): Promise<ReputationSummary> {

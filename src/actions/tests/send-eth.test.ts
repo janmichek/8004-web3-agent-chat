@@ -2,7 +2,9 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-vi.mock("viem", () => ({
+vi.mock("viem", async () => ({
+  // The actions barrel also loads tools that use viem helpers not mocked here.
+  ...(await vi.importActual<typeof import("viem")>("viem")),
   createPublicClient: vi.fn(() => ({
     getBalance: vi.fn(async () => BigInt("1000000000000000000")),
   })),

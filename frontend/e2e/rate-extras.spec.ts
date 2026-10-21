@@ -55,15 +55,7 @@ test.describe('rate agent extras', () => {
   test('rating updates the reputation summary shown after submit', async ({ page }) => {
     await setupOffline(page, {
       chat: chatWithTool('send_eth'),
-      feedback: {
-        ok: true,
-        txHash: '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-        agentId: '421614:42',
-        value: 60,
-        rater: '0x9999999999999999999999999999999999999999',
-        reputation: { count: 5, averageValue: 72 },
-        scanUrl: 'https://testnet.8004scan.io/agents/arbitrum-sepolia/42',
-      },
+      reputation: { agentId: '421614:42', count: 5, averageValue: 72 },
     })
     await gotoWithAgent(page)
     await sendChat(page, 'go')

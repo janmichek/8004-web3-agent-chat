@@ -4,6 +4,7 @@ import { useAccount, useBalance, useConfig, useSwitchChain } from '@wagmi/vue'
 import { useWeb3Auth, useWeb3AuthConnect, useWeb3AuthDisconnect } from '@web3auth/modal/vue'
 import { formatEther } from 'viem'
 import { ensureChain, getInjectedChainId } from '../chain'
+import { theme, toggleTheme } from '../theme'
 import { SUPPORTED_NETWORKS, findNetwork, isSupportedChain } from '../networks'
 
 const wagmiConfig = useConfig()
@@ -99,14 +100,26 @@ async function onChainPicked(event: Event) {
 <template>
   <header class="bar">
     <div class="brand">
-      <img class="mark" src="/favicon.svg" alt="Web3 Agent Chat logo" width="32" height="32" />
+      <div class="brand-mark">
+        <slot name="menu" />
+        <img class="mark" src="/favicon.svg" alt="Web3 Agent Chat logo" width="32" height="32" />
+      </div>
       <div>
         <p class="name">Web3 Agent Chat</p>
-        <p class="tag">Multichain · ERC-8004</p>
       </div>
     </div>
 
     <div class="actions">
+      <button
+        type="button"
+        class="btn ghost theme-btn"
+        data-testid="theme-toggle"
+        :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+        :title="theme === 'dark' ? 'Light mode' : 'Dark mode'"
+        @click="toggleTheme"
+      >
+        {{ theme === 'dark' ? '☀' : '☾' }}
+      </button>
       <template v-if="isConnected">
         <select
           class="chip"
@@ -177,10 +190,23 @@ async function onChainPicked(event: Event) {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex-shrink: 0;
+}
+
+.mark:hover {
+  transform: rotate(-8deg) scale(1.12);
 }
 
 .mark {
+  transition: transform 0.35s var(--ease-spring);
   width: 2rem;
   height: 2rem;
   border-radius: 0.4rem;
@@ -191,16 +217,16 @@ async function onChainPicked(event: Event) {
 
 .name {
   margin: 0;
+  color: var(--ink);
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 1.05rem;
   letter-spacing: -0.02em;
 }
 
-.tag {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.75rem;
+.theme-btn {
+  padding: 0.45rem 0.65rem;
+  line-height: 1;
 }
 
 .actions {
@@ -209,6 +235,33 @@ async function onChainPicked(event: Event) {
   gap: 0.6rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.addr:hover,
+.balance:hover {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
+  transform: translateY(-1px);
+}
+
+.addr,
+.balance {
+  transition: border-color 0.18s ease, transform 0.2s var(--ease-spring);
+}
+
+.addr::before {
+  content: '';
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: #3ddc97;
+  box-shadow: 0 0 0 0 #3ddc9788;
+  animation: online 2.2s ease-out infinite;
+}
+@keyframes online {
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 .addr {
@@ -260,9 +313,6 @@ async function onChainPicked(event: Event) {
 @media (max-width: 640px) {
   .bar {
     padding: 0.85rem 1rem;
-  }
-  .tag {
-    display: none;
   }
 }
 </style>

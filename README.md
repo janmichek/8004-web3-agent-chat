@@ -1,8 +1,8 @@
 # web3Agent
 
-Create AI agents with their own wallets on Arbitrum or Ethereum, register them on
-ERC-8004, and talk to them from a CLI or a web console. Each agent can be
-reached over chat, MCP and A2A.
+Create AI agents with their own wallets on Arbitrum, Ethereum, or Mantle,
+register them on ERC-8004, and talk to them from a CLI or a web console. Each
+agent can be reached over chat, MCP and A2A.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Node.js 22](https://img.shields.io/badge/Node.js-22-green.svg?style=flat-square&logo=node.js)](https://nodejs.org)
@@ -50,13 +50,26 @@ Details in [`src/actions/README.md`](./src/actions/README.md).
 | Kind | Name | Does |
 |---|---|---|
 | Action | `transfer-eth` | `send_eth` + `get_token_balance` with transfer guidance |
+| Action | `ens-name` | `resolve_ens`, `lookup_ens`, `register_ens`, `set_primary_ens` |
 | Tool | `send_eth` | Send ETH from the agent wallet |
 | Tool | `get_token_balance` | ETH / ERC-20 balance |
 | Tool | `fetch_contract_abi` | Fetch a verified contract's ABI (experimental) |
 | Tool | `call_contract` | Call any verified contract function (experimental) |
+| Tool | `resolve_ens` | Resolve an ENS name to an address |
+| Tool | `lookup_ens` | Look up the primary ENS name for an address |
+| Tool | `register_ens` | Register a `.eth` name for the agent wallet |
+| Tool | `set_primary_ens` | Set the agent wallet's primary ENS name |
 
-The MCP server additionally exposes `give_feedback`, `get_reputation`,
-`search_agents`, `get_agent` and `get_agent_feedbacks`.
+Chat can use every action and tool above. The MCP server exposes `send_eth`,
+`get_token_balance`, `fetch_contract_abi`, `call_contract`, `give_feedback`,
+`get_reputation`, `search_agents`, `get_agent` and `get_agent_feedbacks`.
+
+`register_ens` is testnet-only. It registers the name on Ethereum Sepolia
+(ENSv2 commit-reveal, about a minute), pays with test USDC it mints, points
+the name at the agent wallet, and sets it as the primary name. The wallet
+needs Sepolia ETH for gas. `set_primary_ens` is for a name that already
+resolves to the agent. Resolution uses Ethereum mainnet for mainnet agents
+and Ethereum Sepolia for testnet agents.
 
 LLM providers: OpenRouter (default), Anthropic, OpenAI.
 
@@ -125,10 +138,11 @@ Full behavior: [`docs/a2a-x402-spec.md`](./docs/a2a-x402-spec.md).
   `POST /api/a2a` speaks JSON-RPC (`message/send`, `tasks/get`).
 - `?agent=<name>` reaches that agent: its LLM answers the message. Without it
   a generic echo endpoint answers (useful for health checks).
-- **Read-only over A2A.** Callers are anonymous, so the agent only gets its
-  read-only tools (`get_token_balance`, `fetch_contract_abi`). It never sends
-  funds or signs for an outside caller, and it does not see or change the
-  owner's chat history. Requests are rate limited per IP.
+- **Read-only over A2A.** Callers are anonymous, so the agent only gets the
+  read-only tools it was created with (`get_token_balance`,
+  `fetch_contract_abi`, `resolve_ens`, `lookup_ens`). It never sends funds,
+  registers names, or signs for an outside caller, and it does not see or
+  change the owner's chat history. Requests are rate limited per IP.
 - **x402 (optional, per agent).** A request needs the `X-A2A-Extensions`
   header and gets back a task in `input-required` with payment requirements
   (0.01 USDC on Base Sepolia, paid to the agent wallet). Sending the payment
@@ -183,30 +197,32 @@ Copy `.env.example` to `.env`.
 | `X402_FACILITATOR_URL` | for real payments | x402 facilitator base URL, e.g. `https://x402.org/facilitator`. Unset = test mode (simulated) |
 | `A2A_PAY_TO` | no | Makes the generic (no `?agent=`) A2A endpoint paid, to this address |
 | `A2A_X402` | no | `0` keeps the generic endpoint free even with `A2A_PAY_TO` |
-| `RATER_PRIVATE_KEY` | for rating | Signs reputation feedback (must not be the agent's owner) |
+| `RATER_PRIVATE_KEY` | for rating | Only for agent-side/MCP feedback tool; web UI ratings are signed by the connected wallet |
 | `SCAN_API_KEY`, `SCAN_API_BASE` | for scan tools | 8004scan API access |
-| `ARBISCAN_API_KEY` / `ETHERSCAN_API_KEY` | no | Higher rate limits for the ABI tool |
+| `ENS_RPC_URL` | no | RPC for ENS resolution and `.eth` registration. Testnet agents fall back to the Ethereum Sepolia RPC; mainnet agents fall back to a public Ethereum RPC |
+| `ETHERSCAN_API_KEY` | for ABI lookups | Etherscan API V2 key for `fetch_contract_abi`. `ARBISCAN_API_KEY` is accepted as a fallback |
 | `API_PORT` | no | API port (8787) |
 | `CORS_ORIGIN` | no | Comma-separated allowed origins |
 | `ALLOW_AGENT_DELETE` | no | Allow `DELETE /api/agents/:name` on Vercel |
 | `AGENT_<NAME>_PRIVATE_KEY`, `AGENT_<NAME>_CONFIG` | no | Provide an agent through env vars instead of files (Vercel) |
 | `VITE_WEB3AUTH_CLIENT_ID` | frontend | Web3Auth client id (`frontend/.env`) |
 
-`X402_FACILITATOR_URL`, `A2A_PAY_TO`, `A2A_X402` and `RPC_URL_<NETWORK>` are not yet listed in `.env.example`.
-
 ## Networks
 
 The app is multichain: each agent lives on the network picked when it was
 created (`walletChainId` in its config), and funding, chat tools, registration
-and feedback for that agent run there. The web app offers Arbitrum Sepolia and
-Ethereum Sepolia; the CLI uses `NETWORK`. The master wallet is the same
-address on every network and needs ETH on each one it funds or registers on.
+and feedback for that agent run there. The web app offers Arbitrum Sepolia,
+Ethereum Sepolia, and Mantle Sepolia; the CLI uses `NETWORK`. The master
+wallet is the same address on every network and needs that network's gas
+token (ETH, or MNT on Mantle) on each one it funds or registers on.
 
 | Network | Chain ID | Notes |
 |---|---|---|
 | Arbitrum Sepolia | 421614 | Default, in the web app |
-| Ethereum Sepolia | 11155111 | In the web app |
+| Ethereum Sepolia | 11155111 | In the web app. `.eth` registration runs here |
 | Arbitrum One | 42161 | Mainnet, `NETWORK` only |
+| Mantle | 5000 | Mainnet, gas is MNT, `NETWORK` only |
+| Mantle Sepolia | 5003 | In the web app, gas is MNT |
 | Robinhood Testnet | 46630 | Experimental, `NETWORK` only |
 
 ## Deploying to Vercel

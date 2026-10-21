@@ -96,6 +96,7 @@ const agents = ref<AgentSummary[]>([])
 const selected = ref('')
 const loadError = ref('')
 const open = ref(false)
+const fundOpen = ref(false)
 const fundAmount = ref('0.001')
 const fundStatusText = ref('')
 const fundStatusKind = ref<'info' | 'ok' | 'error'>('info')
@@ -367,35 +368,52 @@ onMounted(() => {
       </button>
       <p v-if="deleteStatusText" class="status" data-testid="delete-status">{{ deleteStatusText }}</p>
     </div>
-
-    <div v-if="agent" class="fund">
-      <span class="sub-title">Fund Agent</span>
-      <div v-if="masterAddress" class="master">
-        <dt>Master wallet</dt>
-        <dd class="mono">
-          <a
-            v-if="masterScanUrl"
-            :href="masterScanUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            :title="masterAddress"
-            >{{ shortAddr(masterAddress) }} ↗</a
-          >
-          <span v-else :title="masterAddress">{{ shortAddr(masterAddress) }}</span>
-        </dd>
       </div>
-      <p v-if="!addr" class="hint">Select an agent with a wallet address.</p>
-      <template v-else>
-        <form class="form" @submit.prevent="fund">
-          <label class="field">
-            <span>Amount (ETH)</span>
-            <input v-model="fundAmount" type="text" inputmode="decimal" placeholder="0.001" data-testid="fund-amount" :disabled="fundBusy" />
-          </label>
-          <button class="btn primary" type="submit" data-testid="fund-submit" :disabled="!canSend">{{ fundBusy ? 'Sending…' : 'Send' }}</button>
-        </form>
-        <p v-if="fundStatusText" class="status" data-testid="fund-status" :class="fundStatusKind">{{ fundStatusText }}</p>
-      </template>
     </div>
+  </section>
+
+  <section class="card" data-testid="fund-agent-section">
+    <div class="sub-section">
+      <button
+        type="button"
+        class="title-toggle"
+        @click="fundOpen = !fundOpen"
+        :aria-expanded="fundOpen ? 'true' : 'false'"
+        title="Toggle Fund Agent section"
+      >
+        <span class="chev" :class="{ closed: !fundOpen }" aria-hidden="true">▾</span>
+        <span class="sub-title">Fund Agent</span>
+      </button>
+
+      <div v-show="fundOpen" class="collapsible-body">
+        <p v-if="!agent" class="hint">Select an agent to fund it.</p>
+        <template v-else>
+          <div v-if="masterAddress" class="master">
+            <dt>Master wallet</dt>
+            <dd class="mono">
+              <a
+                v-if="masterScanUrl"
+                :href="masterScanUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="masterAddress"
+                >{{ shortAddr(masterAddress) }} ↗</a
+              >
+              <span v-else :title="masterAddress">{{ shortAddr(masterAddress) }}</span>
+            </dd>
+          </div>
+          <p v-if="!addr" class="hint">Select an agent with a wallet address.</p>
+          <template v-else>
+            <form class="form" @submit.prevent="fund">
+              <label class="field">
+                <span>Amount (ETH)</span>
+                <input v-model="fundAmount" type="text" inputmode="decimal" placeholder="0.001" data-testid="fund-amount" :disabled="fundBusy" />
+              </label>
+              <button class="btn primary" type="submit" data-testid="fund-submit" :disabled="!canSend">{{ fundBusy ? 'Sending…' : 'Send' }}</button>
+            </form>
+            <p v-if="fundStatusText" class="status" data-testid="fund-status" :class="fundStatusKind">{{ fundStatusText }}</p>
+          </template>
+        </template>
       </div>
     </div>
   </section>
@@ -491,6 +509,50 @@ onMounted(() => {
   padding-top: 0;
 }
 
+.details dl > div {
+  animation: row-in 0.4s var(--ease-out) both;
+}
+.details dl > div:nth-child(2) { animation-delay: 0.04s; }
+.details dl > div:nth-child(3) { animation-delay: 0.08s; }
+.details dl > div:nth-child(4) { animation-delay: 0.12s; }
+.details dl > div:nth-child(5) { animation-delay: 0.16s; }
+.details dl > div:nth-child(6) { animation-delay: 0.2s; }
+.details dl > div:nth-child(n + 7) { animation-delay: 0.24s; }
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-0.5rem); }
+}
+
+.chip {
+  transition: transform 0.2s var(--ease-spring), border-color 0.15s ease, background 0.15s ease;
+}
+.chip:hover {
+  transform: translateY(-1px) scale(1.04);
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface-2));
+}
+
+.chev {
+  display: inline-block;
+  transition: transform 0.25s var(--ease-spring);
+}
+.chev.closed {
+  transform: rotate(-90deg);
+}
+
+.collapsible-body {
+  animation: row-in 0.3s var(--ease-out) both;
+}
+
+.pick select {
+  cursor: pointer;
+}
+
+.details dd a {
+  transition: color 0.15s ease, letter-spacing 0.2s ease;
+}
+.details dd a:hover {
+  letter-spacing: 0.01em;
+}
+
 .details dl {
   margin: 0;
   display: flex;
@@ -527,10 +589,9 @@ onMounted(() => {
 a.chip { text-decoration: none; color: var(--accent); }
 a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border)); }
 
-.fund { display: flex; flex-direction: column; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
 .danger-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding-bottom: 0.1rem; }
 .danger-zone .status { margin: 0; font-size: 0.78rem; color: var(--muted); word-break: break-all; }
-.btn.danger { color: #ffb4b0; border-color: color-mix(in oklab, #ffb4b0 40%, var(--border)); }
+.btn.danger { color: var(--danger-ink); border-color: color-mix(in oklab, var(--danger-ink) 40%, var(--border)); }
 .master dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 .master dd { margin: 0.15rem 0 0; font-size: 0.85rem; word-break: break-all; }
 .master dd a { color: var(--accent); text-decoration: none; }
@@ -540,8 +601,8 @@ a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border
 .field input { font: inherit; font-family: var(--font-mono); font-size: 0.9rem; padding: 0.6rem 0.75rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--ink); }
 .status { margin: 0; font-size: 0.78rem; word-break: break-all; }
 .status.info { color: var(--muted); }
-.status.ok { color: #6ecf8e; }
-.status.error { color: #ffb4b0; }
+.status.ok { color: var(--ok-ink); }
+.status.error { color: var(--danger-ink); }
 
 .head-actions {
   display: flex;

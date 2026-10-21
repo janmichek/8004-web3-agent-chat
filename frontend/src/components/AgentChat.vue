@@ -199,9 +199,49 @@ function onKey(e: KeyboardEvent) {
       <p v-if="!resolvedName()" class="empty" data-testid="chat-empty-no-agent">
         Select an agent on the left to start — or create a new one.
       </p>
-      <p v-else-if="!bubbles.length" class="empty" data-testid="chat-empty">
-        Ask about balances — e.g. “What’s my ETH balance?”
-      </p>
+      <section v-else-if="!bubbles.length" class="welcome" data-testid="chat-empty">
+        <p class="welcome-sub">Discover agents, check balances, resolve ENS names, and call contracts on-chain.</p>
+        <div class="welcome-composer">
+          <textarea
+            v-model="input"
+            rows="3"
+            class="welcome-input"
+            placeholder="Ask about agents, wallets, or on-chain actions…"
+            data-testid="chat-input"
+            :disabled="!resolvedName()"
+            @keydown="onKey"
+          />
+          <button
+            type="submit"
+            class="btn primary welcome-send"
+            data-testid="chat-send"
+            :disabled="!input.trim() || !resolvedName()"
+            @click="send"
+          >
+            ↑
+          </button>
+        </div>
+        <div class="welcome-chips">
+          <button type="button" class="chip" @click="input = 'Find an agent that can swap tokens'; send()">
+            Find an agent that can swap tokens
+          </button>
+          <button type="button" class="chip" @click="input = 'Show me the top-rated agents on Base'; send()">
+            Show me the top-rated agents on Base
+          </button>
+          <button type="button" class="chip" @click="input = 'What is the ETH balance of 0x0000000000000000000000000000000000000000?'; send()">
+            What is the ETH balance of an address?
+          </button>
+          <button type="button" class="chip" @click="input = 'Resolve vitalik.eth'; send()">
+            Resolve vitalik.eth
+          </button>
+          <button type="button" class="chip" @click="input = 'Send 0.01 ETH to 0x0000000000000000000000000000000000000000'; send()">
+            Send 0.01 ETH to an address
+          </button>
+          <button type="button" class="chip" @click="input = 'What does the contract at 0x0000000000000000000000000000000000000000 do?'; send()">
+            Explain a contract's ABI
+          </button>
+        </div>
+      </section>
 
       <template v-for="(b, i) in bubbles" :key="i">
         <div v-if="b.kind === 'user'" class="bubble user md" data-testid="chat-bubble-user" v-html="renderMarkdown(b.text)"></div>
@@ -229,10 +269,13 @@ function onKey(e: KeyboardEvent) {
         </div>
       </template>
 
-      <div v-if="busy" class="typing" data-testid="chat-busy">Agent thinking…</div>
+      <div v-if="busy" class="typing" data-testid="chat-busy">
+        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        Agent thinking…
+      </div>
     </div>
 
-    <form class="composer" @submit.prevent="send">
+    <form v-if="bubbles.length" class="composer" @submit.prevent="send">
       <textarea
         v-model="input"
         rows="2"
@@ -287,6 +330,189 @@ function onKey(e: KeyboardEvent) {
   line-height: 1.45;
 }
 
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem 0.25rem;
+  margin: auto;
+  text-align: center;
+}
+
+.welcome-sub {
+  margin: 0;
+  max-width: 36rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.welcome-composer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  justify-content: center;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--surface);
+  padding: 0.1rem;
+  width: min(48rem, 94%);
+}
+
+.welcome-input {
+  flex: 1;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 0.45rem;
+  padding: 0.75rem 0.85rem;
+  resize: none;
+  min-height: 4.5rem;
+  outline: none;
+}
+
+.welcome-input::placeholder {
+  color: var(--muted);
+}
+
+.welcome-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.55rem;
+  border-radius: 0.45rem;
+  min-width: 2.6rem;
+  height: 2.6rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.welcome-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1.1rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 2rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.74rem;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.chip {
+  transition: transform 0.2s var(--ease-spring), border-color 0.15s ease, background 0.15s ease, box-shadow 0.2s ease;
+  animation: chip-in 0.5s var(--ease-out) both;
+}
+.chip:nth-child(2) { animation-delay: 0.06s; }
+.chip:nth-child(3) { animation-delay: 0.12s; }
+.chip:nth-child(4) { animation-delay: 0.18s; }
+.chip:nth-child(5) { animation-delay: 0.24s; }
+.chip:nth-child(6) { animation-delay: 0.3s; }
+.chip:hover {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 10%, var(--surface));
+  transform: translateY(-2px) rotate(-1deg);
+  box-shadow: 0 6px 16px -8px var(--glow);
+}
+.chip:active {
+  transform: scale(0.95);
+}
+@keyframes chip-in {
+  from { opacity: 0; transform: translateY(0.6rem) scale(0.94); }
+}
+
+.welcome-sub::before {
+  content: '⬡';
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--accent);
+  filter: drop-shadow(0 0 12px var(--glow));
+  animation: float 4s ease-in-out infinite;
+}
+@keyframes float {
+  50% { transform: translateY(-6px) rotate(8deg); }
+}
+
+.welcome-composer {
+  transition: border-color 0.2s ease, box-shadow 0.25s ease;
+}
+.welcome-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 16%, transparent), 0 12px 32px -12px var(--glow);
+}
+.welcome-input:focus {
+  box-shadow: none;
+}
+
+.bubble {
+  animation: pop-in 0.38s var(--ease-spring) both;
+  transform-origin: bottom left;
+}
+.bubble.user {
+  transform-origin: bottom right;
+  box-shadow: 0 6px 18px -8px var(--glow);
+  border-bottom-right-radius: 0.15rem;
+}
+.bubble.agent {
+  border-bottom-left-radius: 0.15rem;
+}
+.bubble.error {
+  animation: pop-in 0.38s var(--ease-spring) both, shake 0.4s 0.1s ease;
+}
+.event {
+  animation: fade-in 0.4s ease both;
+  border-left: 2px solid color-mix(in oklab, var(--accent) 35%, var(--border));
+  margin-left: 0.25rem;
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(0.6rem) scale(0.92); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateX(-0.4rem); }
+}
+@keyframes shake {
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.dots {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+}
+.dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: bounce 1s ease-in-out infinite;
+}
+.dots i:nth-child(2) { animation-delay: 0.15s; }
+.dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
 .bubble {
   max-width: min(36rem, 92%);
   padding: 0.7rem 0.85rem;
@@ -310,12 +536,12 @@ function onKey(e: KeyboardEvent) {
 .bubble.md :deep(pre) { overflow-x: auto; padding: 0.6em; border-radius: 0.35em; background: color-mix(in oklab, var(--bg) 80%, var(--surface-2)); margin: 0.5em 0; }
 .bubble.md :deep(pre code) { background: none; padding: 0; }
 .bubble.md :deep(ul), .bubble.md :deep(ol) { margin: 0.35em 0; padding-left: 1.4em; }
-.bubble.user.md :deep(a) { color: #041018; text-decoration-thickness: 1.5px; }
+.bubble.user.md :deep(a) { color: var(--on-accent); text-decoration-thickness: 1.5px; }
 
 .bubble.user {
   align-self: flex-end;
   background: var(--accent);
-  color: #041018;
+  color: var(--on-accent);
 }
 
 .bubble.agent {
@@ -326,9 +552,9 @@ function onKey(e: KeyboardEvent) {
 
 .bubble.error {
   align-self: stretch;
-  background: color-mix(in oklab, #c44 14%, var(--surface));
-  color: #ffb4b0;
-  border: 1px solid color-mix(in oklab, #c44 40%, var(--border));
+  background: color-mix(in oklab, var(--danger-base) 14%, var(--surface));
+  color: var(--danger-ink);
+  border: 1px solid color-mix(in oklab, var(--danger-base) 40%, var(--border));
 }
 
 .event {
@@ -347,7 +573,7 @@ function onKey(e: KeyboardEvent) {
 .typing {
   font-size: 0.8rem;
   color: var(--muted);
-  animation: pulse 1.2s ease-in-out infinite;
+  animation: pop-in 0.3s var(--ease-out) both;
 }
 
 @keyframes pulse {

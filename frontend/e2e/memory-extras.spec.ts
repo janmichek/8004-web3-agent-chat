@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openConversations, setupOffline } from './helpers'
+import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentPanel, openConversations, setupOffline } from './helpers'
 import type { SetupOfflineOptions } from './helpers'
 
 function multiSessionMemory(): SetupOfflineOptions['memory'] {
@@ -87,9 +87,13 @@ test.describe('agent memory extras', () => {
     const cards = page.locator('[data-testid="agent-memory"] .session-card')
     await cards.nth(0).click()
     await expect(page.getByTestId('chat-bubble-user').first()).toContainText('newest question')
+    await expect(page.getByTestId('agent-memory')).toBeHidden()
+    await openConversations(page)
     await expect(cards.nth(0)).toHaveAttribute('aria-selected', 'true')
     await cards.nth(1).click()
     await expect(page.getByTestId('chat-bubble-user').last()).toContainText('older question')
+    await expect(page.getByTestId('agent-memory')).toBeHidden()
+    await openConversations(page)
     await expect(cards.nth(1)).toHaveAttribute('aria-selected', 'true')
     await expect(cards.nth(0)).toHaveAttribute('aria-selected', 'false')
   })
@@ -216,6 +220,7 @@ test.describe('agent memory extras', () => {
     })
     await gotoWithAgent(page)
     await openConversations(page)
+    await openAgentPanel(page)
     await page.getByTestId('agent-select').selectOption('bravo')
     await expect(page.locator('[data-testid="agent-memory"]')).toContainText('no', { ignoreCase: true })
     expect(requests).toContain('bravo')

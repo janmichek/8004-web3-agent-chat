@@ -4,7 +4,7 @@
 ![LangChain](https://img.shields.io/badge/LangChain-tools-green)
 ![Arbitrum One](https://img.shields.io/badge/Arbitrum%20One-42161-9cf)
 
-Composable onchain actions for AI agents on Arbitrum. Tools, skills, and dynamic ABI bindings built on LangChain and viem.
+Composable onchain actions for AI agents. Tools, skills, and dynamic ABI bindings built on LangChain and viem. Networks match the app: Arbitrum, Ethereum, and Mantle.
 
 > **WARNING: This is experimental software. Not for production use.** Use at your own risk. Do not use with real funds without fully understanding the code.
 
@@ -88,6 +88,8 @@ const systemPrompt = `You are an onchain agent.\n\n${transfer.skill.context}`
 | Action            | Tools included                  | Description                                              |
 |-------------------|---------------------------------|----------------------------------------------------------|
 | `TransferEthAction()` | `send_eth`, `get_token_balance` | Transfer ETH with balance checks and safety confirmations |
+| `EnsNameAction()` | `resolve_ens`, `lookup_ens`, `register_ens`, `set_primary_ens` | Resolve names, register a `.eth` name on Ethereum Sepolia, and set the agent primary name |
+| `RateFeedbackAction()` | `give_feedback`, `get_reputation` | Rate ERC-8004 agents and read reputation. Importable here; the create-agent wizard offers `transfer-eth` and `ens-name`, and MCP exposes these two tools on its own |
 
 ## Using tools directly (Level 2)
 
@@ -120,9 +122,11 @@ The agent autonomously:
 1. Calls `fetch_contract_abi` with a contract address to see its functions
 2. Calls `call_contract` with the address, function name, and args to execute
 
-Works with any verified contract on Arbiscan. Read calls (view/pure) return the result. Write calls (nonpayable/payable) return the tx hash.
+Works with verified contracts on the agent's chain through the Etherscan API V2. Read calls (view/pure) return the result. Write calls (nonpayable/payable) return the tx hash.
 
-Set `ARBISCAN_API_KEY` for higher rate limits (optional).
+Set `ETHERSCAN_API_KEY` (`ARBISCAN_API_KEY` is accepted as a fallback).
+
+ENS tools (`resolve_ens`, `lookup_ens`, `register_ens`, `set_primary_ens`) are also Level 2 tools. `register_ens` is testnet-only: it registers on Ethereum Sepolia, pays with test USDC it mints, and needs Sepolia ETH for gas. Resolution uses Ethereum mainnet for mainnet agents and Ethereum Sepolia for testnet agents. Override that RPC with `ENS_RPC_URL`.
 
 ## Creating a custom action
 

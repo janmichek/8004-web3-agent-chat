@@ -1,9 +1,9 @@
 /**
- * API-level E2E: rate/feedback + reputation endpoints on testnet (spends dust
- * only for gas from RATER_PRIVATE_KEY).
+ * API-level E2E: wallet-gated feedback + reputation endpoints (no gas spent;
+ * feedback is only prepared, never signed server-side).
  *
  * Requires:
- *   RUN_E2E=1 RPC_URL=... NETWORK=arbitrum-sepolia RATER_PRIVATE_KEY=...
+ *   RUN_E2E=1 RPC_URL=... NETWORK=arbitrum-sepolia
  *   E2E_AGENT_NAME=<agent to rate, default abcd-agent>
  *
  * Run: RUN_E2E=1 npx vitest run src/server/tests/feedback-api.e2e.test.ts
@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 
 const RUN_E2E = process.env.RUN_E2E === "1";
+const WALLET = "0x000000000000000000000000000000000000dEaD";
 
 describe.runIf(RUN_E2E)("feedback API e2e (testnet)", () => {
   beforeAll(() => {
@@ -18,55 +19,47 @@ describe.runIf(RUN_E2E)("feedback API e2e (testnet)", () => {
     process.env.VERCEL = "1";
   });
 
-  it("POST /api/agents/:name/feedback then GET /api/reputation/:agentId", async () => {
+  const post = async (path: string, body: unknown) => {
     const { app } = await import("../api.js");
-
-    const fromAgent = process.env.E2E_AGENT_NAME || "abcd-agent";
-    const targetAgentId = process.env.E2E_RATE_AGENT_ID; // optional override
-
-    // Submit a rating signed by RATER_PRIVATE_KEY (small gas cost).
-    const postRes = await app.request(`/api/agents/${encodeURIComponent(fromAgent)}/feedback`, {
+    return app.request(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...(targetAgentId ? { agentId: targetAgentId } : {}),
-        value: 85,
-        tag: "starred",
-        comment: "e2e api test rating",
-      }),
+      body: JSON.stringify(body),
     });
-    const postBody = (await postRes.json()) as Record<string, unknown>;
-    expect(postRes.status, JSON.stringify(postBody)).toBe(200);
-    expect(postBody.ok).toBe(true);
-    expect(typeof postBody.txHash).toBe("string");
-    expect(typeof postBody.scanUrl).toBe("string");
+  };
+  const agent = () => encodeURIComponent(process.env.E2E_AGENT_NAME || "abcd-agent");
 
-    const ratedId = (postBody.agentId as string) || targetAgentId!;
-    // Reputation summary reflects the rating.
-    const getRes = await app.request(`/api/reputation/${encodeURIComponent(ratedId)}`);
-    const getBody = (await getRes.json()) as Record<string, unknown>;
-    expect(getRes.status, JSON.stringify(getBody)).toBe(200);
-    expect(getBody.agentId).toBe(ratedId);
-    expect(getBody.count as number).toBeGreaterThanOrEqual(1);
-    expect(getBody.averageValue as number).toBeGreaterThan(0);
-  }, 180_000);
+  it("no server-signed feedback route: only the connected wallet can rate", async () => {
+    const res = await post(`/api/agents/${agent()}/feedback`, { agentId: "421614:204", value: 85 });
+    expect(res.status).toBe(404);
+  });
 
-  it("validates bad input without spending gas", async () => {
-    const { app } = await import("../api.js");
-    const fromAgent = process.env.E2E_AGENT_NAME || "abcd-agent";
+  it("prepare requires a connected wallet address", async () => {
+    const none = await post(`/api/agents/${agent()}/feedback/prepare`, { agentId: "421614:204", value: 85 });
+    expect(none.status).toBe(401);
 
-    const missing = await app.request(`/api/agents/${encodeURIComponent(fromAgent)}/feedback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+    const bad = await post(`/api/agents/${agent()}/feedback/prepare`, {
+      agentId: "421614:204",
+      value: 85,
+      clientAddress: "not-an-address",
     });
-    expect(missing.status).toBe(400);
+    expect(bad.status).toBe(401);
+  });
 
-    const badValue = await app.request(`/api/agents/${encodeURIComponent(fromAgent)}/feedback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId: "421614:204", value: "high" }),
+  it("prepare validates input without spending gas", async () => {
+    const badValue = await post(`/api/agents/${agent()}/feedback/prepare`, {
+      agentId: "421614:204",
+      value: "high",
+      clientAddress: WALLET,
     });
     expect(badValue.status).toBe(400);
   });
+
+  it("GET /api/reputation/:agentId returns a summary", async () => {
+    const { app } = await import("../api.js");
+    const res = await app.request(`/api/reputation/${encodeURIComponent("421614:204")}`);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(res.status, JSON.stringify(body)).toBe(200);
+    expect(body.agentId).toBe("421614:204");
+  }, 60_000);
 });

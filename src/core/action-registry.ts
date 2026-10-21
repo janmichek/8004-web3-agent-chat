@@ -18,6 +18,7 @@ import {
   resolveEnsTool,
   lookupEnsTool,
   setPrimaryEnsTool,
+  registerEnsTool,
 } from "../actions/index.js"
 
 /** @notice Describes an available action for the selection menu. */
@@ -48,8 +49,8 @@ export const ACTION_REGISTRY: ActionEntry[] = [
   },
   {
     name: "ens-name",
-    description: "Resolve ENS names, look up primary names, and set the agent wallet primary ENS name",
-    toolNames: ["resolve_ens", "lookup_ens", "set_primary_ens"],
+    description: "Resolve ENS names, look up primary names, register .eth names, and set the agent wallet primary ENS name",
+    toolNames: ["resolve_ens", "lookup_ens", "register_ens", "set_primary_ens"],
     skillName: "ens-name",
     factory: EnsNameAction,
   },
@@ -93,6 +94,11 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     description: "Set the agent wallet's primary ENS name (reverse record)",
     readOnly: false,
   },
+  {
+    name: "register_ens",
+    description: "Register a .eth name for the agent wallet (testnet, paid in test USDC)",
+    readOnly: false,
+  },
 ]
 
 const TOOL_INSTANCES: Record<string, DynamicStructuredTool> = {
@@ -103,6 +109,7 @@ const TOOL_INSTANCES: Record<string, DynamicStructuredTool> = {
   resolve_ens: resolveEnsTool,
   lookup_ens: lookupEnsTool,
   set_primary_ens: setPrimaryEnsTool,
+  register_ens: registerEnsTool,
 }
 
 /** @notice Look up an action entry by name. */

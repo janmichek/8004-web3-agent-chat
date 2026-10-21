@@ -48,12 +48,22 @@ export const MOCK_CATALOG = {
       toolNames: ['send_eth', 'get_token_balance'],
       skillName: 'transfer-eth',
     },
+    {
+      name: 'ens-name',
+      description: 'Resolve ENS names, look up primary names, register .eth names, and set the agent wallet primary ENS name',
+      toolNames: ['resolve_ens', 'lookup_ens', 'register_ens', 'set_primary_ens'],
+      skillName: 'ens-name',
+    },
   ],
   tools: [
     { name: 'send_eth', description: 'Send ETH from the agent wallet to a destination address' },
     { name: 'get_token_balance', description: 'Check ETH or ERC-20 token balance of a wallet address' },
     { name: 'fetch_contract_abi', description: "Fetch a verified contract's ABI from the block explorer (experimental)" },
     { name: 'call_contract', description: 'Call any function on a verified contract (experimental)' },
+    { name: 'resolve_ens', description: 'Resolve an ENS name to an address' },
+    { name: 'lookup_ens', description: 'Look up the primary ENS name for a wallet address' },
+    { name: 'set_primary_ens', description: "Set the agent wallet's primary ENS name" },
+    { name: 'register_ens', description: 'Register a .eth name for the agent wallet' },
   ],
 }
 
@@ -243,6 +253,12 @@ export type SetupOfflineOptions = {
  * Covers every endpoint the Vue app touches so no real :8787 is needed.
  */
 export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
+  // Rating needs a connected wallet; default to a non-owner one and stub the wallet send.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __E2E_CONNECTED_ADDRESS?: string; __E2E_SEND_TX?: () => string }
+    w.__E2E_CONNECTED_ADDRESS ??= '0x9999999999999999999999999999999999999999'
+    w.__E2E_SEND_TX = () => '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+  })
   // Mutable copy so DELETE actually removes the agent from subsequent list fetches.
   const agents = [...((opts.agents ?? [DEMO_AGENT]) as { name: string }[])]
   const health = opts.health ?? {
@@ -381,23 +397,23 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
     await json(route, 200, opts.chat ?? { reply: 'mock reply', events: [{ type: 'message', content: 'mock reply' }] })
   })
 
-  await page.route('**/api/agents/*/feedback', async (route) => {
+  await page.route('**/api/agents/*/feedback/prepare', async (route) => {
     try {
       opts.capture?.feedback?.push(JSON.parse(route.request().postData() ?? '{}'))
     } catch {
       /* ignore */
     }
     if ((opts.feedbackStatus ?? 200) >= 400) {
-      await json(route, opts.feedbackStatus ?? 500, { error: 'feedback failed: RATER_PRIVATE_KEY missing' })
+      await json(route, opts.feedbackStatus ?? 500, { error: 'feedback prepare failed' })
       return
     }
     await json(route, 200, opts.feedback ?? {
       ok: true,
-      txHash: '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+      to: '0x8004B663056A597Dffe9eCcC1965A193B7388713',
+      data: '0x',
+      chainId: 421614,
       agentId: '421614:42',
       value: 100,
-      rater: '0x9999999999999999999999999999999999999999',
-      reputation: { count: 1, averageValue: 100 },
       scanUrl: 'https://testnet.8004scan.io/agents/arbitrum-sepolia/42',
     })
   })
@@ -426,11 +442,26 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
   })
 }
 
+/** Open the agent sidebar. On narrow screens it sits behind the Agent button. */
+export async function openAgentPanel(page: Page) {
+  const toggle = page.getByTestId('agent-panel-toggle')
+  if (!(await toggle.isVisible())) return
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+  await page.locator('#agent-panel').waitFor({ state: 'visible' })
+}
+
+/** Close the agent drawer. No-op when the sidebar is docked beside the chat. */
+export async function closeAgentPanel(page: Page) {
+  const toggle = page.getByTestId('agent-panel-toggle')
+  if (!(await toggle.isVisible())) return
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') await toggle.click()
+}
+
 /** Wait for the app to finish initial agent load. */
 export async function gotoWithAgent(page: Page, name = 'demo') {
   await page.goto('/')
   const select = page.getByTestId('agent-select')
-  await select.waitFor({ state: 'visible' })
+  await select.waitFor({ state: 'attached' })
   // agents list loaded (may be empty string when no agents)
   await page.waitForFunction(
     (expected) => {
@@ -446,18 +477,26 @@ export async function gotoWithAgent(page: Page, name = 'demo') {
 
 /** Expand the collapsed "Agent Info" section in the picker. */
 export async function openAgentInfo(page: Page) {
+  await openAgentPanel(page)
   const toggle = page.getByRole('button', { name: /Agent Info/ })
-  if ((await toggle.count()) === 0) return
-  const expanded = await toggle.getAttribute('aria-expanded')
-  if (expanded !== 'true') await toggle.click()
+  await toggle.waitFor({ state: 'visible' })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+}
+
+/** Expand the collapsed "Fund Agent" section in the picker. */
+export async function openFundAgent(page: Page) {
+  await openAgentPanel(page)
+  const toggle = page.getByRole('button', { name: /Fund Agent/ })
+  await toggle.waitFor({ state: 'visible' })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
 }
 
 /** Expand "Chat Stats" section. */
 export async function openChatStats(page: Page) {
+  await openAgentPanel(page)
   const toggle = page.getByRole('button', { name: /Chat Stats/ })
-  if ((await toggle.count()) === 0) return
-  const expanded = await toggle.getAttribute('aria-expanded')
-  if (expanded !== 'true') await toggle.click()
+  await toggle.waitFor({ state: 'visible' })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
 }
 
 /** Open the Conversations drawer (AgentMemory lives inside v-show). */
@@ -470,12 +509,14 @@ export async function openConversations(page: Page) {
 
 /** Open the Create-agent dialog. */
 export async function openCreateDialog(page: Page) {
+  await openAgentPanel(page)
   await page.getByTestId('picker-create').click()
   await page.getByTestId('create-dialog').waitFor({ state: 'visible' })
 }
 
 /** Send a chat message and wait for the first agent bubble. */
 export async function sendChat(page: Page, text: string) {
+  await closeAgentPanel(page)
   await page.getByTestId('chat-input').fill(text)
   await page.getByTestId('chat-send').click()
 }

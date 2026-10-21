@@ -9,10 +9,15 @@ describe('friendlyFundError', () => {
     expect(isRpcRateLimit(new Error('Request exceeds defined limit.'))).toBe(true)
   })
 
-  it('maps user rejection and insufficient funds', () => {
+  it('maps user rejection, unauthorized, and insufficient funds', () => {
     expect(friendlyFundError(new Error('User rejected the request.'))).toBe(
       'Wallet signature rejected.',
     )
+    expect(
+      friendlyFundError(
+        new Error('The requested method and/or account has not been authorized by the user.'),
+      ),
+    ).toBe('Wallet did not authorize this account. Sign out, sign in again, then retry.')
     expect(friendlyFundError(new Error('insufficient funds for gas'))).toBe(
       'Wallet has insufficient ETH.',
     )

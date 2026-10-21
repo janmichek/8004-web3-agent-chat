@@ -37,6 +37,7 @@ export {
   resolveEnsTool,
   lookupEnsTool,
   setPrimaryEnsTool,
+  registerEnsTool,
 } from "./actions/index.js";
 export type { Action, Skill } from "./actions/types.js";
 export { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName, getToolByName, getStandaloneToolInstance } from "./core/action-registry.js";

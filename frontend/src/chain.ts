@@ -43,8 +43,9 @@ function walletRpcUrl(chainId: number): string {
 }
 
 /**
- * Estimate nonce/gas/fees via the app RPC proxy so the wallet does not need
- * the chain's public endpoint (which rate-limits often).
+ * Estimate gas/fees via the app RPC proxy so the wallet does not need the
+ * chain's public endpoint (which rate-limits often). Nonce is omitted on
+ * purpose — injected wallets must set it for the authorized account.
  */
 export async function prepareNativeTransfer(params: {
   account: Address
@@ -55,7 +56,6 @@ export async function prepareNativeTransfer(params: {
   to: Address
   value: bigint
   gas: bigint
-  nonce: number
   maxFeePerGas?: bigint
   maxPriorityFeePerGas?: bigint
   chainId: number
@@ -64,8 +64,7 @@ export async function prepareNativeTransfer(params: {
     chain: viemChain(params.chainId),
     transport: http(appRpcUrl(params.chainId)),
   })
-  const [nonce, gas, fees] = await Promise.all([
-    client.getTransactionCount({ address: params.account }),
+  const [gas, fees] = await Promise.all([
     client.estimateGas({
       account: params.account,
       to: params.to,
@@ -77,58 +76,67 @@ export async function prepareNativeTransfer(params: {
     to: params.to,
     value: params.value,
     gas,
-    nonce,
     maxFeePerGas: fees.maxFeePerGas,
     maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
     chainId: params.chainId,
   }
 }
 
-async function addChain(chainId: number): Promise<void> {
-  const provider = window.ethereum
-  if (!provider?.request) {
-    throw new Error('No injected wallet found')
-  }
-
+function addChainParams(chainId: number) {
   const network = networkInfo(chainId)
   const native = network.nativeCurrency ?? { name: 'Ether', symbol: 'ETH', decimals: 18 }
+  return {
+    chainId: `0x${chainId.toString(16)}` as Hex,
+    chainName: network.name,
+    nativeCurrency: native,
+    // Prefer local proxy → configured RPC. Public RPCs rate-limit often.
+    rpcUrls: [walletRpcUrl(chainId)],
+    blockExplorerUrls: [network.explorerUrl],
+  }
+}
+
+/** Add chain via the connected wagmi client (Web3Auth / MetaMask session). */
+async function addChainViaWallet(config: Config, chainId: number): Promise<void> {
+  const client = await getWalletClient(config)
+  if (client) {
+    await client.request({
+      method: 'wallet_addEthereumChain',
+      params: [addChainParams(chainId)],
+    })
+    return
+  }
+
+  // Last resort: injected extension. Prefer the connected client above —
+  // window.ethereum may be a different wallet than the Web3Auth session.
+  const provider = window.ethereum
+  if (!provider?.request) {
+    throw new Error('No wallet found')
+  }
   await provider.request({
     method: 'wallet_addEthereumChain',
-    params: [
-      {
-        chainId: `0x${chainId.toString(16)}` as Hex,
-        chainName: network.name,
-        nativeCurrency: native,
-        // Prefer local proxy → configured RPC. Public RPCs rate-limit often.
-        rpcUrls: [walletRpcUrl(chainId)],
-        blockExplorerUrls: [network.explorerUrl],
-      },
-    ],
+    params: [addChainParams(chainId)],
   })
 }
 
 /**
  * Ensure the connected wallet is on `chainId` before sending.
- * Adds the chain if missing (injected wallets), then verifies chain id.
+ * Adds the chain if missing, then verifies chain id against wagmi state.
  */
 export async function ensureChain(config: Config, chainId: number): Promise<void> {
   if (getAccount(config).chainId === chainId) return
-
-  const current = await getInjectedChainId()
-  if (current === chainId) return
 
   try {
     await switchChain(config, { chainId })
   } catch {
     try {
-      await addChain(chainId)
+      await addChainViaWallet(config, chainId)
       await switchChain(config, { chainId })
     } catch {
       // wallet_addEthereumChain often switches already
     }
   }
 
-  let after = getAccount(config).chainId ?? (await getInjectedChainId())
+  let after = getAccount(config).chainId
   if (after !== chainId) {
     const client = await getWalletClient(config)
     if (client) {
@@ -136,13 +144,18 @@ export async function ensureChain(config: Config, chainId: number): Promise<void
         await client.switchChain({ id: chainId })
       } catch {
         try {
-          await addChain(chainId)
+          await addChainViaWallet(config, chainId)
         } catch {
           // social / embedded wallets may not support wallet_addEthereumChain
         }
       }
     }
-    after = getAccount(config).chainId ?? (await getInjectedChainId())
+    after = getAccount(config).chainId
+  }
+
+  // Fall back to injected ethereum only for verification when wagmi has no chainId.
+  if (after == null) {
+    after = await getInjectedChainId()
   }
 
   if (after !== chainId) {

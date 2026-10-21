@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useAccount } from '@wagmi/vue'
-import { fetchReputation, scanUrlForAgent, submitFeedback, txScanUrl } from '../api'
+import { useAccount, useConfig } from '@wagmi/vue'
+import { sendTransaction, waitForTransactionReceipt } from '@wagmi/vue/actions'
+import { fetchReputation, prepareFeedback, scanUrlForAgent, txScanUrl } from '../api'
+import { ensureChain } from '../chain'
 import { DEFAULT_CHAIN_ID, chainIdOfAgentId } from '../networks'
 
 const props = defineProps<{
@@ -25,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const { address: wagmiAddress } = useAccount()
+const wagmiConfig = useConfig()
 
 /** Playwright can set window.__E2E_CONNECTED_ADDRESS to simulate a connected wallet. */
 const connected = computed(() => {
@@ -84,6 +87,7 @@ const blockedAsOwnerOrOperator = computed(() => {
 const canSubmit = computed(() => {
   return Boolean(
     props.agentName &&
+      connected.value &&
       agentId.value.trim() &&
       !busy.value &&
       !submitted.value &&
@@ -138,6 +142,16 @@ watch(agentId, () => {
   void loadReputation()
 })
 
+async function sendFeedbackTx(prepared: { to: `0x${string}`; data: `0x${string}`; chainId: number }) {
+  // Playwright has no real wallet: let tests stub the send.
+  const stub = (window as unknown as { __E2E_SEND_TX?: () => string | Promise<string> }).__E2E_SEND_TX
+  if (stub) return await stub()
+  await ensureChain(wagmiConfig, prepared.chainId)
+  const hash = await sendTransaction(wagmiConfig, { to: prepared.to, data: prepared.data, chainId: prepared.chainId })
+  await waitForTransactionReceipt(wagmiConfig, { hash, chainId: prepared.chainId })
+  return hash
+}
+
 async function submit() {
   if (!canSubmit.value) return
   busy.value = true
@@ -146,21 +160,26 @@ async function submit() {
   scanUrl.value = ''
   feedbackURI.value = ''
   try {
-    const res = await submitFeedback(props.agentName, {
+    const account = connected.value
+    if (!account) throw new Error('Connect a wallet to rate this agent')
+    const prepared = await prepareFeedback(props.agentName, {
       agentId: agentId.value.trim(),
       value: value.value,
       // Backend forces tag1='starred'; this is kept as tag2 context.
       tag: tag.value.trim() || 'starred',
       endpoint: endpoint.value.trim() || undefined,
       comment: comment.value.trim() || undefined,
+      clientAddress: account,
     })
-    resultTx.value = res.txHash
-    feedbackURI.value = res.feedbackURI ?? ''
-    const base = res.scanUrl || scanUrlForAgent(agentId.value.trim(), chainId.value)
+    // The connected wallet signs, so it becomes the on-chain feedback author.
+    const hash = await sendFeedbackTx(prepared)
+    resultTx.value = hash
+    feedbackURI.value = prepared.feedbackURI ?? ''
+    const base = prepared.scanUrl || scanUrlForAgent(agentId.value.trim(), chainId.value)
     scanUrl.value = base.includes('?tab=') ? base : `${base}?tab=feedback`
-    reputation.value = res.reputation
+    await loadReputation()
     submitted.value = true
-    emit('rated', { txHash: res.txHash, scanUrl: scanUrl.value })
+    emit('rated', { txHash: resultTx.value, scanUrl: scanUrl.value })
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -183,6 +202,10 @@ void loadReputation()
       Disconnect or use another wallet to rate.
     </p>
 
+    <p v-else-if="!connected" class="hint warn" data-testid="rate-connect">
+      Connect your wallet to rate — your address is recorded as the feedback author.
+    </p>
+
     <p class="rep" aria-live="polite">
       <template v-if="loadingRep">Loading reputation…</template>
       <template v-else-if="reputation"
@@ -202,7 +225,7 @@ void loadReputation()
         :class="{ on: n <= stars }"
         :aria-pressed="n === stars"
         :aria-label="`${n} star${n === 1 ? '' : 's'} (${n * 20}/100)`"
-        :disabled="busy || blockedAsOwnerOrOperator || submitted"
+        :disabled="busy || !connected || blockedAsOwnerOrOperator || submitted"
         @click="setStars(n)"
       >
         ★
@@ -233,7 +256,8 @@ void loadReputation()
       @click="submit"
     >
       <template v-if="submitted">✓ Rated</template>
-      <template v-else>{{ busy ? 'Submitting…' : `Submit ${value}/100 rating` }}</template>
+      <template v-else-if="!connected">Connect wallet to rate</template>
+      <template v-else>{{ busy ? 'Waiting for wallet…' : `Submit ${value}/100 rating` }}</template>
     </button>
 
     <ul v-if="submitted" class="links" data-testid="rate-scan-link">
@@ -325,7 +349,7 @@ void loadReputation()
   padding: 0.1rem;
 }
 .star.on {
-  color: #f5b942;
+  color: var(--star);
 }
 .star:disabled {
   cursor: default;
@@ -342,10 +366,10 @@ void loadReputation()
   word-break: break-all;
 }
 .status.ok {
-  color: #6ecf8e;
+  color: var(--ok-ink);
 }
 .status.error {
-  color: #ffb4b0;
+  color: var(--danger-ink);
 }
 .links {
   margin: 0;

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentInfo, setupOffline } from './helpers'
+import { DEMO_AGENT, SECOND_AGENT, closeAgentPanel, gotoWithAgent, openAgentInfo, openFundAgent, setupOffline } from './helpers'
 
 test.describe('agent picker extras', () => {
   test('Agent Info shows ERC-8004 id, wallet, balance and tool chips', async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe('agent picker extras', () => {
       },
     })
     await gotoWithAgent(page)
-    await openAgentInfo(page)
+    await openFundAgent(page)
     await page.getByTestId('fund-amount').fill('0.01')
     await page.getByTestId('fund-submit').click()
     await expect(page.getByTestId('fund-submit')).toBeDisabled()
@@ -97,6 +97,7 @@ test.describe('agent picker extras', () => {
     await openAgentInfo(page)
     await page.getByTestId('agent-select').selectOption('bravo')
     await expect(page.locator('.details')).toContainText('#77')
+    await closeAgentPanel(page)
     await page.getByTestId('chat-input').fill('hello bravo')
     await page.getByTestId('chat-send').click()
     await expect(page.getByTestId('chat-bubble-agent').first()).toContainText('mock reply')

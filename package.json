@@ -60,6 +60,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@openrouter/sdk": "^1.2.144",
     "@tanstack/vue-query": "^5.103.1",
+    "@upstash/redis": "^1.39.0",
     "@wagmi/vue": "^0.5.30",
     "@web3auth/modal": "^11.4.2",
     "buffer": "^6.0.3",

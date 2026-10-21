@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { DEMO_AGENT, gotoWithAgent, sendChat, setupOffline } from './helpers'
+import { DEMO_AGENT, gotoWithAgent, openAgentPanel, sendChat, setupOffline } from './helpers'
 
 const TX = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
@@ -37,11 +37,11 @@ test.describe('rate agent (mocked feedback)', () => {
       capture: { feedback: seen },
       feedback: {
         ok: true,
-        txHash: '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+        to: '0x8004B663056A597Dffe9eCcC1965A193B7388713',
+        data: '0x',
+        chainId: 421614,
         agentId: '421614:42',
         value: 100,
-        rater: '0x9999',
-        reputation: { count: 3, averageValue: 90 },
         scanUrl: 'https://testnet.8004scan.io/agents/arbitrum-sepolia/42',
       },
     })
@@ -76,6 +76,7 @@ test.describe('rate agent (mocked feedback)', () => {
       const seen: unknown[] = []
       await setupOffline(page, { chat: chatWithTool(tool), capture: { feedback: seen } })
       await page.goto('/')
+      await openAgentPanel(page)
       await page.getByTestId('agent-select').waitFor({ state: 'visible' })
       await page.waitForFunction(() => {
         const el = document.querySelector('[data-testid="agent-select"]') as HTMLSelectElement | null
@@ -94,9 +95,20 @@ test.describe('rate agent (mocked feedback)', () => {
     await gotoWithAgent(page)
     await sendChat(page, 'send')
     await page.getByTestId('rate-submit').click()
-    await expect(page.getByTestId('rate-error')).toContainText('RATER_PRIVATE_KEY')
+    await expect(page.getByTestId('rate-error')).toContainText('feedback prepare failed')
     await expect(page.getByTestId('rate-submit')).toBeEnabled()
     await expect(page.getByTestId('rate-scan-link')).toHaveCount(0)
+  })
+
+  test('rating requires a connected wallet', async ({ page }) => {
+    await setupOffline(page, { chat: chatWithTool('send_eth') })
+    await page.addInitScript(() => {
+      delete (window as unknown as { __E2E_CONNECTED_ADDRESS?: string }).__E2E_CONNECTED_ADDRESS
+    })
+    await gotoWithAgent(page)
+    await sendChat(page, 'send')
+    await expect(page.getByTestId('rate-connect')).toBeVisible()
+    await expect(page.getByTestId('rate-submit')).toBeDisabled()
   })
 
   test('operator wallet is blocked like an owner wallet', async ({ page }) => {

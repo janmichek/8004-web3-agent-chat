@@ -6,6 +6,16 @@ const getEnsAddress = vi.fn()
 const getEnsName = vi.fn()
 const writeContract = vi.fn()
 const waitForTransactionReceipt = vi.fn()
+const readContract = vi.fn()
+const getBalance = vi.fn()
+const getCode = vi.fn()
+const getBlock = vi.fn()
+
+const AGENT = "0x1234567890AbcdEF1234567890aBcdef12345678"
+const RESOLVER = "0x00000000000000000000000000000000000000AA"
+
+/** Registrar/registry/token reads, keyed by function name. */
+let reads: Record<string, unknown>
 
 vi.mock("viem", async () => {
   const actual = await vi.importActual<typeof import("viem")>("viem")
@@ -15,6 +25,10 @@ vi.mock("viem", async () => {
       getEnsAddress,
       getEnsName,
       waitForTransactionReceipt,
+      readContract,
+      getBalance,
+      getCode,
+      getBlock,
     })),
     createWalletClient: vi.fn(() => ({
       writeContract,
@@ -51,7 +65,28 @@ describe("ens tools", () => {
     getEnsName.mockResolvedValue("mybot.eth")
     writeContract.mockResolvedValue("0xabc123")
     waitForTransactionReceipt.mockResolvedValue({ status: "success" })
+    reads = {
+      predictProxyAddress: RESOLVER,
+      isAvailable: true,
+      getRegisterPrice: [8_000_000n, 0n],
+      balanceOf: 0n,
+      allowance: 0n,
+      makeCommitment: `0x${"11".repeat(32)}`,
+      MIN_COMMITMENT_AGE: 60n,
+      MAX_COMMITMENT_AGE: 86400n,
+      commitmentAt: 0n,
+      getOwner: AGENT,
+      getResolver: RESOLVER,
+    }
+    readContract.mockImplementation(({ functionName }: { functionName: string }) =>
+      Promise.resolve(reads[functionName]),
+    )
+    getBalance.mockResolvedValue(10n ** 18n)
+    getCode.mockResolvedValue(undefined)
+    getBlock.mockResolvedValue({ timestamp: 1_000_000n })
   })
+
+  const writes = () => writeContract.mock.calls.map(([request]) => request.functionName)
 
   it("resolve_ens returns an address", async () => {
     const { resolveEnsTool } = await import("../tools/ens.tool.js")
@@ -99,6 +134,77 @@ describe("ens tools", () => {
     expect(result).toContain("Error")
     expect(result).toContain("AGENT_PRIVATE_KEY")
   })
+
+  it("register_ens runs the full flow for an available name", async () => {
+    // The commitment only exists once commit has been sent.
+    writeContract.mockImplementation(({ functionName }: { functionName: string }) => {
+      if (functionName === "commit") reads.commitmentAt = 100n
+      return Promise.resolve("0xabc123")
+    })
+    const { registerEnsTool } = await import("../tools/ens.tool.js")
+    const result = await registerEnsTool.invoke({ name: "MyBot" })
+    expect(result).toContain("mybot.eth now resolves to")
+    expect(result).toContain("primary name")
+    expect(result).toContain("paid 8 USDC")
+    // Arbitrum Sepolia agent: L1 address record plus the L2 coin type, then the L2 reverse record.
+    expect(writes()).toEqual([
+      "deployProxy",
+      "mint",
+      "approve",
+      "commit",
+      "register",
+      "setAddress",
+      "setAddress",
+      "setName",
+    ])
+  })
+
+  it("register_ens reuses the resolver, funds, and an earlier commitment", async () => {
+    getCode.mockResolvedValue("0x60806040")
+    reads.balanceOf = 8_000_000n
+    reads.allowance = 8_000_000n
+    // Made 1000s before the mocked block time: aged past the minimum, not yet expired.
+    reads.commitmentAt = 999_000n
+    const { registerEnsTool } = await import("../tools/ens.tool.js")
+    const result = await registerEnsTool.invoke({ name: "mybot.eth", setPrimary: false })
+    expect(result).toContain("mybot.eth now resolves to")
+    expect(writes()).toEqual(["register", "setAddress", "setAddress"])
+  })
+
+  it("register_ens rejects a name owned by someone else", async () => {
+    reads.isAvailable = false
+    reads.getOwner = "0x0000000000000000000000000000000000000001"
+    const { registerEnsTool } = await import("../tools/ens.tool.js")
+    const result = await registerEnsTool.invoke({ name: "taken" })
+    expect(result).toContain("Error")
+    expect(result).toContain("already registered")
+    expect(writeContract).not.toHaveBeenCalled()
+  })
+
+  it("register_ens finishes setup for a name the agent already registered", async () => {
+    reads.isAvailable = false
+    const { registerEnsTool } = await import("../tools/ens.tool.js")
+    const result = await registerEnsTool.invoke({ name: "mybot" })
+    expect(result).toContain("mybot.eth now resolves to")
+    expect(writes()).toEqual(["setAddress", "setAddress", "setName"])
+  })
+
+  it("register_ens reports completed steps when a later one fails", async () => {
+    reads.isAvailable = false
+    writeContract.mockResolvedValueOnce("0xabc123").mockRejectedValueOnce(new Error("rpc down"))
+    const { registerEnsTool } = await import("../tools/ens.tool.js")
+    const result = await registerEnsTool.invoke({ name: "mybot" })
+    expect(result).toContain("Error: rpc down")
+    expect(result).toContain("Set address record")
+    expect(result).toContain("again with the same name")
+  })
+
+  it("register_ens rejects subnames", async () => {
+    const { registerEnsTool } = await import("../tools/ens.tool.js")
+    const result = await registerEnsTool.invoke({ name: "sub.mybot.eth" })
+    expect(result).toContain("Error")
+    expect(readContract).not.toHaveBeenCalled()
+  })
 })
 
 describe("ens-name skill", () => {
@@ -107,6 +213,7 @@ describe("ens-name skill", () => {
     expect(ensNameSkill.name).toBe("ens-name")
     expect(ensNameSkill.description).toBeTruthy()
     expect(ensNameSkill.context).toContain("set_primary_ens")
+    expect(ensNameSkill.context).toContain("register_ens")
   })
 })
 
@@ -116,7 +223,7 @@ describe("EnsNameAction factory", () => {
     const action = EnsNameAction()
     expect(action.name).toBe("ens-name")
     expect(action.tools.map((t) => t.name)).toEqual(
-      expect.arrayContaining(["resolve_ens", "lookup_ens", "set_primary_ens"]),
+      expect.arrayContaining(["resolve_ens", "lookup_ens", "register_ens", "set_primary_ens"]),
     )
     expect(action.skill.name).toBe("ens-name")
   })

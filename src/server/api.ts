@@ -23,7 +23,7 @@ import {
   getOrCreateAgentWallet,
 } from "../core/wallet.js";
 import { resolveAgentSkills } from "../core/agent-skills.js";
-import { createFileCheckpointer } from "../core/file-checkpoint.js";
+import { createPersistentCheckpointer } from "../core/file-checkpoint.js";
 import {
   loadAgentConfig,
   resolveToolsFromConfig,
@@ -50,7 +50,7 @@ import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-
 import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
 import { registerAgent } from "../core/registry.js";
 import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
-import { readAgentMemory } from "../core/memory-reader.js";
+import { readAgentMemoryAsync } from "../core/memory-reader.js";
 import type { Skill } from "../actions/types.js";
 import { A2AServer, type A2AExecutor } from "../a2a/server.js";
 import { HttpFacilitatorClient } from "../a2a/http-facilitator.js";
@@ -346,8 +346,8 @@ async function runChatOnActiveNetwork(agentName: string, message: string, a2a: b
   }
 
   const { saver, flush } = a2a
-    ? { saver: undefined, flush: () => {} }
-    : createFileCheckpointer(agentName);
+    ? { saver: undefined, flush: async () => {} }
+    : await createPersistentCheckpointer(agentName);
 
   const networkName = agentConfig?.walletChainId
     ? getNetworkNameByChainId(agentConfig.walletChainId)
@@ -439,7 +439,7 @@ async function runChatOnActiveNetwork(agentName: string, message: string, a2a: b
     events.push({ type: "message", content: reply });
   }
 
-  flush();
+  await flush();
   return { reply: reply || "(no response)", events };
 }
 
@@ -1293,7 +1293,7 @@ app.get("/api/agents/:name/memory", async (c) => {
     return c.json({ error: "Agent not found" }, 404);
   }
   try {
-    const memory = readAgentMemory(name);
+    const memory = await readAgentMemoryAsync(name);
     return c.json(memory);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1328,58 +1328,47 @@ app.post("/api/agents/:name/chat", async (c) => {
   }
 });
 
-app.post("/api/agents/:name/feedback", async (c) => {
+// Unsigned giveFeedback tx for the connected wallet to sign (feedback author = that wallet).
+app.post("/api/agents/:name/feedback/prepare", async (c) => {
   const name = c.req.param("name");
   if (!(await ensureAgentLoaded(name))) {
     return c.json({ error: "Agent not found" }, 404);
   }
-
   let body: {
     agentId?: string;
     value?: unknown;
     tag?: string;
     endpoint?: string;
     comment?: string;
+    clientAddress?: string;
   };
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
-
-  // Default target: the agent's own registered agentId.
+  if (!body.clientAddress || !/^0x[0-9a-fA-F]{40}$/.test(body.clientAddress)) {
+    return c.json({ error: "Connect a wallet to rate" }, 401);
+  }
   const summary = await publicAgentSummary(name);
   const agentId = body.agentId?.trim() || summary.agentId;
-  if (!agentId) {
-    return c.json({ error: "agentId is required" }, 400);
-  }
+  if (!agentId) return c.json({ error: "agentId is required" }, 400);
   if (typeof body.value !== "number" || !Number.isFinite(body.value)) {
     return c.json({ error: "value must be a number 0-100" }, 400);
   }
-
   try {
-    const { giveFeedback } = await import("../core/reputation.js");
-    const result = await giveFeedback({
+    const { prepareFeedback } = await import("../core/reputation.js");
+    const tx = await prepareFeedback({
       agentId,
       value: body.value,
-      // tag1 is forced to 'starred' in giveFeedback; body.tag is kept as tag2 context.
       tag: body.tag,
       endpoint: body.endpoint,
       comment: body.comment,
+      clientAddress: body.clientAddress,
     });
-    // A rated agent may live on another chain than the rater; its ID says which.
-    return c.json({
-      ok: true,
-      ...result,
-      scanUrl: getAgentScanUrl(String(agentId)),
-    });
+    return c.json({ ok: true, ...tx, scanUrl: getAgentScanUrl(String(agentId)) });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // Missing signer is a client-config error, not a server crash.
-    if (msg.includes("RATER_PRIVATE_KEY")) {
-      return c.json({ error: msg }, 500);
-    }
-    return c.json({ error: msg }, 500);
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 

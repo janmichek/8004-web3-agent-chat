@@ -416,9 +416,9 @@ function onNewChat() {
 .recall-active {
   font-size: 0.7rem;
   font-weight: 700;
-  color: #6ecf8e;
-  background: color-mix(in oklab, #6ecf8e 14%, var(--bg));
-  border: 1px solid color-mix(in oklab, #6ecf8e 28%, var(--border));
+  color: var(--ok-ink);
+  background: color-mix(in oklab, var(--ok-ink) 14%, var(--bg));
+  border: 1px solid color-mix(in oklab, var(--ok-ink) 28%, var(--border));
   padding: 0.1rem 0.35rem;
   border-radius: 999px;
 }

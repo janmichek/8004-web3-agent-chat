@@ -320,55 +320,52 @@ onMounted(() => {
   void loadOasf()
 })
 
-// Mutual exclusivity: transfer-eth bundles send_eth + get_token_balance
-const TRANSFER_ETH_TOOLS = ['send_eth', 'get_token_balance'] as const
-const TRANSFER_ETH_ACTION = 'transfer-eth'
-
-function isToolPale(name: string): boolean {
-  return (TRANSFER_ETH_TOOLS as readonly string[]).includes(name) && selectedActions.value.includes(TRANSFER_ETH_ACTION)
+/** Tools an action already includes, so they must not also be picked standalone. */
+function bundledTools(actionName: string): string[] {
+  return catalog.value?.actions.find((a) => a.name === actionName)?.toolNames ?? []
 }
 
-function isActionPale(name: string): boolean {
-  if (name !== TRANSFER_ETH_ACTION) return false
-  // Pale when both constituent tools are selected as standalone (group-level exclusivity)
-  // Also pale when any single constituent is selected — keeps visual cue symmetric
-  // Choose ANY to give earlier feedback; switch to .every if strict group exclusivity is desired
-  return TRANSFER_ETH_TOOLS.some((t) => selectedTools.value.includes(t))
+/** Action that already includes this tool, if the catalog lists one. */
+function bundlingAction(toolName: string): string | undefined {
+  return catalog.value?.actions.find((a) => a.toolNames.includes(toolName))?.name
+}
+
+function isToolDisabled(name: string): boolean {
+  const action = bundlingAction(name)
+  return action != null && selectedActions.value.includes(action)
+}
+
+function isActionDisabled(name: string): boolean {
+  return bundledTools(name).some((t) => selectedTools.value.includes(t))
+}
+
+function exclusivityNoteForAction(name: string): string {
+  const tools = bundledTools(name)
+  if (tools.length === 0) return ''
+  return ` · Mutually exclusive with ${tools.join(' + ')} standalone tools.`
+}
+
+function exclusivityNoteForTool(name: string): string {
+  const action = bundlingAction(name)
+  if (!action) return ''
+  return ` · Mutually exclusive with ${action} action.`
 }
 
 function toggleAction(name: string) {
   const i = selectedActions.value.indexOf(name)
-  const isSelected = i >= 0
-  if (isSelected) {
+  if (i >= 0) {
     selectedActions.value.splice(i, 1)
-  } else {
-    // Selecting transfer-eth deselects its constituent standalone tools
-    if (name === TRANSFER_ETH_ACTION) {
-      selectedTools.value = selectedTools.value.filter((t) => !(TRANSFER_ETH_TOOLS as readonly string[]).includes(t))
-    }
-    selectedActions.value.push(name)
+    return
   }
+  if (isActionDisabled(name)) return
+  selectedActions.value.push(name)
 }
 
 function toggleTool(name: string) {
-  const isTransferTool = (TRANSFER_ETH_TOOLS as readonly string[]).includes(name)
-  const transferActionSelected = selectedActions.value.includes(TRANSFER_ETH_ACTION)
-
-  // Selecting a constituent tool deselects the transfer-eth action (vice versa)
-  if (isTransferTool && transferActionSelected) {
-    const idx = selectedActions.value.indexOf(TRANSFER_ETH_ACTION)
-    if (idx >= 0) selectedActions.value.splice(idx, 1)
-  }
-
+  if (isToolDisabled(name)) return
   const i = selectedTools.value.indexOf(name)
   if (i >= 0) selectedTools.value.splice(i, 1)
   else selectedTools.value.push(name)
-
-  // If both constituent tools are now individually selected, ensure action stays deselected
-  if (isTransferTool && selectedTools.value.includes('send_eth') && selectedTools.value.includes('get_token_balance')) {
-    const ai = selectedActions.value.indexOf(TRANSFER_ETH_ACTION)
-    if (ai >= 0) selectedActions.value.splice(ai, 1)
-  }
 }
 
 function goConfigure() {
@@ -492,21 +489,37 @@ async function fundFromMaster() {
   }
 }
 
-async function sendPreparedWithRetry(
-  prepared: Awaited<ReturnType<typeof prepareNativeTransfer>>,
-): Promise<`0x${string}`> {
-  const attempts = 3
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await sendTransaction(wagmiConfig, prepared)
-    } catch (err) {
-      if (!isRpcRateLimit(err) || i === attempts - 1) throw err
-      fundStatusKind.value = 'info'
-      fundStatus.value = `RPC busy, retrying (${i + 2}/${attempts})…`
-      await new Promise((r) => setTimeout(r, 800 * (i + 1)))
-    }
+/**
+ * Send a native transfer. Prefer a minimal request (wallet fills nonce/fees) —
+ * passing a precomputed nonce often triggers MetaMask 4100 via Web3Auth.
+ * On public-RPC rate limits, retry with gas/fees from /api/rpc (still no nonce).
+ */
+async function sendFundTransfer(params: {
+  account: `0x${string}`
+  to: `0x${string}`
+  value: bigint
+  chainId: number
+}): Promise<`0x${string}`> {
+  const base = {
+    account: params.account,
+    to: params.to,
+    value: params.value,
+    chainId: params.chainId,
   }
-  throw new Error('Transfer failed')
+  try {
+    return await sendTransaction(wagmiConfig, base)
+  } catch (err) {
+    if (!isRpcRateLimit(err)) throw err
+    fundStatusKind.value = 'info'
+    fundStatus.value = 'RPC busy, retrying with prepared gas…'
+    const prepared = await prepareNativeTransfer(params)
+    return await sendTransaction(wagmiConfig, {
+      ...base,
+      gas: prepared.gas,
+      maxFeePerGas: prepared.maxFeePerGas,
+      maxPriorityFeePerGas: prepared.maxPriorityFeePerGas,
+    })
+  }
 }
 
 /** Fund the freshly created agent from the user's connected wallet (MetaMask signs). */
@@ -514,7 +527,7 @@ async function fundFromWallet() {
   if (!createdAgent.value?.walletAddress || !fundAmountValid.value || fundBusy.value) return
   fundBusy.value = 'wallet'
   fundStatusKind.value = 'info'
-  fundStatus.value = 'Preparing transaction…'
+  fundStatus.value = 'Waiting for wallet signature…'
   try {
     // The agent wallet is funded on the chain the agent was created on.
     const chainId = createdAgent.value.walletChainId ?? DEFAULT_CHAIN_ID
@@ -522,18 +535,12 @@ async function fundFromWallet() {
     const account = getAccount(wagmiConfig)
     if (!account.address) throw new Error('Connect a wallet first')
 
-    const to = createdAgent.value.walletAddress as `0x${string}`
-    const value = parseEther(fundEth.value.trim() as `${number}`)
-    // Gas/nonce via /api/rpc (Alchemy) — avoids public RPC rate limits.
-    const prepared = await prepareNativeTransfer({
+    const hash = await sendFundTransfer({
       account: account.address,
-      to,
-      value,
+      to: createdAgent.value.walletAddress as `0x${string}`,
+      value: parseEther(fundEth.value.trim() as `${number}`),
       chainId,
     })
-
-    fundStatus.value = 'Waiting for wallet signature…'
-    const hash = await sendPreparedWithRetry(prepared)
     fundTxHash.value = hash
     fundStatusKind.value = 'ok'
     fundStatus.value = `Sent ${fundEth.value.trim()} ETH (tx ${hash.slice(0, 10)}…)`
@@ -778,31 +785,33 @@ async function fundFromWallet() {
       <ul class="checklist">
         <!-- Actions -->
         <li v-for="a in catalog?.actions ?? []" :key="`action-${a.name}`">
-          <label class="check" :class="{ pale: isActionPale(a.name) }">
+          <label class="check" :class="{ disabled: isActionDisabled(a.name) }">
             <input
               type="checkbox"
               :data-testid="`create-action-${a.name}`"
               :checked="selectedActions.includes(a.name)"
+              :disabled="isActionDisabled(a.name)"
               @change="toggleAction(a.name)"
             />
             <span>
               <strong>{{ a.name }} <span class="badge">action</span></strong>
-              <em>{{ a.description }} [tools: {{ a.toolNames.join(', ') }}]<template v-if="a.name === 'transfer-eth'"> · Mutually exclusive with send_eth + get_token_balance standalone tools.</template></em>
+              <em>{{ a.description }} [tools: {{ a.toolNames.join(', ') }}]{{ exclusivityNoteForAction(a.name) }}</em>
             </span>
           </label>
         </li>
         <!-- Standalone tools -->
         <li v-for="t in catalog?.tools ?? []" :key="`tool-${t.name}`">
-          <label class="check" :class="{ pale: isToolPale(t.name) }">
+          <label class="check" :class="{ disabled: isToolDisabled(t.name) }">
             <input
               type="checkbox"
               :data-testid="`create-tool-${t.name}`"
               :checked="selectedTools.includes(t.name)"
+              :disabled="isToolDisabled(t.name)"
               @change="toggleTool(t.name)"
             />
             <span>
               <strong>{{ t.name }} <span class="badge tool">tool</span></strong>
-              <em>{{ t.description }}<template v-if="t.name === 'send_eth' || t.name === 'get_token_balance'"> · Mutually exclusive with transfer-eth action.</template></em>
+              <em>{{ t.description }}{{ exclusivityNoteForTool(t.name) }}</em>
             </span>
           </label>
         </li>
@@ -1300,7 +1309,7 @@ async function fundFromWallet() {
 }
 
 .image-status.fail {
-  color: #ffb4b0;
+  color: var(--danger-ink);
 }
 
 .hint {
@@ -1310,11 +1319,11 @@ async function fundFromWallet() {
 }
 
 .hint.ok {
-  color: #6ecf8e;
+  color: var(--ok-ink);
 }
 
 .hint.error {
-  color: #ffb4b0;
+  color: var(--danger-ink);
 }
 
 .fund-panel {
@@ -1420,11 +1429,6 @@ async function fundFromWallet() {
   cursor: not-allowed;
 }
 
-.check.pale {
-  opacity: 0.55;
-  /* pale like disabled, but still interactive */
-}
-
 .check.partial {
   border-style: dashed;
 }
@@ -1502,10 +1506,10 @@ async function fundFromWallet() {
 }
 
 .body .banner {
-  border: 1px solid color-mix(in oklab, #c44 40%, var(--border));
+  border: 1px solid color-mix(in oklab, var(--danger-base) 40%, var(--border));
   border-radius: 0.4rem;
-  background: color-mix(in oklab, #c44 14%, var(--surface));
-  color: #ffb4b0;
+  background: color-mix(in oklab, var(--danger-base) 14%, var(--surface));
+  color: var(--danger-ink);
 }
 
 .steps {
@@ -1524,16 +1528,16 @@ async function fundFromWallet() {
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.85rem;
-  border: 1px solid color-mix(in oklab, #c44 45%, var(--border));
+  border: 1px solid color-mix(in oklab, var(--danger-base) 45%, var(--border));
   border-radius: 0.5rem;
-  background: color-mix(in oklab, #c44 12%, var(--surface));
+  background: color-mix(in oklab, var(--danger-base) 12%, var(--surface));
 }
 
 .ephemeral-title {
   margin: 0;
   font-size: 0.82rem;
   font-weight: 700;
-  color: #ffb4b0;
+  color: var(--danger-ink);
 }
 
 .ephemeral-key .hint.mono {
@@ -1560,7 +1564,7 @@ async function fundFromWallet() {
 }
 
 .steps .fail {
-  color: #ffb4b0;
+  color: var(--danger-ink);
 }
 
 .creating-pulse {

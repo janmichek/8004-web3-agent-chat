@@ -27,17 +27,6 @@ export type ReputationSummary = {
   scanUrl?: string
 }
 
-export type FeedbackResult = {
-  ok: boolean
-  txHash: string
-  agentId: string
-  value: number
-  rater: string
-  reputation: ReputationSummary
-  scanUrl: string
-  feedbackURI?: string
-}
-
 export type ChatEvent =
   | { type: 'tool_call'; name: string; args: unknown }
   | { type: 'tool_result'; content: string }
@@ -296,11 +285,30 @@ export function fundAgent(name: string, amountEth: string) {
   })
 }
 
-export function submitFeedback(
+export type PreparedFeedback = {
+  ok: boolean
+  to: `0x${string}`
+  data: `0x${string}`
+  chainId: number
+  agentId: string
+  value: number
+  scanUrl: string
+  feedbackURI?: string
+}
+
+/** Unsigned giveFeedback tx; the connected wallet signs it so it is the feedback author. */
+export function prepareFeedback(
   agentName: string,
-  body: { agentId?: string; value: number; tag?: string; endpoint?: string; comment?: string },
+  body: {
+    agentId?: string
+    value: number
+    tag?: string
+    endpoint?: string
+    comment?: string
+    clientAddress: string
+  },
 ) {
-  return request<FeedbackResult>(`/api/agents/${encodeURIComponent(agentName)}/feedback`, {
+  return request<PreparedFeedback>(`/api/agents/${encodeURIComponent(agentName)}/feedback/prepare`, {
     method: 'POST',
     body: JSON.stringify(body),
   })
