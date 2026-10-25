@@ -2,5 +2,4 @@
 - [] endpoint vs services
 - [] MCP https://best-practices.8004scan.io/docs/01-agent-metadata-standard.html#_1-mcp-model-context-protocol
 - [] agent wallet https://best-practices.8004scan.io/docs/01-agent-metadata-standard.html#_4-agentwallet
-- creator signed user, also funds bot - add test flow
 

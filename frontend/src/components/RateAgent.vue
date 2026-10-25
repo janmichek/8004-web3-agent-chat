@@ -5,6 +5,7 @@ import { sendTransaction, waitForTransactionReceipt } from '@wagmi/vue/actions'
 import { fetchReputation, prepareFeedback, scanUrlForAgent, txScanUrl } from '../api'
 import { ensureChain } from '../chain'
 import { DEFAULT_CHAIN_ID, chainIdOfAgentId } from '../networks'
+import { friendlyFundError } from '../rpc-errors'
 
 const props = defineProps<{
   /** Local agent name used for the feedback API route. */
@@ -142,13 +143,23 @@ watch(agentId, () => {
   void loadReputation()
 })
 
-async function sendFeedbackTx(prepared: { to: `0x${string}`; data: `0x${string}`; chainId: number }) {
+async function sendFeedbackTx(
+  prepared: { to: `0x${string}`; data: `0x${string}`; chainId: number },
+  onSent: (hash: string) => void,
+) {
   // Playwright has no real wallet: let tests stub the send.
   const stub = (window as unknown as { __E2E_SEND_TX?: () => string | Promise<string> }).__E2E_SEND_TX
-  if (stub) return await stub()
+  if (stub) {
+    const stubbed = await stub()
+    onSent(stubbed)
+    return stubbed
+  }
   await ensureChain(wagmiConfig, prepared.chainId)
   const hash = await sendTransaction(wagmiConfig, { to: prepared.to, data: prepared.data, chainId: prepared.chainId })
-  await waitForTransactionReceipt(wagmiConfig, { hash, chainId: prepared.chainId })
+  // Report the hash before waiting: a failed wait must not look like a failed send.
+  onSent(hash)
+  // Slow polling: every poll is an eth_getBlockByNumber against a rate-limited RPC.
+  await waitForTransactionReceipt(wagmiConfig, { hash, chainId: prepared.chainId, pollingInterval: 8_000 })
   return hash
 }
 
@@ -172,7 +183,9 @@ async function submit() {
       clientAddress: account,
     })
     // The connected wallet signs, so it becomes the on-chain feedback author.
-    const hash = await sendFeedbackTx(prepared)
+    const hash = await sendFeedbackTx(prepared, (sent) => {
+      resultTx.value = sent
+    })
     resultTx.value = hash
     feedbackURI.value = prepared.feedbackURI ?? ''
     const base = prepared.scanUrl || scanUrlForAgent(agentId.value.trim(), chainId.value)
@@ -181,7 +194,11 @@ async function submit() {
     submitted.value = true
     emit('rated', { txHash: resultTx.value, scanUrl: scanUrl.value })
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
+    const message = friendlyFundError(err, 'wallet')
+    // Tx already broadcast: the rating may still land, so don't invite a resubmit.
+    error.value = resultTx.value
+      ? `Rating sent (tx ${resultTx.value.slice(0, 10)}…) but confirmation failed: ${message} Check the explorer before retrying.`
+      : message
   } finally {
     busy.value = false
   }

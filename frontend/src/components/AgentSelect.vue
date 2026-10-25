@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AgentSummary } from '../api'
+import NetworkIcon from './NetworkIcon.vue'
+import { chainIdOfAgentId } from '../networks'
 
 const props = defineProps<{
   agents: AgentSummary[]
@@ -175,6 +177,11 @@ function usageLabel(agent: AgentSummary): string {
   return `Last used ${relativeTime(agent.lastActive)} · ${usage}`
 }
 
+/** Chain the agent is registered on: from its ERC-8004 id ("chainId:tokenId"), else its wallet chain. */
+function registryChainId(agent: AgentSummary): number {
+  return chainIdOfAgentId(agent.agentId ?? '') ?? agent.walletChainId
+}
+
 function triggerSubtitle(agent: AgentSummary | null): string {
   if (!agent) return props.agents.length ? 'Choose an agent' : 'Create your first agent'
   return usageLabel(agent)
@@ -198,9 +205,14 @@ function triggerSubtitle(agent: AgentSummary | null): string {
       @keydown.up.prevent="openMenu"
       @keydown.esc="closeMenu()"
     >
-      <span class="avatar" :style="avatarStyle(selected?.name ?? 'agent')" aria-hidden="true">
-        <img v-if="selected?.image" :src="selected.image" alt="" @error="hideBrokenImage" />
-        <span v-else class="initials">{{ initials(selected?.name ?? 'agent') }}</span>
+      <span class="avatar-wrap">
+        <span class="avatar" :style="avatarStyle(selected?.name ?? 'agent')" aria-hidden="true">
+          <img v-if="selected?.image" :src="selected.image" alt="" @error="hideBrokenImage" />
+          <span v-else class="initials">{{ initials(selected?.name ?? 'agent') }}</span>
+        </span>
+        <span v-if="selected?.agentId" class="chain-badge" data-testid="agent-chain-badge">
+          <NetworkIcon :chain-id="registryChainId(selected)" :size="11" />
+        </span>
       </span>
       <span class="trigger-copy">
         <span class="trigger-name">{{ selected?.name ?? 'No agent selected' }}</span>
@@ -248,9 +260,14 @@ function triggerSubtitle(agent: AgentSummary | null): string {
             @mousemove="activeIndex = index"
             @click="choose(agent.name)"
           >
-            <span class="avatar option-avatar" :style="avatarStyle(agent.name)" aria-hidden="true">
-              <img v-if="agent.image" :src="agent.image" alt="" @error="hideBrokenImage" />
-              <span v-else class="initials">{{ initials(agent.name) }}</span>
+            <span class="avatar-wrap">
+              <span class="avatar option-avatar" :style="avatarStyle(agent.name)" aria-hidden="true">
+                <img v-if="agent.image" :src="agent.image" alt="" @error="hideBrokenImage" />
+                <span v-else class="initials">{{ initials(agent.name) }}</span>
+              </span>
+              <span v-if="agent.agentId" class="chain-badge">
+                <NetworkIcon :chain-id="registryChainId(agent)" :size="11" />
+              </span>
             </span>
             <span class="option-copy">
               <span class="option-title">
@@ -350,6 +367,26 @@ function triggerSubtitle(agent: AgentSummary | null): string {
 }
 .initials {
   line-height: 1;
+}
+
+.avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.chain-badge {
+  position: absolute;
+  right: -0.3rem;
+  bottom: -0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 0 0 1px var(--surface);
 }
 
 .trigger-copy {
