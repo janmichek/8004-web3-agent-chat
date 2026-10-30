@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { DynamicStructuredTool } from "@langchain/core/tools"
-import { z } from "zod"
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
 
 function scanBase(): string {
-  return process.env.SCAN_API_BASE || "https://testnet.8004scan.io/api/v1"
+  return process.env.SCAN_API_BASE || "https://testnet.8004scan.io/api/v1";
 }
 
 function scanHeaders(): Record<string, string> {
-  const key = process.env.SCAN_API_KEY || ""
+  const key = process.env.SCAN_API_KEY || "";
   return {
     "Content-Type": "application/json",
     // 8004scan docs mention X-Access-Token (MCP dialog) and X-API-Key (curl example);
@@ -16,25 +16,25 @@ function scanHeaders(): Record<string, string> {
     "X-Access-Token": key,
     "X-API-Key": key,
     Authorization: `Bearer ${key}`,
-  }
+  };
 }
 
 async function scanGet(path: string): Promise<string> {
-  const key = process.env.SCAN_API_KEY
+  const key = process.env.SCAN_API_KEY;
   if (!key) {
-    return "Error: SCAN_API_KEY environment variable is not set (get one at https://testnet.8004scan.io)"
+    return "Error: SCAN_API_KEY environment variable is not set (get one at https://testnet.8004scan.io)";
   }
   try {
-    const res = await fetch(`${scanBase()}${path}`, { headers: scanHeaders() })
-    const text = await res.text()
+    const res = await fetch(`${scanBase()}${path}`, { headers: scanHeaders() });
+    const text = await res.text();
     if (!res.ok) {
-      return `Error: 8004scan ${res.status} ${text.slice(0, 300)}`
+      return `Error: 8004scan ${res.status} ${text.slice(0, 300)}`;
     }
     // Truncate: agent listings can be large, keep LLM context sane.
-    return text.length > 4000 ? text.slice(0, 4000) + "\n...[truncated]" : text
+    return text.length > 4000 ? text.slice(0, 4000) + "\n...[truncated]" : text;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return `Error: ${message.slice(0, 300)}`
+    const message = err instanceof Error ? err.message : String(err);
+    return `Error: ${message.slice(0, 300)}`;
   }
 }
 
@@ -55,13 +55,13 @@ export const searchAgentsTool: DynamicStructuredTool = new DynamicStructuredTool
     search_type: z.string().optional().describe("'keyword' or 'semantic' (default keyword)"),
   }),
   func: async ({ query, chain_id, limit, search_type }): Promise<string> => {
-    const params = new URLSearchParams({ query })
-    if (chain_id) params.set("chain_id", chain_id)
-    if (limit) params.set("limit", String(limit))
-    if (search_type) params.set("search_type", search_type)
-    return scanGet(`/agents?${params.toString()}`)
+    const params = new URLSearchParams({ query });
+    if (chain_id) params.set("chain_id", chain_id);
+    if (limit) params.set("limit", String(limit));
+    if (search_type) params.set("search_type", search_type);
+    return scanGet(`/agents?${params.toString()}`);
   },
-})
+});
 
 /** @notice Get detailed info about a specific ERC-8004 agent. */
 export const getScanAgentTool: DynamicStructuredTool = new DynamicStructuredTool({
@@ -73,9 +73,9 @@ export const getScanAgentTool: DynamicStructuredTool = new DynamicStructuredTool
     agentId: z.string().describe("ERC-8004 agent ID, e.g. '421614:204'"),
   }),
   func: async ({ agentId }): Promise<string> => {
-    return scanGet(`/agents/${encodeURIComponent(agentId)}`)
+    return scanGet(`/agents/${encodeURIComponent(agentId)}`);
   },
-})
+});
 
 /** @notice Get off-chain feedbacks/reviews for an agent from 8004scan. */
 export const getScanAgentFeedbacksTool: DynamicStructuredTool = new DynamicStructuredTool({
@@ -88,7 +88,7 @@ export const getScanAgentFeedbacksTool: DynamicStructuredTool = new DynamicStruc
     limit: z.number().optional().describe("Max feedbacks (default 10)"),
   }),
   func: async ({ agentId, limit }): Promise<string> => {
-    const suffix = limit ? `?limit=${limit}` : ""
-    return scanGet(`/agents/${encodeURIComponent(agentId)}/feedbacks${suffix}`)
+    const suffix = limit ? `?limit=${limit}` : "";
+    return scanGet(`/agents/${encodeURIComponent(agentId)}/feedbacks${suffix}`);
   },
-})
+});

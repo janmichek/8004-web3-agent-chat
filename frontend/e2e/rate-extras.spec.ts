@@ -43,7 +43,10 @@ test.describe('rate agent extras', () => {
 
   test('balance tool result tags the rating as balance', async ({ page }) => {
     const seen: unknown[] = []
-    await setupOffline(page, { chat: chatWithTool('get_token_balance', 'Balance: 2.0 ETH'), capture: { feedback: seen } })
+    await setupOffline(page, {
+      chat: chatWithTool('get_token_balance', 'Balance: 2.0 ETH'),
+      capture: { feedback: seen },
+    })
     await gotoWithAgent(page)
     await sendChat(page, 'balance?')
     await expect(page.getByTestId('rate-agent')).toBeVisible()
@@ -72,7 +75,10 @@ test.describe('rate agent extras', () => {
     await gotoWithAgent(page)
     await sendChat(page, 'go')
     await page.getByTestId('rate-submit').click()
-    await page.getByTestId('rate-submit').click({ force: true }).catch(() => {})
+    await page
+      .getByTestId('rate-submit')
+      .click({ force: true })
+      .catch(() => {})
     await expect(page.getByTestId('rate-scan-link')).toBeVisible()
     expect(seen).toHaveLength(1)
   })

@@ -39,7 +39,7 @@ const NETWORKS: Record<NetworkName, NetworkConfig> = {
     scanSlug: "arbitrum-one",
     testnet: false,
   },
-  "mantle": {
+  mantle: {
     name: "Mantle",
     chainId: 5000,
     defaultRpcUrl: "https://mantle-mainnet.g.alchemy.com/v2",
@@ -103,7 +103,7 @@ export function getDefaultNetwork(): NetworkName {
   const raw = process.env.NETWORK || "arbitrum-sepolia";
   if (!(raw in NETWORKS)) {
     throw new Error(
-      `Unsupported network "${raw}". Supported networks: ${Object.keys(NETWORKS).join(", ")}`
+      `Unsupported network "${raw}". Supported networks: ${Object.keys(NETWORKS).join(", ")}`,
     );
   }
   return raw as NetworkName;
@@ -143,7 +143,7 @@ export function getNetworkConfig(network?: NetworkName): NetworkConfig {
 }
 
 /** Env var holding a network's own RPC endpoint, e.g. RPC_URL_ETHEREUM_SEPOLIA. */
-export function getRpcEnvVar(network: NetworkName): string {
+function getRpcEnvVar(network: NetworkName): string {
   return `RPC_URL_${network.toUpperCase().replace(/-/g, "_")}`;
 }
 
@@ -172,7 +172,7 @@ export function getRpcUrl(network?: NetworkName): string {
   throw new Error(
     `Missing RPC endpoint for ${NETWORKS[name].name}. Set the ` +
       `${isDefault ? `RPC_URL or ${envVar}` : envVar} environment variable.\n` +
-      `Example: ${NETWORKS[name].defaultRpcUrl}/YOUR_API_KEY`
+      `Example: ${NETWORKS[name].defaultRpcUrl}/YOUR_API_KEY`,
   );
 }
 

@@ -52,7 +52,10 @@ test.describe('rate agent (mocked feedback)', () => {
     await expect(page.getByTestId('rate-scan-link')).toBeVisible({ timeout: 15000 })
     const links = page.getByTestId('rate-scan-link').locator('a')
     await expect(links.nth(0)).toHaveAttribute('href', /sepolia\.arbiscan\.io\/tx\/0xddd/)
-    await expect(links.nth(1)).toHaveAttribute('href', /8004scan\.io\/agents\/arbitrum-sepolia\/42\?tab=feedback/)
+    await expect(links.nth(1)).toHaveAttribute(
+      'href',
+      /8004scan\.io\/agents\/arbitrum-sepolia\/42\?tab=feedback/,
+    )
     await expect(page.getByTestId('rate-submit')).toBeDisabled()
     await expect(page.getByTestId('rate-submit')).toContainText('Rated')
 
@@ -66,7 +69,9 @@ test.describe('rate agent (mocked feedback)', () => {
     expect((seen[0] as { endpoint: string }).endpoint).toMatch(/#send_eth$/)
   })
 
-  test('tag context follows the tool used (balance / contract-abi / execution)', async ({ page }) => {
+  test('tag context follows the tool used (balance / contract-abi / execution)', async ({
+    page,
+  }) => {
     for (const [tool, tag] of [
       ['get_token_balance', 'balance'],
       ['fetch_contract_abi', 'contract-abi'],

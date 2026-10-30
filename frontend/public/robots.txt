@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+# Machine-readable discovery
+# Agent card (A2A): /.well-known/agent-card.json
+# Site summary for LLMs: /llms.txt

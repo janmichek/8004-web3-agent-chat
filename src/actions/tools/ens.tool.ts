@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { DynamicStructuredTool } from "@langchain/core/tools"
-import { z } from "zod"
+import { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
 import {
   concat,
   createPublicClient,
@@ -19,16 +19,14 @@ import {
   type Address,
   type Chain,
   type Hex,
-} from "viem"
-import { privateKeyToAccount } from "viem/accounts"
-import { mainnet, sepolia } from "viem/chains"
-import { labelhash, normalize, packetToBytes, toCoinType } from "viem/ens"
-import { getActiveNetwork, getChainId, getNetworkConfig, getRpcUrl } from "../../core/config.js"
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { mainnet, sepolia } from "viem/chains";
+import { labelhash, normalize, packetToBytes, toCoinType } from "viem/ens";
+import { getActiveNetwork, getChainId, getNetworkConfig, getRpcUrl } from "../../core/config.js";
 
 /** L1 ReverseRegistrar.setName — also present on ENS L2 reverse registrars. */
-const reverseRegistrarAbi = parseAbi([
-  "function setName(string name) returns (bytes32)",
-])
+const reverseRegistrarAbi = parseAbi(["function setName(string name) returns (bytes32)"]);
 
 /**
  * Chain-specific reverse registrars (ENSIP-19).
@@ -43,7 +41,7 @@ const REVERSE_REGISTRARS: Record<number, Address> = {
   42161: getAddress("0x0000000000D8e504002cC26E3Ec46D81971C1664"),
   // Arbitrum Sepolia
   421614: getAddress("0x00000BeEF055f7934784D6d81b6BC86665630dbA"),
-}
+};
 
 /** ENSv2 ETHRegistrar: commit-reveal registration paid in an ERC-20. */
 const ethRegistrarAbi = parseAbi([
@@ -55,43 +53,43 @@ const ethRegistrarAbi = parseAbi([
   "function commitmentAt(bytes32 commitment) view returns (uint64)",
   "function commit(bytes32 commitment)",
   "function register(string label, address owner, bytes32 secret, address subregistry, address resolver, uint64 duration, address paymentToken, bytes32 referrer) returns (uint256)",
-])
+]);
 
 const ethRegistryAbi = parseAbi([
   "function getOwner(uint256 anyId) view returns (address)",
   "function getResolver(string label) view returns (address)",
-])
+]);
 
 const paymentTokenAbi = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)",
   "function mint(address to, uint256 amount)",
-])
+]);
 
 const resolverFactoryAbi = parseAbi([
   "function predictProxyAddress(address deployer, uint256 salt) view returns (address)",
   "function deployProxy(address implementation, uint256 salt, bytes data) returns (address)",
-])
+]);
 
 /** ENSv2 PermissionedResolver: a resolver owned by the wallet that deploys it. */
 const permissionedResolverAbi = parseAbi([
   "function initialize((address account, uint256 roleBitmap)[] grants, bytes[] calls)",
   "function setAddress(bytes name, uint256 coinType, bytes addressBytes)",
-])
+]);
 
 /** EnhancedAccessControl bitmap granting every role and its admin role. */
-const ALL_ROLES = 0x1111111111111111111111111111111111111111111111111111111111111111n
+const ALL_ROLES = 0x1111111111111111111111111111111111111111111111111111111111111111n;
 
-const ETH_COIN_TYPE = 60n
-const SECONDS_PER_YEAR = 31_536_000n
+const ETH_COIN_TYPE = 60n;
+const SECONDS_PER_YEAR = 31_536_000n;
 
 interface EnsRegistrationContracts {
-  registrar: Address
-  registry: Address
-  resolverFactory: Address
-  resolverImplementation: Address
-  paymentToken: { address: Address; symbol: string; decimals: number; mintable: boolean }
+  registrar: Address;
+  registry: Address;
+  resolverFactory: Address;
+  resolverImplementation: Address;
+  paymentToken: { address: Address; symbol: string; decimals: number; mintable: boolean };
 }
 
 /**
@@ -114,15 +112,15 @@ const ENS_REGISTRATION: Record<number, EnsRegistrationContracts> = {
       mintable: true,
     },
   },
-}
+};
 
 function isTestnetAgent(): boolean {
-  return Boolean(getNetworkConfig().testnet)
+  return Boolean(getNetworkConfig().testnet);
 }
 
 /** L1 chain used for ENS forward/reverse resolution (Universal Resolver). */
 function ensResolutionChain(): Chain {
-  return isTestnetAgent() ? sepolia : mainnet
+  return isTestnetAgent() ? sepolia : mainnet;
 }
 
 /**
@@ -130,87 +128,97 @@ function ensResolutionChain(): Chain {
  * Order: ENS_RPC_URL, then network-specific RPC, then a public fallback.
  */
 function ensResolutionRpcUrl(): string {
-  const override = process.env.ENS_RPC_URL?.trim()
-  if (override) return override
+  const override = process.env.ENS_RPC_URL?.trim();
+  if (override) return override;
   if (isTestnetAgent()) {
     try {
-      return getRpcUrl("ethereum-sepolia")
+      return getRpcUrl("ethereum-sepolia");
     } catch {
-      return "https://ethereum-sepolia-rpc.publicnode.com"
+      return "https://ethereum-sepolia-rpc.publicnode.com";
     }
   }
-  return "https://ethereum.publicnode.com"
+  return "https://ethereum.publicnode.com";
 }
 
 function ensPublicClient() {
-  const chain = ensResolutionChain()
+  const chain = ensResolutionChain();
   return createPublicClient({
     chain,
     transport: http(ensResolutionRpcUrl()),
-  })
+  });
 }
 
 function agentWalletClients() {
-  const privateKey = process.env.AGENT_PRIVATE_KEY
+  const privateKey = process.env.AGENT_PRIVATE_KEY;
   if (!privateKey) {
-    throw new Error("AGENT_PRIVATE_KEY environment variable is not set")
+    throw new Error("AGENT_PRIVATE_KEY environment variable is not set");
   }
-  const rpcUrl = getRpcUrl()
-  const config = getNetworkConfig()
+  const rpcUrl = getRpcUrl();
+  const config = getNetworkConfig();
   const chain = defineChain({
     id: getChainId(),
     name: config.name,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
-  })
-  const account = privateKeyToAccount(privateKey as `0x${string}`)
-  const publicClient = createPublicClient({ chain, transport: http(rpcUrl) })
-  const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) })
-  return { account, publicClient, walletClient, chain, chainId: chain.id, explorerUrl: config.explorerUrl }
+  });
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
+  const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) });
+  return {
+    account,
+    publicClient,
+    walletClient,
+    chain,
+    chainId: chain.id,
+    explorerUrl: config.explorerUrl,
+  };
 }
 
 /** Agent wallet on the L1 ENS chain, where .eth names are registered. */
 function ensWalletClients() {
-  const privateKey = process.env.AGENT_PRIVATE_KEY
+  const privateKey = process.env.AGENT_PRIVATE_KEY;
   if (!privateKey) {
-    throw new Error("AGENT_PRIVATE_KEY environment variable is not set")
+    throw new Error("AGENT_PRIVATE_KEY environment variable is not set");
   }
-  const chain = ensResolutionChain()
-  const transport = http(ensResolutionRpcUrl())
-  const account = privateKeyToAccount(privateKey as `0x${string}`)
-  const publicClient = createPublicClient({ chain, transport })
-  const walletClient = createWalletClient({ account, chain, transport })
+  const chain = ensResolutionChain();
+  const transport = http(ensResolutionRpcUrl());
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  const publicClient = createPublicClient({ chain, transport });
+  const walletClient = createWalletClient({ account, chain, transport });
   // Reusing one secret per label lets a retry pick up an earlier commitment.
-  const secret = (label: string) => keccak256(concat([privateKey as Hex, toHex(`ens-commit:${label}`)]))
-  return { account, publicClient, walletClient, chain, secret }
+  const secret = (label: string) =>
+    keccak256(concat([privateKey as Hex, toHex(`ens-commit:${label}`)]));
+  return { account, publicClient, walletClient, chain, secret };
 }
 
 function agentAddress(): Address {
-  const pk = process.env.AGENT_PRIVATE_KEY
-  if (!pk) throw new Error("AGENT_PRIVATE_KEY environment variable is not set")
-  return privateKeyToAccount(pk as `0x${string}`).address
+  const pk = process.env.AGENT_PRIVATE_KEY;
+  if (!pk) throw new Error("AGENT_PRIVATE_KEY environment variable is not set");
+  return privateKeyToAccount(pk as `0x${string}`).address;
 }
 
 function truncateError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err)
-  return message.length > 300 ? message.slice(0, 300) + "..." : message
+  const message = err instanceof Error ? err.message : String(err);
+  return message.length > 300 ? message.slice(0, 300) + "..." : message;
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Reduce "MyBot", "mybot.eth" to the normalized label "mybot". Throws on subnames and other TLDs. */
 function parseEthLabel(name: string): string {
-  const normalized = normalize(name.trim())
-  const label = normalized.endsWith(".eth") ? normalized.slice(0, -".eth".length) : normalized
+  const normalized = normalize(name.trim());
+  const label = normalized.endsWith(".eth") ? normalized.slice(0, -".eth".length) : normalized;
   if (!label || label.includes(".")) {
-    throw new Error(`"${name}" is not a registrable .eth name. Use a single label such as "mybot" or "mybot.eth".`)
+    throw new Error(
+      `"${name}" is not a registrable .eth name. Use a single label such as "mybot" or "mybot.eth".`,
+    );
   }
-  return label
+  return label;
 }
 
 /** Write the agent wallet's reverse record on its own chain. Returns the tx hash. */
 async function writeReverseRecord(normalized: string, registrar: Address): Promise<Hex> {
-  const { account, publicClient, walletClient, chain } = agentWalletClients()
+  const { account, publicClient, walletClient, chain } = agentWalletClients();
   const hash = await walletClient.writeContract({
     address: registrar,
     abi: reverseRegistrarAbi,
@@ -218,16 +226,16 @@ async function writeReverseRecord(normalized: string, registrar: Address): Promi
     args: [normalized],
     account,
     chain,
-  })
-  await publicClient.waitForTransactionReceipt({ hash })
-  return hash
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
+  return hash;
 }
 
 function coinTypeForAgentChain(): bigint | undefined {
-  const chainId = getChainId()
+  const chainId = getChainId();
   // L1 addr records use the default coin type; L2 needs ENSIP-19 coinType.
-  if (chainId === 1 || chainId === 11155111) return undefined
-  return toCoinType(chainId)
+  if (chainId === 1 || chainId === 11155111) return undefined;
+  return toCoinType(chainId);
 }
 
 /**
@@ -244,22 +252,22 @@ export const resolveEnsTool: DynamicStructuredTool = new DynamicStructuredTool({
   }),
   func: async ({ name }): Promise<string> => {
     try {
-      const normalized = normalize(name.trim())
-      const client = ensPublicClient()
-      const coinType = coinTypeForAgentChain()
+      const normalized = normalize(name.trim());
+      const client = ensPublicClient();
+      const coinType = coinTypeForAgentChain();
       const address = await client.getEnsAddress({
         name: normalized,
         ...(coinType != null ? { coinType } : {}),
-      })
+      });
       if (!address) {
-        return `Error: ${normalized} does not resolve to an address on ${ensResolutionChain().name}`
+        return `Error: ${normalized} does not resolve to an address on ${ensResolutionChain().name}`;
       }
-      return address
+      return address;
     } catch (err) {
-      return `Error: ${truncateError(err)}`
+      return `Error: ${truncateError(err)}`;
     }
   },
-})
+});
 
 /**
  * @notice Look up the primary ENS name for an address (reverse resolution).
@@ -278,27 +286,27 @@ export const lookupEnsTool: DynamicStructuredTool = new DynamicStructuredTool({
   }),
   func: async ({ address: addressInput }): Promise<string> => {
     try {
-      let address: Address
+      let address: Address;
       if (addressInput?.trim()) {
-        address = getAddress(addressInput.trim())
+        address = getAddress(addressInput.trim());
       } else {
-        address = agentAddress()
+        address = agentAddress();
       }
-      const client = ensPublicClient()
-      const coinType = coinTypeForAgentChain()
+      const client = ensPublicClient();
+      const coinType = coinTypeForAgentChain();
       const name = await client.getEnsName({
         address,
         ...(coinType != null ? { coinType } : {}),
-      })
+      });
       if (!name) {
-        return `No primary ENS name for ${address}`
+        return `No primary ENS name for ${address}`;
       }
-      return name
+      return name;
     } catch (err) {
-      return `Error: ${truncateError(err)}`
+      return `Error: ${truncateError(err)}`;
     }
   },
-})
+});
 
 /**
  * @notice Set the agent wallet's primary ENS name via the chain reverse registrar.
@@ -315,45 +323,45 @@ export const setPrimaryEnsTool: DynamicStructuredTool = new DynamicStructuredToo
   }),
   func: async ({ name }): Promise<string> => {
     try {
-      const normalized = normalize(name.trim())
-      const { account, chainId, explorerUrl } = agentWalletClients()
-      const registrar = REVERSE_REGISTRARS[chainId]
+      const normalized = normalize(name.trim());
+      const { account, chainId, explorerUrl } = agentWalletClients();
+      const registrar = REVERSE_REGISTRARS[chainId];
       if (!registrar) {
         return (
           `Error: Primary ENS name is not supported on chain ${chainId} (${getActiveNetwork()}). ` +
           `Supported: Ethereum Sepolia, Arbitrum Sepolia, Arbitrum One, Ethereum mainnet.`
-        )
+        );
       }
 
       // Require forward resolution to match so reverse records verify as primary names.
-      const ensClient = ensPublicClient()
-      const coinType = coinTypeForAgentChain()
+      const ensClient = ensPublicClient();
+      const coinType = coinTypeForAgentChain();
       const resolved = await ensClient.getEnsAddress({
         name: normalized,
         ...(coinType != null ? { coinType } : {}),
-      })
+      });
       if (!resolved) {
         return (
           `Error: ${normalized} does not resolve to any address. ` +
           `Set the name's address record to ${account.address} first (e.g. via app.ens.domains), then retry.`
-        )
+        );
       }
       if (getAddress(resolved) !== getAddress(account.address)) {
         return (
           `Error: ${normalized} resolves to ${resolved}, but the agent wallet is ${account.address}. ` +
           `Update the name's address record to the agent wallet before setting the primary name.`
-        )
+        );
       }
 
-      const hash = await writeReverseRecord(normalized, registrar)
+      const hash = await writeReverseRecord(normalized, registrar);
 
-      const txUrl = explorerUrl ? `${explorerUrl}/tx/${hash}` : hash
-      return `Primary ENS name set to ${normalized}. tx: ${txUrl}`
+      const txUrl = explorerUrl ? `${explorerUrl}/tx/${hash}` : hash;
+      return `Primary ENS name set to ${normalized}. tx: ${txUrl}`;
     } catch (err) {
-      return `Error: ${truncateError(err)}`
+      return `Error: ${truncateError(err)}`;
     }
   },
-})
+});
 
 /**
  * @notice Register a .eth name for the agent wallet and make it resolve to the agent.
@@ -369,51 +377,61 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
     "If a previous call failed part-way, call it again with the same name to resume.",
   schema: z.object({
     name: z.string().describe("Name to register, e.g. 'mybot' or 'mybot.eth'"),
-    years: z.number().int().min(1).max(5).optional().describe("Registration length in years. Defaults to 1."),
+    years: z
+      .number()
+      .int()
+      .min(1)
+      .max(5)
+      .optional()
+      .describe("Registration length in years. Defaults to 1."),
     setPrimary: z
       .boolean()
       .optional()
       .describe("Also set the name as the agent wallet's primary name. Defaults to true."),
   }),
   func: async ({ name, years, setPrimary }): Promise<string> => {
-    const steps: string[] = []
+    const steps: string[] = [];
     try {
-      const label = parseEthLabel(name)
-      const fullName = `${label}.eth`
-      const { account, publicClient, walletClient, chain, secret } = ensWalletClients()
-      const contracts = ENS_REGISTRATION[chain.id]
+      const label = parseEthLabel(name);
+      const fullName = `${label}.eth`;
+      const { account, publicClient, walletClient, chain, secret } = ensWalletClients();
+      const contracts = ENS_REGISTRATION[chain.id];
       if (!contracts) {
         return (
           `Error: Registering .eth names is not supported on ${chain.name}. ` +
           `Only testnet agents can register (on Ethereum Sepolia); register mainnet names at app.ens.domains.`
-        )
+        );
       }
-      const { registrar, registry, resolverFactory, resolverImplementation, paymentToken } = contracts
-      const explorer = chain.blockExplorers?.default.url
-      const txUrl = (hash: Hex) => (explorer ? `${explorer}/tx/${hash}` : hash)
+      const { registrar, registry, resolverFactory, resolverImplementation, paymentToken } =
+        contracts;
+      const explorer = chain.blockExplorers?.default.url;
+      const txUrl = (hash: Hex) => (explorer ? `${explorer}/tx/${hash}` : hash);
 
-      const send = async (step: string, request: Parameters<typeof walletClient.writeContract>[0]) => {
-        const hash = await walletClient.writeContract(request)
-        const receipt = await publicClient.waitForTransactionReceipt({ hash })
+      const send = async (
+        step: string,
+        request: Parameters<typeof walletClient.writeContract>[0],
+      ) => {
+        const hash = await walletClient.writeContract(request);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") {
-          throw new Error(`${step} transaction reverted: ${txUrl(hash)}`)
+          throw new Error(`${step} transaction reverted: ${txUrl(hash)}`);
         }
-        steps.push(`${step}: ${txUrl(hash)}`)
-      }
+        steps.push(`${step}: ${txUrl(hash)}`);
+      };
 
       const resolver = await publicClient.readContract({
         address: resolverFactory,
         abi: resolverFactoryAbi,
         functionName: "predictProxyAddress",
         args: [account.address, 0n],
-      })
+      });
 
       const available = await publicClient.readContract({
         address: registrar,
         abi: ethRegistrarAbi,
         functionName: "isAvailable",
         args: [label],
-      })
+      });
 
       if (!available) {
         // Taken. Only carry on if the agent itself registered it in an earlier, interrupted call.
@@ -422,39 +440,39 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
           abi: ethRegistryAbi,
           functionName: "getOwner",
           args: [BigInt(labelhash(label))],
-        })
+        });
         if (getAddress(owner) !== getAddress(account.address)) {
-          return `Error: ${fullName} is already registered by ${owner}. Pick a different name.`
+          return `Error: ${fullName} is already registered by ${owner}. Pick a different name.`;
         }
         const currentResolver = await publicClient.readContract({
           address: registry,
           abi: ethRegistryAbi,
           functionName: "getResolver",
           args: [label],
-        })
+        });
         if (getAddress(currentResolver) !== getAddress(resolver)) {
           return (
             `Error: The agent already owns ${fullName}, but its resolver (${currentResolver}) is not the agent's own. ` +
             `Point its address record at ${account.address} at app.ens.dev, then call set_primary_ens.`
-          )
+          );
         }
-        steps.push(`${fullName} was already registered to the agent; finishing setup`)
+        steps.push(`${fullName} was already registered to the agent; finishing setup`);
       } else {
         if ((await publicClient.getBalance({ address: account.address })) === 0n) {
-          return `Error: The agent wallet ${account.address} has no ETH on ${chain.name} to pay for gas. Fund it and retry.`
+          return `Error: The agent wallet ${account.address} has no ETH on ${chain.name} to pay for gas. Fund it and retry.`;
         }
 
-        const duration = BigInt(years ?? 1) * SECONDS_PER_YEAR
+        const duration = BigInt(years ?? 1) * SECONDS_PER_YEAR;
         const [base, premium] = await publicClient.readContract({
           address: registrar,
           abi: ethRegistrarAbi,
           functionName: "getRegisterPrice",
           args: [label, duration, paymentToken.address],
-        })
-        const price = base + premium
-        const priceText = `${formatUnits(price, paymentToken.decimals)} ${paymentToken.symbol}`
+        });
+        const price = base + premium;
+        const priceText = `${formatUnits(price, paymentToken.decimals)} ${paymentToken.symbol}`;
 
-        const resolverCode = await publicClient.getCode({ address: resolver })
+        const resolverCode = await publicClient.getCode({ address: resolver });
         if (!resolverCode || resolverCode === "0x") {
           await send("Deployed resolver", {
             address: resolverFactory,
@@ -471,7 +489,7 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
             ],
             account,
             chain,
-          })
+          });
         }
 
         const balance = await publicClient.readContract({
@@ -479,13 +497,13 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
           abi: paymentTokenAbi,
           functionName: "balanceOf",
           args: [account.address],
-        })
+        });
         if (balance < price) {
           if (!paymentToken.mintable) {
             return (
               `Error: ${fullName} costs ${priceText}, but the agent wallet holds ` +
               `${formatUnits(balance, paymentToken.decimals)} ${paymentToken.symbol}.`
-            )
+            );
           }
           await send(`Minted test ${paymentToken.symbol}`, {
             address: paymentToken.address,
@@ -494,7 +512,7 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
             args: [account.address, price - balance],
             account,
             chain,
-          })
+          });
         }
 
         const allowance = await publicClient.readContract({
@@ -502,7 +520,7 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
           abi: paymentTokenAbi,
           functionName: "allowance",
           args: [account.address, registrar],
-        })
+        });
         if (allowance < price) {
           await send(`Approved ${priceText}`, {
             address: paymentToken.address,
@@ -511,33 +529,33 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
             args: [registrar, price],
             account,
             chain,
-          })
+          });
         }
 
-        const labelSecret = secret(label)
+        const labelSecret = secret(label);
         const commitment = await publicClient.readContract({
           address: registrar,
           abi: ethRegistrarAbi,
           functionName: "makeCommitment",
           args: [label, account.address, labelSecret, zeroAddress, resolver, duration, zeroHash],
-        })
+        });
         const readRegistrar = (functionName: "MIN_COMMITMENT_AGE" | "MAX_COMMITMENT_AGE") =>
-          publicClient.readContract({ address: registrar, abi: ethRegistrarAbi, functionName })
+          publicClient.readContract({ address: registrar, abi: ethRegistrarAbi, functionName });
         const readCommittedAt = () =>
           publicClient.readContract({
             address: registrar,
             abi: ethRegistrarAbi,
             functionName: "commitmentAt",
             args: [commitment],
-          })
+          });
         const [minAge, maxAge] = await Promise.all([
           readRegistrar("MIN_COMMITMENT_AGE"),
           readRegistrar("MAX_COMMITMENT_AGE"),
-        ])
+        ]);
 
-        const blockTime = async () => (await publicClient.getBlock()).timestamp
-        let committedAt = await readCommittedAt()
-        let now = await blockTime()
+        const blockTime = async () => (await publicClient.getBlock()).timestamp;
+        let committedAt = await readCommittedAt();
+        let now = await blockTime();
         // Commit unless an earlier call left a commitment that is still usable.
         if (committedAt === 0n || now >= committedAt + maxAge) {
           await send("Committed", {
@@ -547,16 +565,16 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
             args: [commitment],
             account,
             chain,
-          })
-          committedAt = await readCommittedAt()
-          now = await blockTime()
+          });
+          committedAt = await readCommittedAt();
+          now = await blockTime();
         }
 
         // The registrar rejects a reveal until the commitment has aged.
-        const validFrom = committedAt + minAge
+        const validFrom = committedAt + minAge;
         while (now < validFrom) {
-          await sleep(Number(validFrom - now + 2n) * 1000)
-          now = await blockTime()
+          await sleep(Number(validFrom - now + 2n) * 1000);
+          now = await blockTime();
         }
 
         await send(`Registered ${fullName} for ${years ?? 1} year(s), paid ${priceText}`, {
@@ -575,13 +593,15 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
           ],
           account,
           chain,
-        })
+        });
       }
 
       // Records: the L1 address, plus the agent chain's own coin type on an L2.
-      const dnsName = toHex(packetToBytes(fullName))
-      const agentCoinType = coinTypeForAgentChain()
-      for (const coinType of agentCoinType == null ? [ETH_COIN_TYPE] : [ETH_COIN_TYPE, agentCoinType]) {
+      const dnsName = toHex(packetToBytes(fullName));
+      const agentCoinType = coinTypeForAgentChain();
+      for (const coinType of agentCoinType == null
+        ? [ETH_COIN_TYPE]
+        : [ETH_COIN_TYPE, agentCoinType]) {
         await send(`Set address record (coin type ${coinType})`, {
           address: resolver,
           abi: permissionedResolverAbi,
@@ -589,30 +609,30 @@ export const registerEnsTool: DynamicStructuredTool = new DynamicStructuredTool(
           args: [dnsName, coinType, account.address],
           account,
           chain,
-        })
+        });
       }
 
-      let primary = ""
+      let primary = "";
       if (setPrimary ?? true) {
-        const { chainId, explorerUrl } = agentWalletClients()
-        const reverseRegistrar = REVERSE_REGISTRARS[chainId]
+        const { chainId, explorerUrl } = agentWalletClients();
+        const reverseRegistrar = REVERSE_REGISTRARS[chainId];
         if (reverseRegistrar) {
-          const hash = await writeReverseRecord(fullName, reverseRegistrar)
-          steps.push(`Set primary name: ${explorerUrl ? `${explorerUrl}/tx/${hash}` : hash}`)
-          primary = " and set as the agent's primary name"
+          const hash = await writeReverseRecord(fullName, reverseRegistrar);
+          steps.push(`Set primary name: ${explorerUrl ? `${explorerUrl}/tx/${hash}` : hash}`);
+          primary = " and set as the agent's primary name";
         } else {
-          primary = `, but primary names are not supported on ${getActiveNetwork()} so none was set`
+          primary = `, but primary names are not supported on ${getActiveNetwork()} so none was set`;
         }
       }
 
-      return `${fullName} now resolves to ${account.address}${primary}.\n${steps.join("\n")}`
+      return `${fullName} now resolves to ${account.address}${primary}.\n${steps.join("\n")}`;
     } catch (err) {
-      if (steps.length === 0) return `Error: ${truncateError(err)}`
+      if (steps.length === 0) return `Error: ${truncateError(err)}`;
       return (
         `Error: ${truncateError(err)}\n` +
         `Completed before the failure:\n${steps.join("\n")}\n` +
         `Call register_ens again with the same name to resume.`
-      )
+      );
     }
   },
-})
+});

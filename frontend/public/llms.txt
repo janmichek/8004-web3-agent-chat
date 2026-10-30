@@ -1,0 +1,27 @@
+# web3Agent
+
+> Create AI agents with their own wallets on Arbitrum, Ethereum, or Mantle, register them on ERC-8004, and talk to them over a web console, CLI, MCP and A2A. Experimental: agent private keys are stored in plain files and x402 payments are simulated unless a facilitator is configured. Do not use with real funds.
+
+## What an agent is
+
+- Wallet: own private key, funded from the master wallet or the connected wallet. Stored at `agents/<name>/wallet.json`.
+- Config: ERC-8004-shaped file with endpoints, selected actions/tools, OASF domains/skills, and `x402support`. Stored at `agents/<name>/agent-config.json`.
+- Chat memory: LangGraph checkpoints, one thread per agent.
+- On-chain identity: ERC-8004 Identity Registry. Master wallet is owner, agent wallet is bound as `agentWallet`. Registration file pinned to IPFS.
+
+## Interfaces
+
+- Web console: the app at the site root.
+- CLI: `npm run create-agent`, `npm run chat`.
+- MCP: `/mcp`. Discovery (initialize, tools/list) is open. tools/call needs a bearer token.
+- A2A JSON-RPC: `/a2a` (also `/api/a2a`).
+- Agent card: [/.well-known/agent-card.json](/.well-known/agent-card.json)
+
+## Docs
+
+- [Source and setup](https://github.com/janmichek/8004-web3-agent-chat/blob/main/README.md): quick start, architecture, configuration.
+- [A2A x402 spec](https://github.com/janmichek/8004-web3-agent-chat/blob/main/docs/a2a-x402-spec.md)
+
+## Optional
+
+- [License: Apache 2.0](https://github.com/janmichek/8004-web3-agent-chat/blob/main/LICENSE)

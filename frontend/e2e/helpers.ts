@@ -38,8 +38,18 @@ export const MOCK_CATALOG = {
     balanceEth: '1.234',
   },
   networks: [
-    { network: 'arbitrum-sepolia', name: 'Arbitrum Sepolia', chainId: 421614, masterBalanceEth: '1.234' },
-    { network: 'ethereum-sepolia', name: 'Ethereum Sepolia', chainId: 11155111, masterBalanceEth: '0.5' },
+    {
+      network: 'arbitrum-sepolia',
+      name: 'Arbitrum Sepolia',
+      chainId: 421614,
+      masterBalanceEth: '1.234',
+    },
+    {
+      network: 'ethereum-sepolia',
+      name: 'Ethereum Sepolia',
+      chainId: 11155111,
+      masterBalanceEth: '0.5',
+    },
   ],
   actions: [
     {
@@ -50,16 +60,26 @@ export const MOCK_CATALOG = {
     },
     {
       name: 'ens-name',
-      description: 'Resolve ENS names, look up primary names, register .eth names, and set the agent wallet primary ENS name',
+      description:
+        'Resolve ENS names, look up primary names, register .eth names, and set the agent wallet primary ENS name',
       toolNames: ['resolve_ens', 'lookup_ens', 'register_ens', 'set_primary_ens'],
       skillName: 'ens-name',
     },
   ],
   tools: [
     { name: 'send_eth', description: 'Send ETH from the agent wallet to a destination address' },
-    { name: 'get_token_balance', description: 'Check ETH or ERC-20 token balance of a wallet address' },
-    { name: 'fetch_contract_abi', description: "Fetch a verified contract's ABI from the block explorer (experimental)" },
-    { name: 'call_contract', description: 'Call any function on a verified contract (experimental)' },
+    {
+      name: 'get_token_balance',
+      description: 'Check ETH or ERC-20 token balance of a wallet address',
+    },
+    {
+      name: 'fetch_contract_abi',
+      description: "Fetch a verified contract's ABI from the block explorer (experimental)",
+    },
+    {
+      name: 'call_contract',
+      description: 'Call any function on a verified contract (experimental)',
+    },
     { name: 'resolve_ens', description: 'Resolve an ENS name to an address' },
     { name: 'lookup_ens', description: 'Look up the primary ENS name for a wallet address' },
     { name: 'set_primary_ens', description: "Set the agent wallet's primary ENS name" },
@@ -128,7 +148,11 @@ export function sessionMemory() {
         preview: 'hello world preview',
         messages: [
           { role: 'user', content: 'hello memory' },
-          { role: 'assistant', content: 'hi there', toolCalls: [{ name: 'get_token_balance', args: {} }] },
+          {
+            role: 'assistant',
+            content: 'hi there',
+            toolCalls: [{ name: 'get_token_balance', args: {} }],
+          },
           { role: 'tool', content: 'Balance: 1.0 ETH' },
         ],
         txHashes: [],
@@ -255,7 +279,10 @@ export type SetupOfflineOptions = {
 export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
   // Rating needs a connected wallet; default to a non-owner one and stub the wallet send.
   await page.addInitScript(() => {
-    const w = window as unknown as { __E2E_CONNECTED_ADDRESS?: string; __E2E_SEND_TX?: () => string }
+    const w = window as unknown as {
+      __E2E_CONNECTED_ADDRESS?: string
+      __E2E_SEND_TX?: () => string
+    }
     w.__E2E_CONNECTED_ADDRESS ??= '0x9999999999999999999999999999999999999999'
     w.__E2E_SEND_TX = () => '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
   })
@@ -270,7 +297,10 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
   const catalog = opts.catalog ?? MOCK_CATALOG
   const memory = opts.memory ?? EMPTY_MEMORY
   // NB: `??` would swallow an explicit `null` (used to force a 500). Check undefined instead.
-  const reputation = opts.reputation === undefined ? { agentId: '421614:42', count: 0, averageValue: 0 } : opts.reputation
+  const reputation =
+    opts.reputation === undefined
+      ? { agentId: '421614:42', count: 0, averageValue: 0 }
+      : opts.reputation
 
   await mockRpc(page)
 
@@ -388,7 +418,11 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
       await (opts.chat as (r: Route) => Promise<void>)(route)
       return
     }
-    await json(route, 200, opts.chat ?? { reply: 'mock reply', events: [{ type: 'message', content: 'mock reply' }] })
+    await json(
+      route,
+      200,
+      opts.chat ?? { reply: 'mock reply', events: [{ type: 'message', content: 'mock reply' }] },
+    )
   })
 
   await page.route('**/api/agents/*/feedback/prepare', async (route) => {
@@ -401,15 +435,19 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
       await json(route, opts.feedbackStatus ?? 500, { error: 'feedback prepare failed' })
       return
     }
-    await json(route, 200, opts.feedback ?? {
-      ok: true,
-      to: '0x8004B663056A597Dffe9eCcC1965A193B7388713',
-      data: '0x',
-      chainId: 421614,
-      agentId: '421614:42',
-      value: 100,
-      scanUrl: 'https://testnet.8004scan.io/agents/arbitrum-sepolia/42',
-    })
+    await json(
+      route,
+      200,
+      opts.feedback ?? {
+        ok: true,
+        to: '0x8004B663056A597Dffe9eCcC1965A193B7388713',
+        data: '0x',
+        chainId: 421614,
+        agentId: '421614:42',
+        value: 100,
+        scanUrl: 'https://testnet.8004scan.io/agents/arbitrum-sepolia/42',
+      },
+    )
   })
 
   await page.route('**/api/agents/*/fund', async (route) => {
@@ -426,13 +464,17 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
       await json(route, opts.fundStatus ?? 500, { error: 'Master wallet has insufficient ETH.' })
       return
     }
-    await json(route, 200, (opts.fund as unknown) ?? {
-      ok: true,
-      txHash: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-      amountEth: '0.001',
-      to: DEMO_AGENT.walletAddress,
-      from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    })
+    await json(
+      route,
+      200,
+      (opts.fund as unknown) ?? {
+        ok: true,
+        txHash: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        amountEth: '0.001',
+        to: DEMO_AGENT.walletAddress,
+        from: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      },
+    )
   })
 }
 

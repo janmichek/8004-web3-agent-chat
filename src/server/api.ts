@@ -100,7 +100,11 @@ function checkMcpRateLimit(ip: string): boolean {
 function mcpAuthOk(c: { req: { header: (name: string) => string | undefined } }): boolean {
   const expected = process.env.MCP_AUTH_TOKEN?.trim();
   if (!expected) return false; // fail closed — set MCP_AUTH_TOKEN
-  const got = c.req.header("authorization")?.replace(/^Bearer\s+/i, "").trim() ?? "";
+  const got =
+    c.req
+      .header("authorization")
+      ?.replace(/^Bearer\s+/i, "")
+      .trim() ?? "";
   if (!got) return false;
   const a = Buffer.from(got);
   const b = Buffer.from(expected);
@@ -149,9 +153,8 @@ async function getMcpHandler(
 ): Promise<(req: Request) => Promise<Response>> {
   // Unscoped handler is cached; per-agent scoped handlers are built per request.
   if (!allowedTools && mcpHandlerCache) return mcpHandlerCache;
-  const { WebStandardStreamableHTTPServerTransport } = await import(
-    "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-  );
+  const { WebStandardStreamableHTTPServerTransport } =
+    await import("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js");
   const { getMcpServer } = await import("../mcp/server.js");
   const handler = async (req: Request) => {
     const server = getMcpServer(allowedTools);
@@ -204,7 +207,9 @@ function listEnvAgents(): string[] {
           try {
             const parsed = JSON.parse(configRaw) as { name?: string };
             if (parsed.name) agents.add(parsed.name);
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
         // fallback: if we haven't added yet, use suffix lowercased
         if (!agents.has(suffix.toLowerCase().replace(/_/g, "-"))) {
@@ -260,25 +265,30 @@ async function publicAgentSummary(name: string, withUsage = false) {
   if (!walletAddress) {
     const envPk = process.env[`AGENT_${agentEnvSuffix(name)}_PRIVATE_KEY`];
     if (envPk) {
-      try { walletAddress = new ethers.Wallet(envPk).address; } catch { /* ignore */ }
+      try {
+        walletAddress = new ethers.Wallet(envPk).address;
+      } catch {
+        /* ignore */
+      }
     }
   }
   if (!walletAddress) {
     const candidates = [path.join(AGENTS_DIR, name, "wallet.json")];
-    if (process.env.VERCEL) candidates.push(path.join(path.resolve(process.cwd(), "agents"), name, "wallet.json"));
+    if (process.env.VERCEL)
+      candidates.push(path.join(path.resolve(process.cwd(), "agents"), name, "wallet.json"));
     for (const walletPath of candidates) {
       if (!fs.existsSync(walletPath)) continue;
       try {
         const raw = JSON.parse(fs.readFileSync(walletPath, "utf-8")) as { address?: string };
         walletAddress = raw.address;
         break;
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
-  const usage = withUsage
-    ? await readAgentMemoryAsync(name).catch(() => null)
-    : null;
+  const usage = withUsage ? await readAgentMemoryAsync(name).catch(() => null) : null;
 
   return {
     name,
@@ -326,7 +336,11 @@ function a2aToolNames(config: AgentConfig): string[] {
  *   no skill prompts, and no checkpointer, so the caller neither sees nor
  *   writes the owner's conversation history.
  */
-async function runChat(agentName: string, message: string, a2a = false): Promise<{
+async function runChat(
+  agentName: string,
+  message: string,
+  a2a = false,
+): Promise<{
   reply: string;
   events: ChatEvent[];
 }> {
@@ -336,7 +350,11 @@ async function runChat(agentName: string, message: string, a2a = false): Promise
   );
 }
 
-async function runChatOnActiveNetwork(agentName: string, message: string, a2a: boolean): Promise<{
+async function runChatOnActiveNetwork(
+  agentName: string,
+  message: string,
+  a2a: boolean,
+): Promise<{
   reply: string;
   events: ChatEvent[];
 }> {
@@ -349,7 +367,10 @@ async function runChatOnActiveNetwork(agentName: string, message: string, a2a: b
 
   if (agentConfig && a2a) {
     const allowed = a2aToolNames(agentConfig);
-    agentConfig = { ...agentConfig, metadata: { ...agentConfig.metadata, actions: [], tools: allowed } };
+    agentConfig = {
+      ...agentConfig,
+      metadata: { ...agentConfig.metadata, actions: [], tools: allowed },
+    };
     tools = resolveToolsFromConfig(agentConfig).tools;
   } else if (agentConfig) {
     const resolved = resolveToolsFromConfig(agentConfig);
@@ -409,7 +430,11 @@ async function runChatOnActiveNetwork(agentName: string, message: string, a2a: b
   try {
     const stream = await agent.stream(
       { messages: [{ role: "user", content: message }] },
-      { configurable: { thread_id: agentName }, recursionLimit: RECURSION_LIMIT, streamMode: "updates" },
+      {
+        configurable: { thread_id: agentName },
+        recursionLimit: RECURSION_LIMIT,
+        streamMode: "updates",
+      },
     );
 
     for await (const update of stream) {
@@ -526,7 +551,8 @@ async function handleMcp(c: McpContext) {
         transport: "streamable-http",
         endpoint: "/api/mcp",
         auth: "bearer",
-        usage: "Discovery (initialize, tools/list) is open; tools/call requires Authorization: Bearer $MCP_AUTH_TOKEN with Accept: application/json, text/event-stream",
+        usage:
+          "Discovery (initialize, tools/list) is open; tools/call requires Authorization: Bearer $MCP_AUTH_TOKEN with Accept: application/json, text/event-stream",
       },
       { status: 200, headers: { "access-control-allow-origin": "*" } },
     );
@@ -536,10 +562,7 @@ async function handleMcp(c: McpContext) {
   const needsAuth = await mcpPostNeedsAuth(c);
   if (needsAuth) {
     if (!process.env.MCP_AUTH_TOKEN?.trim()) {
-      return c.json(
-        { error: "MCP is not configured (missing MCP_AUTH_TOKEN)" },
-        503,
-      );
+      return c.json({ error: "MCP is not configured (missing MCP_AUTH_TOKEN)" }, 503);
     }
     if (!checkMcpRateLimit(getMcpClientIp(c))) {
       return c.json({ error: "rate limited, try again later" }, 429);
@@ -637,7 +660,13 @@ function resolveA2AServer(c: Context): A2AServer | null {
   const proto = c.req.header("x-forwarded-proto") || "http";
   const host = c.req.header("x-forwarded-host") || c.req.header("host") || `localhost:${PORT}`;
   const endpointUrl = `${proto}://${host}/api/a2a${agentName ? `?agent=${encodeURIComponent(agentName)}` : ""}`;
-  const stamp = [endpointUrl, config.x402support, config.walletAddress, config.active, config.updatedAt].join("|");
+  const stamp = [
+    endpointUrl,
+    config.x402support,
+    config.walletAddress,
+    config.active,
+    config.updatedAt,
+  ].join("|");
 
   const cached = a2aServers.get(agentName);
   if (cached?.stamp === stamp) return cached.server;
@@ -672,7 +701,11 @@ async function handleA2A(c: Context) {
   // Anonymous callers can make the agent's LLM work, so cap them per IP.
   if (!checkMcpRateLimit(`a2a:${getMcpClientIp(c)}`)) {
     return c.json(
-      { jsonrpc: "2.0", id: null, error: { code: -32000, message: "Rate limited, try again later" } },
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32000, message: "Rate limited, try again later" },
+      },
       429,
     );
   }
@@ -680,7 +713,10 @@ async function handleA2A(c: Context) {
   try {
     body = await c.req.json();
   } catch {
-    return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400);
+    return c.json(
+      { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } },
+      400,
+    );
   }
   // Protocol-level errors travel inside the JSON-RPC body with HTTP 200.
   return c.json(await server.handleJsonRpc(body, c.req.header("x-a2a-extensions")));
@@ -719,7 +755,9 @@ app.post("/api/agents", async (c, next) => {
 });
 
 function unsupportedChainMessage(chainId: unknown): string {
-  const supported = getSupportedNetworks().map((n) => getChainId(n)).join(", ");
+  const supported = getSupportedNetworks()
+    .map((n) => getChainId(n))
+    .join(", ");
   return `Unsupported chainId: ${String(chainId)}. Supported: ${supported}`;
 }
 
@@ -759,7 +797,8 @@ async function supportedNetworkSummaries() {
 
 app.get("/api/health", async (c) => {
   const network = queryNetwork(c);
-  if (network === null) return c.json({ error: unsupportedChainMessage(c.req.query("chainId")) }, 400);
+  if (network === null)
+    return c.json({ error: unsupportedChainMessage(c.req.query("chainId")) }, 400);
   return runWithNetwork(network ?? getDefaultNetwork(), async () =>
     c.json({
       ok: true,
@@ -860,10 +899,7 @@ app.get("/api/agents", async (c) => {
 /** Optional image upload (multipart) → pinned to IPFS, returns https gateway URL. */
 app.post("/api/upload/image", async (c) => {
   if (!hasIpfsBackend()) {
-    return c.json(
-      { error: "No IPFS backend configured (set PINATA_JWT or IPFS_NODE_URL)" },
-      503,
-    );
+    return c.json({ error: "No IPFS backend configured (set PINATA_JWT or IPFS_NODE_URL)" }, 503);
   }
   let form: FormData;
   try {
@@ -919,9 +955,12 @@ app.post("/api/agents", async (c) => {
     return c.json({ error: "name is required" }, 400);
   }
   if (!AGENT_NAME_RE.test(name)) {
-    return c.json({
-      error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
-    }, 400);
+    return c.json(
+      {
+        error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
+      },
+      400,
+    );
   }
   if ((await listExistingAgents()).includes(name)) {
     return c.json({ error: `Agent "${name}" already exists` }, 409);
@@ -970,7 +1009,7 @@ app.post("/api/agents", async (c) => {
   // Funding happens post-creation from the done step (master or connected
   // wallet), so creation itself does not fund. fundEth stays accepted for
   // API/CLI backward compatibility when explicitly passed.
-  const fundEth = (body.fundEth?.trim() || "0");
+  const fundEth = body.fundEth?.trim() || "0";
   const fundAmount = Number(fundEth);
   if (!Number.isFinite(fundAmount) || fundAmount < 0 || fundAmount > 1) {
     return c.json({ error: "fundEth must be a number between 0 and 1" }, 400);
@@ -992,7 +1031,8 @@ app.post("/api/agents", async (c) => {
   ] as const) {
     const endpoint = shorthandEndpoint?.trim();
     const declared = rawServices.some(
-      (s) => typeof s?.name === "string" && s.name.trim().toLowerCase() === shorthandName.toLowerCase(),
+      (s) =>
+        typeof s?.name === "string" && s.name.trim().toLowerCase() === shorthandName.toLowerCase(),
     );
     if (endpoint && !declared) rawServices.push({ name: shorthandName, endpoint });
   }
@@ -1158,23 +1198,26 @@ app.post("/api/agents", async (c) => {
   const walletEnvVar = getAgentWalletEnvVars(name)[0]!;
   const ephemeral = Boolean(process.env.VERCEL) && !process.env[walletEnvVar];
 
-  return c.json({
-    ok: true,
-    agent: await publicAgentSummary(name),
-    balanceEth,
-    fundTxHash,
-    ...(ephemeral
-      ? {
-          ephemeral: true,
-          privateKey: agentWallet.privateKey,
-          privateKeyEnvVar: walletEnvVar,
-          // Full config so the browser can keep a local backup and heal
-          // cold serverless instances via POST /api/agents/:name/restore.
-          config,
-          ephemeralWarning: `Save this private key as ${walletEnvVar} in Vercel env vars now — the /tmp wallet is lost on cold start/redeploy and the agent will stop working.`,
-        }
-      : {}),
-  }, 201);
+  return c.json(
+    {
+      ok: true,
+      agent: await publicAgentSummary(name),
+      balanceEth,
+      fundTxHash,
+      ...(ephemeral
+        ? {
+            ephemeral: true,
+            privateKey: agentWallet.privateKey,
+            privateKeyEnvVar: walletEnvVar,
+            // Full config so the browser can keep a local backup and heal
+            // cold serverless instances via POST /api/agents/:name/restore.
+            config,
+            ephemeralWarning: `Save this private key as ${walletEnvVar} in Vercel env vars now — the /tmp wallet is lost on cold start/redeploy and the agent will stop working.`,
+          }
+        : {}),
+    },
+    201,
+  );
 });
 
 app.get("/api/agents/:name", async (c) => {
@@ -1251,7 +1294,10 @@ app.delete("/api/agents/:name", async (c) => {
   }
   if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE) {
     return c.json(
-      { error: "Agent deletion is disabled on Vercel (ephemeral filesystem). Delete env vars manually." },
+      {
+        error:
+          "Agent deletion is disabled on Vercel (ephemeral filesystem). Delete env vars manually.",
+      },
       403,
     );
   }

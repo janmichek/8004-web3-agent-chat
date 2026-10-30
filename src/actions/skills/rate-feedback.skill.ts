@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Skill } from "../types.js"
+import type { Skill } from "../types.js";
 
 /** @notice Skill guiding the agent to rate counterparties after successful transactions. */
 export const rateFeedbackSkill: Skill = {
@@ -33,4 +33,4 @@ export const rateFeedbackSkill: Skill = {
       action: "Call get_reputation with agentId 421614:204",
     },
   ],
-}
+};

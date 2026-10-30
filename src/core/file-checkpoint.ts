@@ -50,7 +50,10 @@ function hydrate(saver: MemorySaver, data: any) {
 
 /** Serialize a MemorySaver to memory.json text (Uint8Arrays as base64). */
 function serialize(saver: MemorySaver): string {
-  const storage: Record<string, Record<string, Record<string, [string, string, string | undefined]>>> = {};
+  const storage: Record<
+    string,
+    Record<string, Record<string, [string, string, string | undefined]>>
+  > = {};
   for (const threadId of Object.keys(saver.storage)) {
     storage[threadId] = {};
     for (const ns of Object.keys(saver.storage[threadId])) {
@@ -71,11 +74,7 @@ function serialize(saver: MemorySaver): string {
     writes[threadId] = {};
     for (const key of Object.keys(saver.writes[threadId])) {
       const entry = saver.writes[threadId][key];
-      writes[threadId][key] = [
-        entry[0],
-        entry[1],
-        Buffer.from(entry[2]).toString("base64"),
-      ];
+      writes[threadId][key] = [entry[0], entry[1], Buffer.from(entry[2]).toString("base64")];
     }
   }
 
@@ -147,7 +146,9 @@ export async function createPersistentCheckpointer(agentName: string) {
       console.log(`[memory] Loaded conversation for ${agentName} from remote store`);
     }
   } catch (err) {
-    console.warn(`[memory] Could not load remote memory for ${agentName}, starting fresh: ${(err as Error).message}`);
+    console.warn(
+      `[memory] Could not load remote memory for ${agentName}, starting fresh: ${(err as Error).message}`,
+    );
   }
 
   async function flush() {

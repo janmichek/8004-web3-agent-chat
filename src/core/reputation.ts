@@ -13,6 +13,21 @@ import {
   runWithNetwork,
 } from "./config.js";
 
+/**
+ * tag1 is always "starred", so the caller's interaction tag (or, without IPFS, the short
+ * comment) is kept as tag2 for traceability. Truncated to the 32 chars the contract stores.
+ */
+export function deriveTag2(
+  tag: string | undefined,
+  comment: string | undefined,
+  hasIpfs: boolean,
+): string | undefined {
+  return (
+    (tag && tag !== "starred" ? tag : comment && !hasIpfs ? comment : undefined)?.slice(0, 32) ||
+    undefined
+  );
+}
+
 export interface GiveFeedbackOptions {
   agentId: string;
   value: number;
@@ -89,7 +104,9 @@ export async function giveFeedback(options: GiveFeedbackOptions): Promise<GiveFe
   return onAgentNetwork(options.agentId, () => giveFeedbackOnActiveNetwork(options));
 }
 
-async function giveFeedbackOnActiveNetwork(options: GiveFeedbackOptions): Promise<GiveFeedbackResult> {
+async function giveFeedbackOnActiveNetwork(
+  options: GiveFeedbackOptions,
+): Promise<GiveFeedbackResult> {
   const { agentId, tag, endpoint, comment } = options;
   const privateKey = resolveRaterPrivateKey(options.privateKey);
   const value = normalizeRating(options.value);
@@ -103,9 +120,7 @@ async function giveFeedbackOnActiveNetwork(options: GiveFeedbackOptions): Promis
   // Always a quality rating: tag1='starred' (0-100). Keep the caller's
   // interaction tag / short comment as tag2 for traceability.
   const tag1 = "starred";
-  const tag2 =
-    (tag && tag !== "starred" ? tag : comment && !hasIpfs ? comment : undefined)?.slice(0, 32) ||
-    undefined;
+  const tag2 = deriveTag2(tag, comment, hasIpfs);
   const handle = await sdk.giveFeedback(
     agentId as never,
     value,
@@ -167,7 +182,9 @@ export async function prepareFeedback(options: PrepareFeedbackOptions): Promise<
   return onAgentNetwork(options.agentId, () => prepareFeedbackOnActiveNetwork(options));
 }
 
-async function prepareFeedbackOnActiveNetwork(options: PrepareFeedbackOptions): Promise<PreparedFeedback> {
+async function prepareFeedbackOnActiveNetwork(
+  options: PrepareFeedbackOptions,
+): Promise<PreparedFeedback> {
   const { agentId, tag, endpoint, comment, clientAddress } = options;
   const value = normalizeRating(options.value);
   const config = getNetworkConfig(getActiveNetwork());
@@ -186,8 +203,7 @@ async function prepareFeedbackOnActiveNetwork(options: PrepareFeedbackOptions): 
   const tokenId = BigInt(agentId.includes(":") ? agentId.split(":").pop()! : agentId);
   const hasIpfs = Boolean(sdk.ipfsClient);
   const tag1 = "starred";
-  const tag2 =
-    (tag && tag !== "starred" ? tag : comment && !hasIpfs ? comment : undefined)?.slice(0, 32) || "";
+  const tag2 = deriveTag2(tag, comment, hasIpfs) ?? "";
 
   let feedbackURI = "";
   let feedbackHash = `0x${"00".repeat(32)}`;
@@ -212,7 +228,16 @@ async function prepareFeedbackOnActiveNetwork(options: PrepareFeedbackOptions): 
   const data = encodeFunctionData({
     abi: GIVE_FEEDBACK_ABI,
     functionName: "giveFeedback",
-    args: [tokenId, BigInt(value), 0, tag1, tag2, endpoint ?? "", feedbackURI, feedbackHash as `0x${string}`],
+    args: [
+      tokenId,
+      BigInt(value),
+      0,
+      tag1,
+      tag2,
+      endpoint ?? "",
+      feedbackURI,
+      feedbackHash as `0x${string}`,
+    ],
   });
   return {
     to: sdk.reputationRegistryAddress(),
@@ -224,12 +249,24 @@ async function prepareFeedbackOnActiveNetwork(options: PrepareFeedbackOptions): 
   };
 }
 
-export async function getReputationSummary(agentId: string, tag?: string): Promise<ReputationSummary> {
+export async function getReputationSummary(
+  agentId: string,
+  tag?: string,
+): Promise<ReputationSummary> {
   return onAgentNetwork(agentId, () => getReputationSummaryOnActiveNetwork(agentId, tag));
 }
 
-async function getReputationSummaryOnActiveNetwork(agentId: string, tag?: string): Promise<ReputationSummary> {
-  const rpcUrl = (() => { try { return getRpcUrl(); } catch { return undefined; } })();
+async function getReputationSummaryOnActiveNetwork(
+  agentId: string,
+  tag?: string,
+): Promise<ReputationSummary> {
+  const rpcUrl = (() => {
+    try {
+      return getRpcUrl();
+    } catch {
+      return undefined;
+    }
+  })();
   const network = getActiveNetwork();
   const config = getNetworkConfig(network);
   // Read-only SDK: omit privateKey when no signer available.

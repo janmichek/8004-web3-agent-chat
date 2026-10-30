@@ -14,7 +14,9 @@ import type { WalletData, WalletOptions, FundAgentOptions } from "./types.js";
  * Each agent gets its own subdirectory: agents/<agent-name>/
  * On Vercel the filesystem is read-only except /tmp — use /tmp for ephemeral writes.
  */
-export const AGENTS_DIR = process.env.VERCEL ? path.join("/tmp", "agents") : path.resolve(process.cwd(), "agents");
+export const AGENTS_DIR = process.env.VERCEL
+  ? path.join("/tmp", "agents")
+  : path.resolve(process.cwd(), "agents");
 
 /**
  * Convert agent name to ENV var suffix: abcd-agent -> ABCD_AGENT
@@ -58,7 +60,9 @@ export function getOrCreateAgentWallet(options: WalletOptions): WalletData {
     if (pk) {
       try {
         const w = new ethers.Wallet(pk);
-        console.log(`[wallet] Loaded wallet for agent "${agentName}" from env ${envName}: ${w.address}`);
+        console.log(
+          `[wallet] Loaded wallet for agent "${agentName}" from env ${envName}: ${w.address}`,
+        );
         return { address: w.address, privateKey: pk };
       } catch {
         console.warn(`[wallet] Invalid private key in ${envName} for agent "${agentName}"`);
@@ -78,7 +82,9 @@ export function getOrCreateAgentWallet(options: WalletOptions): WalletData {
         const data = JSON.parse(raw) as WalletData;
         console.log(`[wallet] Loaded existing wallet for agent "${agentName}": ${data.address}`);
         return data;
-      } catch { /* ignore corrupted */ }
+      } catch {
+        /* ignore corrupted */
+      }
     }
   }
 
@@ -105,11 +111,13 @@ export function getOrCreateAgentWallet(options: WalletOptions): WalletData {
   if (process.env.VERCEL) {
     console.log(`[wallet] Created EPHEMERAL wallet for agent "${agentName}": ${data.address}`);
     console.log(
-      `[wallet] WARNING: on Vercel this key lives only in /tmp. Save it as ${getAgentWalletEnvVars(agentName)[0]} in Vercel env vars or it will be lost.`
+      `[wallet] WARNING: on Vercel this key lives only in /tmp. Save it as ${getAgentWalletEnvVars(agentName)[0]} in Vercel env vars or it will be lost.`,
     );
   } else {
     console.log(`[wallet] Created new wallet for agent "${agentName}": ${data.address}`);
-    console.log(`[wallet] WARNING: agents/${agentName}/wallet.json contains a private key. Never commit this file.`);
+    console.log(
+      `[wallet] WARNING: agents/${agentName}/wallet.json contains a private key. Never commit this file.`,
+    );
   }
   return data;
 }
@@ -128,7 +136,7 @@ export function getMasterWallet(): ethers.Wallet {
   if (!privateKey) {
     throw new Error(
       "MASTER_PRIVATE_KEY is not set. This wallet is needed to fund agent wallets.\n" +
-        "Set it in your .env file."
+        "Set it in your .env file.",
     );
   }
   const provider = getProvider();

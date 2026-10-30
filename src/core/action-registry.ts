@@ -6,8 +6,8 @@
  * @module action-registry
  */
 
-import type { DynamicStructuredTool } from "@langchain/core/tools"
-import type { Action } from "../actions/types.js"
+import type { DynamicStructuredTool } from "@langchain/core/tools";
+import type { Action } from "../actions/types.js";
 import {
   TransferEthAction,
   EnsNameAction,
@@ -20,23 +20,23 @@ import {
   lookupEnsTool,
   setPrimaryEnsTool,
   registerEnsTool,
-} from "../actions/index.js"
+} from "../actions/index.js";
 
 /** @notice Describes an available action for the selection menu. */
 export interface ActionEntry {
-  name: string
-  description: string
-  toolNames: string[]
-  skillName: string
-  factory: () => Action
+  name: string;
+  description: string;
+  toolNames: string[];
+  skillName: string;
+  factory: () => Action;
 }
 
 /** @notice Describes an available standalone tool for the selection menu. */
 export interface ToolEntry {
-  name: string
-  description: string
+  name: string;
+  description: string;
   /** Never signs or sends a transaction, so it is safe to offer to anonymous A2A callers. */
-  readOnly: boolean
+  readOnly: boolean;
 }
 
 /** @notice Registry of all available actions (Level 1). */
@@ -50,7 +50,8 @@ export const ACTION_REGISTRY: ActionEntry[] = [
   },
   {
     name: "ens-name",
-    description: "Resolve ENS names, look up primary names, register .eth names, and set the agent wallet primary ENS name",
+    description:
+      "Resolve ENS names, look up primary names, register .eth names, and set the agent wallet primary ENS name",
     toolNames: ["resolve_ens", "lookup_ens", "register_ens", "set_primary_ens"],
     skillName: "ens-name",
     factory: EnsNameAction,
@@ -62,7 +63,7 @@ export const ACTION_REGISTRY: ActionEntry[] = [
     skillName: "contract-call",
     factory: ContractCallAction,
   },
-]
+];
 
 /** @notice Registry of all available standalone tools (Level 2). */
 export const TOOL_REGISTRY: ToolEntry[] = [
@@ -107,7 +108,7 @@ export const TOOL_REGISTRY: ToolEntry[] = [
     description: "Register a .eth name for the agent wallet (testnet, paid in test USDC)",
     readOnly: false,
   },
-]
+];
 
 const TOOL_INSTANCES: Record<string, DynamicStructuredTool> = {
   send_eth: sendEthTool,
@@ -118,19 +119,19 @@ const TOOL_INSTANCES: Record<string, DynamicStructuredTool> = {
   lookup_ens: lookupEnsTool,
   set_primary_ens: setPrimaryEnsTool,
   register_ens: registerEnsTool,
-}
+};
 
 /** @notice Look up an action entry by name. */
 export function getActionByName(name: string): ActionEntry | undefined {
-  return ACTION_REGISTRY.find((a) => a.name === name)
+  return ACTION_REGISTRY.find((a) => a.name === name);
 }
 
 /** @notice Look up a tool entry by name. */
 export function getToolByName(name: string): ToolEntry | undefined {
-  return TOOL_REGISTRY.find((t) => t.name === name)
+  return TOOL_REGISTRY.find((t) => t.name === name);
 }
 
 /** @notice Get a standalone tool instance by name. */
 export function getStandaloneToolInstance(name: string): DynamicStructuredTool | undefined {
-  return TOOL_INSTANCES[name]
+  return TOOL_INSTANCES[name];
 }

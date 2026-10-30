@@ -11,13 +11,11 @@ import { gotoWithAgent, openCreateDialog, setupOffline } from './helpers'
 async function stageImageAndSubmit(page: import('@playwright/test').Page, name: string) {
   await openCreateDialog(page)
   await page.getByTestId('create-name-input').fill(name)
-  await page
-    .getByTestId('create-image-input')
-    .setInputFiles({
-      name: 'avatar.png',
-      mimeType: 'image/png',
-      buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
-    })
+  await page.getByTestId('create-image-input').setInputFiles({
+    name: 'avatar.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
+  })
   await expect(page.getByTestId('create-image-preview')).toBeVisible()
   await expect(page.getByTestId('create-image-ready')).toBeAttached()
   await page.getByTestId('create-name-continue').click()

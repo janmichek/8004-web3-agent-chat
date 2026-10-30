@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentPanel, openConversations, selectAgent, setupOffline } from './helpers'
+import {
+  DEMO_AGENT,
+  SECOND_AGENT,
+  gotoWithAgent,
+  openAgentPanel,
+  openConversations,
+  selectAgent,
+  setupOffline,
+} from './helpers'
 import type { SetupOfflineOptions } from './helpers'
 
 function multiSessionMemory(): SetupOfflineOptions['memory'] {
@@ -58,7 +66,10 @@ function multiSessionMemory(): SetupOfflineOptions['memory'] {
         toolCount: 0,
         title: 'older chat',
         preview: 'older session preview',
-        messages: [{ role: 'user', content: 'older question' }, { role: 'assistant', content: 'older answer' }],
+        messages: [
+          { role: 'user', content: 'older question' },
+          { role: 'assistant', content: 'older answer' },
+        ],
         txHashes: [],
         recipients: [],
         summary: '',
@@ -133,13 +144,13 @@ test.describe('agent memory extras', () => {
     })
     await gotoWithAgent(page)
     await openConversations(page)
-    await expect(page.locator('[data-testid="agent-memory"] .empty-title')).toContainText('No history yet')
+    await expect(page.locator('[data-testid="agent-memory"] .empty-title')).toContainText(
+      'No history yet',
+    )
     await page.getByTestId('chat-input').fill('persist this')
     await page.getByTestId('chat-send').click()
     await expect(page.getByTestId('chat-bubble-agent')).toContainText('hi!')
-    await expect
-      .poll(() => loads, { timeout: 10_000 })
-      .toBeGreaterThan(2)
+    await expect.poll(() => loads, { timeout: 10_000 }).toBeGreaterThan(2)
   })
 
   test('memory shows a hint when no sessions exist despite history', async ({ page }) => {
@@ -173,7 +184,9 @@ test.describe('agent memory extras', () => {
     })
     await gotoWithAgent(page)
     await openConversations(page)
-    await expect(page.locator('[data-testid="agent-memory"]')).toContainText('No sessions detected.')
+    await expect(page.locator('[data-testid="agent-memory"]')).toContainText(
+      'No sessions detected.',
+    )
   })
 
   test('memory section updates when switching agents', async ({ page }) => {
@@ -186,7 +199,11 @@ test.describe('agent memory extras', () => {
     // Second agent's memory returns an error so we can tell whose load fired.
     await page.route('**/api/agents/bravo/memory', async (route: Route) => {
       requests.push('bravo')
-      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'no' }) })
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'no' }),
+      })
     })
     await page.route('**/api/agents/demo/memory', async (route: Route) => {
       requests.push('demo')
@@ -222,7 +239,9 @@ test.describe('agent memory extras', () => {
     await openConversations(page)
     await openAgentPanel(page)
     await selectAgent(page, 'bravo')
-    await expect(page.locator('[data-testid="agent-memory"]')).toContainText('no', { ignoreCase: true })
+    await expect(page.locator('[data-testid="agent-memory"]')).toContainText('no', {
+      ignoreCase: true,
+    })
     expect(requests).toContain('bravo')
   })
 })

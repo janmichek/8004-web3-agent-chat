@@ -19,10 +19,10 @@
 export const OASF_VERSION = "1.1.0";
 
 /** Base URL of the OASF schema server. */
-export const OASF_SCHEMA_URL = "https://schema.oasf.outshift.com/";
+const OASF_SCHEMA_URL = "https://schema.oasf.outshift.com/";
 
 /** Live taxonomy endpoint (skill categories = domains + skills tree). */
-export const OASF_TAXONOMY_URL = `${OASF_SCHEMA_URL}api/${OASF_VERSION}/skill_categories`;
+const OASF_TAXONOMY_URL = `${OASF_SCHEMA_URL}api/${OASF_VERSION}/skill_categories`;
 
 type OasfApiNode = {
   id: number | string;
@@ -83,7 +83,13 @@ export async function buildOasfService(
   domains: string[],
   skills: string[],
   endpoint: string,
-): Promise<{ name: string; endpoint: string; version: string; skills: string[]; domains: string[] }> {
+): Promise<{
+  name: string;
+  endpoint: string;
+  version: string;
+  skills: string[];
+  domains: string[];
+}> {
   return {
     name: "oasf",
     endpoint,

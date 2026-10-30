@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Skill } from "../types.js"
+import type { Skill } from "../types.js";
 
 /**
  * @notice Skill context for the ens-name action.
@@ -8,7 +8,8 @@ import type { Skill } from "../types.js"
  */
 export const ensNameSkill: Skill = {
   name: "ens-name",
-  description: "Guidance for resolving ENS names, registering .eth names, and setting the agent primary name",
+  description:
+    "Guidance for resolving ENS names, registering .eth names, and setting the agent primary name",
   context: `
     You have four ENS tools: resolve_ens, lookup_ens, register_ens, and set_primary_ens.
     ENS naming is separate from the agent's local display name.
@@ -67,7 +68,8 @@ export const ensNameSkill: Skill = {
     },
     {
       user: "apply ens name on yourself mybot",
-      thought: "The agent has no name yet, so mybot.eth must be registered first. register_ens also sets it as primary.",
+      thought:
+        "The agent has no name yet, so mybot.eth must be registered first. register_ens also sets it as primary.",
       action: "Call register_ens with name mybot, then remind about ENS registration service",
     },
     {
@@ -77,8 +79,10 @@ export const ensNameSkill: Skill = {
     },
     {
       user: "Set my primary name to mybot.eth",
-      thought: "The name may already point at the agent wallet; try the reverse record, and register only if it does not resolve.",
-      action: "Call set_primary_ens with name mybot.eth; if it does not resolve to any address, call register_ens",
+      thought:
+        "The name may already point at the agent wallet; try the reverse record, and register only if it does not resolve.",
+      action:
+        "Call set_primary_ens with name mybot.eth; if it does not resolve to any address, call register_ens",
     },
   ],
-}
+};

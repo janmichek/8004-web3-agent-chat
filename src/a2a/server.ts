@@ -14,10 +14,10 @@
  * @module a2a/server
  */
 
-import { randomUUID } from "node:crypto"
-import type { AgentConfig } from "../core/agent-config.js"
-import { A2A_PROTOCOL_VERSION } from "../core/registration-services.js"
-import { MockFacilitatorClient } from "./mock-facilitator.js"
+import { randomUUID } from "node:crypto";
+import type { AgentConfig } from "../core/agent-config.js";
+import { A2A_PROTOCOL_VERSION } from "../core/registration-services.js";
+import { MockFacilitatorClient } from "./mock-facilitator.js";
 import {
   X402_EXTENSION_URI,
   X402_VERSION,
@@ -32,7 +32,7 @@ import {
   type PaymentRequirements,
   type SettlementReceipt,
   type TaskState,
-} from "./types.js"
+} from "./types.js";
 import {
   DEFAULT_PRICE_ATOMIC,
   MOCK_PAYMENT_NETWORK,
@@ -41,61 +41,61 @@ import {
   isX402ExtensionActivated,
   paymentPayloadFromMetadata,
   paymentStatusFromMetadata,
-} from "./x402.js"
+} from "./x402.js";
 
 /** Tasks live in memory only; the oldest are evicted past this count. */
-const MAX_TASKS = 1000
+const MAX_TASKS = 1000;
 
 /** Does the actual work for a request and names it on the Agent Card. */
 export interface A2AExecutor {
-  skills: AgentCardSkill[]
+  skills: AgentCardSkill[];
   /** Resolves with the answer text; a rejection fails the task (and skips settlement). */
-  run(text: string): Promise<string>
+  run(text: string): Promise<string>;
 }
 
 const ECHO_EXECUTOR: A2AExecutor = {
   skills: [{ id: "echo", name: "echo", description: "Echoes the message back", tags: ["default"] }],
   run: async (text) => text || "ok",
-}
+};
 
 export interface A2AServerOptions {
   /** Public JSON-RPC URL of this server; used as AgentCard.url and payment resource. */
-  endpointUrl: string
+  endpointUrl: string;
   /**
    * Agent identity and payment settings. x402 is on only when `x402support`
    * is set AND `walletAddress` is a valid address to pay to.
    */
-  config: AgentConfig
+  config: AgentConfig;
   /** Defaults to an echo. */
-  executor?: A2AExecutor
+  executor?: A2AExecutor;
   /** Defaults to MockFacilitatorClient (payments simulated). */
-  facilitator?: FacilitatorClient
+  facilitator?: FacilitatorClient;
 }
 
 interface StoredTask {
-  task: A2ATask
+  task: A2ATask;
   /** Set while/after the task went through the payment flow. */
-  requirements?: PaymentRequirements
-  serviceText: string
+  requirements?: PaymentRequirements;
+  serviceText: string;
 }
 
 export class A2AServer {
-  private readonly endpointUrl: string
-  private readonly config: AgentConfig
-  private readonly executor: A2AExecutor
-  private readonly facilitator: FacilitatorClient
-  private readonly tasks = new Map<string, StoredTask>()
+  private readonly endpointUrl: string;
+  private readonly config: AgentConfig;
+  private readonly executor: A2AExecutor;
+  private readonly facilitator: FacilitatorClient;
+  private readonly tasks = new Map<string, StoredTask>();
   /** payTo address when x402 is on, otherwise undefined. */
-  private readonly payTo: string | undefined
+  private readonly payTo: string | undefined;
 
   constructor(options: A2AServerOptions) {
-    this.endpointUrl = options.endpointUrl
-    this.config = options.config
-    this.executor = options.executor ?? ECHO_EXECUTOR
-    this.facilitator = options.facilitator ?? new MockFacilitatorClient()
-    const wallet = options.config.walletAddress ?? ""
+    this.endpointUrl = options.endpointUrl;
+    this.config = options.config;
+    this.executor = options.executor ?? ECHO_EXECUTOR;
+    this.facilitator = options.facilitator ?? new MockFacilitatorClient();
+    const wallet = options.config.walletAddress ?? "";
     this.payTo =
-      options.config.x402support && /^0x[a-fA-F0-9]{40}$/.test(wallet) ? wallet : undefined
+      options.config.x402support && /^0x[a-fA-F0-9]{40}$/.test(wallet) ? wallet : undefined;
   }
 
   buildAgentCard(): AgentCard {
@@ -124,7 +124,7 @@ export class A2AServer {
       defaultOutputModes: ["text/plain"],
       skills: this.executor.skills,
       supportsAuthenticatedExtendedCard: false,
-    }
+    };
   }
 
   healthDescriptor(): Record<string, unknown> {
@@ -145,7 +145,7 @@ export class A2AServer {
             },
           }
         : {}),
-    }
+    };
   }
 
   /**
@@ -153,32 +153,41 @@ export class A2AServer {
    * @param extensionHeader Value of the `X-A2A-Extensions` request header.
    */
   async handleJsonRpc(body: unknown, extensionHeader?: string): Promise<JsonRpcResponse> {
-    const req = body as Partial<JsonRpcRequest> | null
-    if (!req || typeof req !== "object" || req.jsonrpc !== "2.0" || typeof req.method !== "string") {
-      return rpcError(req?.id, -32600, "Invalid Request")
+    const req = body as Partial<JsonRpcRequest> | null;
+    if (
+      !req ||
+      typeof req !== "object" ||
+      req.jsonrpc !== "2.0" ||
+      typeof req.method !== "string"
+    ) {
+      return rpcError(req?.id, -32600, "Invalid Request");
     }
-    const params = req.params ?? {}
+    const params = req.params ?? {};
 
     try {
       switch (req.method) {
         case "message/send": {
-          const message = params.message as A2AMessage | undefined
+          const message = params.message as A2AMessage | undefined;
           if (!message || typeof message !== "object" || !Array.isArray(message.parts)) {
-            return rpcError(req.id, -32602, "Invalid params: params.message with parts[] is required")
+            return rpcError(
+              req.id,
+              -32602,
+              "Invalid params: params.message with parts[] is required",
+            );
           }
-          return rpcResult(req.id, await this.handleMessageSend(message, extensionHeader))
+          return rpcResult(req.id, await this.handleMessageSend(message, extensionHeader));
         }
         case "tasks/get": {
-          const taskId = typeof params.id === "string" ? params.id : ""
-          const task = this.tasks.get(taskId)?.task
-          if (!task) return rpcError(req.id, -32001, "Task not found", { taskId })
-          return rpcResult(req.id, task)
+          const taskId = typeof params.id === "string" ? params.id : "";
+          const task = this.tasks.get(taskId)?.task;
+          if (!task) return rpcError(req.id, -32001, "Task not found", { taskId });
+          return rpcResult(req.id, task);
         }
         default:
-          return rpcError(req.id, -32601, `Method not found: ${req.method}`)
+          return rpcError(req.id, -32601, `Method not found: ${req.method}`);
       }
     } catch (err) {
-      return rpcError(req.id, -32000, errorMessage(err))
+      return rpcError(req.id, -32000, errorMessage(err));
     }
   }
 
@@ -186,42 +195,42 @@ export class A2AServer {
     message: A2AMessage,
     extensionHeader: string | undefined,
   ): Promise<A2ATask> {
-    const contextId = message.contextId ?? randomUUID()
+    const contextId = message.contextId ?? randomUUID();
     if (this.config.active === false) {
-      return this.createFailedTask(contextId, "Agent is inactive")
+      return this.createFailedTask(contextId, "Agent is inactive");
     }
 
-    const status = paymentStatusFromMetadata(message.metadata)
+    const status = paymentStatusFromMetadata(message.metadata);
     const isPaymentReply =
       status === "payment-rejected" ||
       status === "payment-submitted" ||
-      paymentPayloadFromMetadata(message.metadata) !== undefined
+      paymentPayloadFromMetadata(message.metadata) !== undefined;
 
     if (isPaymentReply) {
-      const stored = message.taskId ? this.tasks.get(message.taskId) : undefined
+      const stored = message.taskId ? this.tasks.get(message.taskId) : undefined;
       if (!stored) {
-        return this.createFailedTask(contextId, "Unknown task for payment message", "UNKNOWN_TASK")
+        return this.createFailedTask(contextId, "Unknown task for payment message", "UNKNOWN_TASK");
       }
       return status === "payment-rejected"
         ? this.rejectPayment(stored)
-        : this.settlePayment(stored, message)
+        : this.settlePayment(stored, message);
     }
 
     const text = message.parts
       .filter((p) => p.kind === "text" && typeof p.text === "string")
       .map((p) => p.text)
       .join("\n")
-      .trim()
+      .trim();
 
     if (!this.payTo) {
       try {
-        const answer = await this.executor.run(text)
+        const answer = await this.executor.run(text);
         return this.store({
           task: agentTask(newTaskId(), contextId, "completed", answer),
           serviceText: text,
-        })
+        });
       } catch (err) {
-        return this.createFailedTask(contextId, `Agent failed: ${errorMessage(err)}`)
+        return this.createFailedTask(contextId, `Agent failed: ${errorMessage(err)}`);
       }
     }
     if (!isX402ExtensionActivated(extensionHeader)) {
@@ -229,14 +238,14 @@ export class A2AServer {
         contextId,
         "x402 extension required; activate via X-A2A-Extensions header",
         "EXTENSION_NOT_ACTIVATED",
-      )
+      );
     }
 
     const requirements = buildPaymentRequirements({
       payTo: this.payTo,
       resource: this.endpointUrl,
       description: `Payment for: ${text.slice(0, 80) || "A2A skill"}`,
-    })
+    });
     return this.store({
       task: agentTask(
         newTaskId(),
@@ -254,27 +263,27 @@ export class A2AServer {
       ),
       requirements,
       serviceText: text,
-    })
+    });
   }
 
   private rejectPayment(stored: StoredTask): A2ATask {
-    const notAwaiting = this.notAwaitingPayment(stored)
-    if (notAwaiting) return notAwaiting
+    const notAwaiting = this.notAwaitingPayment(stored);
+    if (notAwaiting) return notAwaiting;
     return this.update(
       stored,
       "failed",
       "Payment rejected by client.",
       buildAgentPaymentMetadata({ status: "payment-rejected", error: "PAYMENT_REJECTED" }),
-    )
+    );
   }
 
   private async settlePayment(stored: StoredTask, message: A2AMessage): Promise<A2ATask> {
-    const notAwaiting = this.notAwaitingPayment(stored)
-    if (notAwaiting) return notAwaiting
-    const requirements = stored.requirements!
+    const notAwaiting = this.notAwaitingPayment(stored);
+    if (notAwaiting) return notAwaiting;
+    const requirements = stored.requirements!;
 
-    const payload = paymentPayloadFromMetadata(message.metadata)
-    if (!payload) return this.fail(stored, "Missing x402.payment.payload", "INVALID_PAYMENT")
+    const payload = paymentPayloadFromMetadata(message.metadata);
+    if (!payload) return this.fail(stored, "Missing x402.payment.payload", "INVALID_PAYMENT");
 
     // Leaving "input-required" before the first await makes a concurrent
     // submission for the same task bounce off notAwaitingPayment().
@@ -283,8 +292,8 @@ export class A2AServer {
       "working",
       "Verifying payment...",
       buildAgentPaymentMetadata({ status: "payment-submitted" }),
-    )
-    const verified = await this.facilitator.verify(payload, requirements)
+    );
+    const verified = await this.facilitator.verify(payload, requirements);
     if (!verified.isValid) {
       return this.fail(
         stored,
@@ -297,7 +306,7 @@ export class A2AServer {
           payer: verified.payer,
           errorReason: verified.invalidReason,
         },
-      )
+      );
     }
 
     // Work happens between verify and settle: a failed run is never charged.
@@ -306,29 +315,33 @@ export class A2AServer {
       "working",
       "Payment verified. Working...",
       buildAgentPaymentMetadata({ status: "payment-verified" }),
-    )
-    let answer: string
+    );
+    let answer: string;
     try {
-      answer = await this.executor.run(stored.serviceText)
+      answer = await this.executor.run(stored.serviceText);
     } catch (err) {
-      return this.fail(stored, `Agent failed, payment not settled: ${errorMessage(err)}`, "SERVER_ERROR")
+      return this.fail(
+        stored,
+        `Agent failed, payment not settled: ${errorMessage(err)}`,
+        "SERVER_ERROR",
+      );
     }
 
-    const settled = await this.facilitator.settle(payload, requirements)
+    const settled = await this.facilitator.settle(payload, requirements);
     const receipt: SettlementReceipt = {
       success: settled.success,
       transaction: settled.transaction ?? "",
       network: settled.network,
       payer: settled.payer,
       ...(settled.errorReason ? { errorReason: settled.errorReason } : {}),
-    }
+    };
     if (!settled.success) {
       return this.fail(
         stored,
         settled.errorReason ?? "Settlement failed",
         settled.errorCode ?? "SETTLEMENT_FAILED",
         receipt,
-      )
+      );
     }
 
     this.update(
@@ -336,11 +349,11 @@ export class A2AServer {
       "completed",
       answer,
       buildAgentPaymentMetadata({ status: "payment-completed", receipts: [receipt] }),
-    )
+    );
     stored.task.artifacts = [
       { artifactId: randomUUID(), name: "result", parts: [{ kind: "text", text: answer }] },
-    ]
-    return stored.task
+    ];
+    return stored.task;
   }
 
   /**
@@ -349,13 +362,19 @@ export class A2AServer {
    * message can never overwrite a completed (paid) or in-flight task.
    */
   private notAwaitingPayment(stored: StoredTask): A2ATask | undefined {
-    const { id, contextId, status } = stored.task
-    if (stored.requirements && status.state === "input-required") return undefined
+    const { id, contextId, status } = stored.task;
+    if (stored.requirements && status.state === "input-required") return undefined;
     const [text, error]: [string, PaymentErrorCode] =
       status.state === "completed"
         ? ["Payment already settled for this task", "DUPLICATE_PAYMENT"]
-        : ["Task is not awaiting payment", "TASK_NOT_AWAITING_PAYMENT"]
-    return agentTask(id, contextId, "failed", text, buildAgentPaymentMetadata({ status: "payment-failed", error }))
+        : ["Task is not awaiting payment", "TASK_NOT_AWAITING_PAYMENT"];
+    return agentTask(
+      id,
+      contextId,
+      "failed",
+      text,
+      buildAgentPaymentMetadata({ status: "payment-failed", error }),
+    );
   }
 
   /** `error` is set for payment failures only; other failures carry no x402 metadata. */
@@ -369,7 +388,7 @@ export class A2AServer {
         error ? buildAgentPaymentMetadata({ status: "payment-failed", error }) : undefined,
       ),
       serviceText: "",
-    })
+    });
   }
 
   private fail(
@@ -387,7 +406,7 @@ export class A2AServer {
         error,
         receipts: receipt ? [receipt] : undefined,
       }),
-    )
+    );
   }
 
   private update(
@@ -396,25 +415,25 @@ export class A2AServer {
     text: string,
     metadata: Record<string, unknown>,
   ): A2ATask {
-    stored.task = agentTask(stored.task.id, stored.task.contextId, state, text, metadata)
-    return stored.task
+    stored.task = agentTask(stored.task.id, stored.task.contextId, state, text, metadata);
+    return stored.task;
   }
 
   private store(stored: StoredTask): A2ATask {
-    this.tasks.set(stored.task.id, stored)
+    this.tasks.set(stored.task.id, stored);
     if (this.tasks.size > MAX_TASKS) {
-      this.tasks.delete(this.tasks.keys().next().value!)
+      this.tasks.delete(this.tasks.keys().next().value!);
     }
-    return stored.task
+    return stored.task;
   }
 }
 
 function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return err instanceof Error ? err.message : String(err);
 }
 
 function newTaskId(): string {
-  return `task-${randomUUID()}`
+  return `task-${randomUUID()}`;
 }
 
 function agentTask(
@@ -438,11 +457,11 @@ function agentTask(
         ...(metadata ? { metadata } : {}),
       },
     },
-  }
+  };
 }
 
 function rpcResult(id: JsonRpcRequest["id"] | undefined, result: unknown): JsonRpcResponse {
-  return { jsonrpc: "2.0", id: id ?? null, result }
+  return { jsonrpc: "2.0", id: id ?? null, result };
 }
 
 function rpcError(
@@ -455,5 +474,5 @@ function rpcError(
     jsonrpc: "2.0",
     id: id ?? null,
     error: { code, message, ...(data !== undefined ? { data } : {}) },
-  }
+  };
 }

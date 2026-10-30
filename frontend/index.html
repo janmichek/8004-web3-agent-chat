@@ -4,10 +4,67 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web3Agent</title>
+    <title>web3Agent: AI agents with their own wallets, registered on ERC-8004</title>
+    <meta
+      name="description"
+      content="web3Agent creates AI agents with their own wallets on Arbitrum, Ethereum, or Mantle, registers them on ERC-8004, and lets you chat with them over the web, MCP and A2A."
+    />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="web3Agent" />
+    <meta
+      property="og:title"
+      content="web3Agent: AI agents with their own wallets, registered on ERC-8004"
+    />
+    <meta
+      property="og:description"
+      content="Create AI agents with their own wallets, register them on ERC-8004, and talk to them over chat, MCP and A2A."
+    />
+    <meta property="og:image" content="/logo-light.svg" />
+    <meta name="twitter:card" content="summary" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "web3Agent",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web",
+        "description": "Create AI agents with their own wallets on Arbitrum, Ethereum, or Mantle, register them on ERC-8004, and talk to them over chat, MCP and A2A.",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="app">
+      <main>
+        <h1>web3Agent</h1>
+        <p>
+          Create AI agents with their own wallets on Arbitrum, Ethereum, or Mantle, register them on
+          ERC-8004, and talk to them from a web console or CLI. Each agent can be reached over chat,
+          MCP and A2A.
+        </p>
+        <h2>What an agent is</h2>
+        <ul>
+          <li>
+            Wallet: its own private key, funded from a master wallet or your connected wallet.
+          </li>
+          <li>
+            Config: an ERC-8004-shaped file with endpoints, selected actions and tools, OASF domains
+            and skills, and x402 support.
+          </li>
+          <li>Chat memory: LangGraph checkpoints, one thread per agent.</li>
+          <li>
+            On-chain identity: bound in the ERC-8004 Identity Registry, with the registration file
+            pinned to IPFS.
+          </li>
+        </ul>
+        <p>
+          Agent discovery: <a href="/.well-known/agent-card.json">agent card (A2A)</a>.
+          Experimental. Not for production or real funds.
+        </p>
+      </main>
+    </div>
+    <script type="module" src="/src/app/main.ts"></script>
   </body>
 </html>

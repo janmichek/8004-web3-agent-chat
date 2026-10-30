@@ -14,7 +14,7 @@ const DEFAULT_GATEWAY = "https://beige-added-mole-82.mypinata.cloud/ipfs";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /** Gateway base URL, overridable via PINATA_GATEWAY_URL. */
-export function getGatewayBase(): string {
+function getGatewayBase(): string {
   return (process.env.PINATA_GATEWAY_URL?.trim() || DEFAULT_GATEWAY).replace(/\/$/, "");
 }
 
@@ -36,11 +36,7 @@ export function hasIpfsBackend(): boolean {
   return Boolean(process.env.PINATA_JWT?.trim() || process.env.IPFS_NODE_URL?.trim());
 }
 
-export function validateImage(
-  fileName: string,
-  mimeType: string,
-  size: number,
-): string | null {
+export function validateImage(fileName: string, mimeType: string, size: number): string | null {
   const allowed = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"];
   if (!allowed.includes(mimeType)) {
     return `Unsupported image type "${mimeType}" (allowed: ${allowed.join(", ")})`;
@@ -70,7 +66,10 @@ export async function uploadImage(image: IpfsImage): Promise<string> {
  * Upload a JSON document to the configured IPFS backend.
  * @returns The CID (without gateway prefix).
  */
-export async function uploadJson(data: unknown, fileName = "agent-registration.json"): Promise<string> {
+export async function uploadJson(
+  data: unknown,
+  fileName = "agent-registration.json",
+): Promise<string> {
   const pinataJwt = process.env.PINATA_JWT?.trim();
   if (pinataJwt) return uploadJsonToPinata(data, fileName, pinataJwt);
   const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
@@ -99,7 +98,11 @@ async function uploadJsonToPinata(data: unknown, fileName: string, jwt: string):
   return cid;
 }
 
-async function uploadJsonToIpfsNode(data: unknown, fileName: string, nodeUrl: string): Promise<string> {
+async function uploadJsonToIpfsNode(
+  data: unknown,
+  fileName: string,
+  nodeUrl: string,
+): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2));
   const form = new FormData();
   form.append("file", new Blob([bytes], { type: "application/json" }), fileName);

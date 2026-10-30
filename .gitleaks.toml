@@ -1,0 +1,13 @@
+title = "8004-web3-agent-chat gitleaks config"
+
+[extend]
+useDefault = true
+
+# Throwaway keys used by unit/e2e tests (0x00…01, 0x00…02) are not secrets.
+[[allowlists]]
+description = "test fixtures"
+paths = ['''.*\.test\.ts$''', '''/tests/''', '''frontend/e2e/''']
+
+[[allowlists]]
+description = ".env.example placeholders"
+paths = ['''\.env\.example$''']
