@@ -1,0 +1,13 @@
+{:title "8004-web3-agent-chat"
+ :prefix "8004-web3-agent-chat"
+ :sources [{:lang :typescript :root "frontend/src"}]
+ :foreign [vue viem wagmi tanstack]
+ :hierarchical true
+ :out "examples/app.edn"
+ :order [shared entities features widgets pages app]
+ :levels [[shared]
+          [entities]
+          [features]
+          [widgets]
+          [pages]
+          [app]]}
