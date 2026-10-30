@@ -3,7 +3,7 @@
   "entry": [
     "src/cli/*.ts",
     "src/mcp/server.ts",
-    "frontend/src/app/main.ts",
+    "apps/frontend/src/app/main.ts",
     "config/steiger.config.ts"
   ],
   "ignoreDependencies": [

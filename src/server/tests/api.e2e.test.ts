@@ -6,6 +6,9 @@
  * Run: npx vitest run src/server/tests/api.e2e.test.ts
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { fundAgentWallet } from '../../core/wallet.js'
 
 process.env.VERCEL = '1'
 
@@ -17,7 +20,11 @@ vi.mock('../../core/wallet.js', () => ({
     address: '0x0000000000000000000000000000000000000002',
     privateKey: '0x' + '1'.repeat(64),
   }),
-  fundAgentWallet: async () => '0x' + 'a'.repeat(64),
+  fundAgentWallet: vi.fn(async () => '0x' + 'a'.repeat(64)),
+  getAgentWalletEnvVars: (name: string) => [
+    `AGENT_${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_PRIVATE_KEY`,
+    'AGENT_PRIVATE_KEY',
+  ],
   getMasterWalletAddress: () => '0x0000000000000000000000000000000000000001',
 }))
 
@@ -170,6 +177,36 @@ describe('API offline e2e', () => {
     expect(res.status).toBe(404)
   })
 
+  it('POST /api/agents/:name/fund and /chat are rate limited per client IP', async () => {
+    for (const route of ['fund', 'chat']) {
+      const ip = `198.51.100.${route.length}`
+      let last = 0
+      for (let i = 0; i < 25; i++) {
+        const res = await app.request(`/api/agents/ghost-${route}/${route}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
+          body: '{}',
+        })
+        last = res.status
+      }
+      expect(last).toBe(429)
+    }
+  })
+
+  it('POST /api/rpc rejects oversized bodies before proxying', async () => {
+    const res = await app.request('/api/rpc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_call',
+        params: ['x'.repeat(70_000)],
+      }),
+    })
+    expect(res.status).toBe(413)
+  })
+
   it('POST /api/rpc returns JSON-RPC error without RPC_URL', async () => {
     const saved = process.env.RPC_URL
     vi.stubEnv('RPC_URL', '')
@@ -253,20 +290,29 @@ describe('API offline e2e', () => {
     expect(res.status).toBe(404)
   })
 
-  it('POST /api/agents validates OASF ids + fundEth range before side effects', async () => {
+  it('POST /api/agents validates OASF ids before side effects', async () => {
     const badOasf = await app.request('/api/agents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'oasf-probe-agent', oasfDomains: ['not-a-number'] }),
     })
     expect(badOasf.status).toBe(400)
+  })
 
-    const badFund = await app.request('/api/agents', {
+  it('POST /api/agents never spends master funds, even when fundEth is sent', async () => {
+    const name = `no-fund-${Date.now()}`
+    const res = await app.request('/api/agents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'oasf-probe-agent', fundEth: '5' }),
+      body: JSON.stringify({
+        name,
+        owner: '0x0000000000000000000000000000000000000001',
+        skipRegister: true,
+        fundEth: '1',
+      }),
     })
-    expect(badFund.status).toBe(400)
+    expect(res.status).toBe(201)
+    expect(fundAgentWallet).not.toHaveBeenCalled()
   })
 
   it('POST /api/upload/image validates backend + payload without pinning', async () => {
@@ -307,9 +353,53 @@ describe('API offline e2e', () => {
     vi.stubEnv('PINATA_JWT', '')
   })
 
+  it('POST /api/agents/:name/restore cannot take over an existing agent', async () => {
+    const { ethers } = await import('ethers')
+    const name = `takeover-${Date.now()}`
+    const owner = ethers.Wallet.createRandom()
+    const attacker = ethers.Wallet.createRandom()
+    const configFor = (wallet: { address: string }) => ({
+      name,
+      description: `Agent ${name}`,
+      walletAddress: wallet.address,
+      walletChainId: 421614,
+      endpoints: [],
+      trustModels: [],
+      owners: [],
+      operators: [],
+      active: true,
+      x402support: false,
+      metadata: { actions: [], tools: [] },
+      createdAt: new Date().toISOString(),
+      updatedAt: 0,
+    })
+
+    const first = await app.request(`/api/agents/${name}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: configFor(owner), privateKey: owner.privateKey }),
+    })
+    expect(first.status).toBe(200)
+
+    const hijack = await app.request(`/api/agents/${name}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: configFor(attacker), privateKey: attacker.privateKey }),
+    })
+    expect(hijack.status).toBe(409)
+    const walletFile = JSON.parse(
+      fs.readFileSync(path.join('/tmp/web3agent-test-agents', name, 'wallet.json'), 'utf-8'),
+    ) as { address: string }
+    expect(walletFile.address).toBe(owner.address)
+  })
+
   it('POST /api/agents/:name/restore heals from a key-backed backup', async () => {
     const { ethers } = await import('ethers')
     const key = ethers.Wallet.createRandom()
+    fs.rmSync(path.join('/tmp/web3agent-test-agents', 'restored-agent'), {
+      recursive: true,
+      force: true,
+    })
     const goodConfig = {
       name: 'restored-agent',
       description: 'Agent restored-agent',
