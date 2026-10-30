@@ -7,7 +7,7 @@ const CI = !!process.env.CI;
 const FULL_MATRIX = process.env.PLAYWRIGHT_MATRIX === "all" || CI;
 
 export default defineConfig({
-  testDir: "./frontend/e2e",
+  testDir: "../frontend/e2e",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   // Offline (mocked) specs run in parallel; on-chain specs must stay serial.
@@ -30,6 +30,7 @@ export default defineConfig({
   // Auto-start Vite when it isn't already running (`--reuse` keeps `npm run dev` workflows fast).
   webServer: {
     command: "npx vite frontend --host 127.0.0.1 --port 5173 --strictPort",
+    cwd: "..",
     url: FRONTEND,
     reuseExistingServer: !CI,
     timeout: 120_000,
@@ -37,7 +38,7 @@ export default defineConfig({
     stderr: "pipe",
   },
   // Fast locally (chromium only); full matrix in CI or with PLAYWRIGHT_MATRIX=all.
-  // Local full run: PLAYWRIGHT_MATRIX=all npx playwright test
+  // Local full run: PLAYWRIGHT_MATRIX=all npx playwright test -c config/playwright.config.ts
   projects: FULL_MATRIX
     ? [
         { name: "chromium", use: { ...devices["Desktop Chrome"] } },

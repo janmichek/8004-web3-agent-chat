@@ -1,0 +1,6 @@
+// Oxlint configuration. Run with `npm run lint`
+// (see package.json: `oxlint -c config/oxlintrc.json --type-aware --type-check --deny-warnings`).
+{
+  "$schema": "../node_modules/oxlint/configuration_schema.json",
+  "rules": {}
+}

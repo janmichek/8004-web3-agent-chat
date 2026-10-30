@@ -30,7 +30,7 @@ Frontend changes also need `npm run frontend:build` and `npm run test:e2e:offlin
 ## Rules
 
 - Write the test first for logic changes; colocate frontend tests (`*.test.ts`), backend tests live
-  in `src/**/tests/`. Coverage thresholds are in `vitest.config.ts` and only go up.
+  in `src/**/tests/`. Coverage thresholds are in `config/vitest.config.ts` and only go up.
 - Formatting is `oxfmt` (`npm run format`). `.vue` files are excluded — oxfmt mangles
   multi-statement `@click` handlers.
 - Don't silence `fallow`/`oxlint` with ignores; delete dead code instead.
@@ -41,13 +41,13 @@ Frontend changes also need `npm run frontend:build` and `npm run test:e2e:offlin
 
 | Tool          | Command / config                                                   |
 | ------------- | ------------------------------------------------------------------ |
-| oxlint        | `npm run lint` · `.oxlintrc.json`                                  |
+| oxlint        | `npm run lint` · `config/oxlintrc.json`                                  |
 | oxfmt         | `npm run format[:check]` · `.oxfmtrc.json`                         |
-| Steiger (FSD) | `npm run fsd` · `steiger.config.ts`                                |
-| fallow        | `npm run dead-code`, `npm run duplicates` · `.fallowrc.json`       |
+| Steiger (FSD) | `npm run fsd` · `config/steiger.config.ts`                                |
+| fallow        | `npm run dead-code`, `npm run duplicates` · `config/.fallowrc.json`       |
 | Vitest        | `npm run test:unit`, `npm run test:coverage`                       |
-| Stryker       | `npm run test:mutate` (weekly CI) · `stryker.config.json`          |
-| Lighthouse    | `lhci autorun` in the Danger workflow · `lighthouserc.json`        |
+| Stryker       | `npm run test:mutate` (weekly CI) · `config/stryker.config.json`          |
+| Lighthouse    | `lhci autorun` in the Danger workflow · `config/lighthouserc.json`        |
 | CodeQL        | `.github/workflows/codeql.yml`                                     |
 | gitleaks      | `.github/workflows/gitleaks.yml` · `.gitleaks.toml`                |
 | Danger        | `dangerfile.ts` — one PR comment: rules, coverage, Lighthouse, module diagram (`npm run diagram`) |

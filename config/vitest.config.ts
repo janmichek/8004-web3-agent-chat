@@ -1,9 +1,13 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
+// Config lives in config/, so the repository root is one level up.
+const root = fileURLToPath(new URL('..', import.meta.url))
+
 export default defineConfig({
+  root,
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./frontend/src', import.meta.url)) },
+    alias: { '@': fileURLToPath(new URL('../frontend/src', import.meta.url)) },
   },
   test: {
     exclude: ['node_modules/**', 'dist/**', 'frontend/e2e/**', 'frontend/dist/**'],

@@ -23,7 +23,7 @@
   ],
   "overrides": [
     {
-      "files": ["frontend/**", "**/tests/**", "**/*.test.ts", "vitest.config.ts"],
+      "files": ["frontend/**", "**/tests/**", "**/*.test.ts", "config/vitest.config.ts"],
       "options": {
         "semi": false,
         "singleQuote": true

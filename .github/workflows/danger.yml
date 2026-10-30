@@ -31,7 +31,7 @@ jobs:
         continue-on-error: true
       - run: npm run diagram > diagram.mmd
         continue-on-error: true
-      - run: npm run frontend:build && npx lhci autorun
+      - run: npm run frontend:build && npx lhci autorun --config=config/lighthouserc.json
         continue-on-error: true
       - run: npx danger ci
         env:

@@ -3,7 +3,7 @@
  :sources [{:lang :typescript :root "frontend/src"}]
  :foreign [vue viem wagmi tanstack]
  :hierarchical true
- :out "examples/app.edn"
+ :out "scripts/diagram/app.edn"
  :order [shared entities features widgets pages app]
  :levels [[shared]
           [entities]

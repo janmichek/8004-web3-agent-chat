@@ -24,17 +24,17 @@ jobs:
         run: |
           clojure -Sdeps '{:deps {io.github.unclebob/uml-viewer {:git/url "https://github.com/unclebob/uml-viewer.git" :git/sha "f65dafe93b3cb1b4e6bb02dbe41503ed05bd9ebf"}}}' \
             -M -m uml-viewer.main.ir-generator \
-            examples/app.policy.edn "$RUNNER_TEMP/after.edn"
+            scripts/diagram/app.policy.edn "$RUNNER_TEMP/after.edn"
       - name: Diagram the base branch
         run: |
           git fetch --depth=1 origin "${{ github.base_ref }}"
           git worktree add --detach "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
-          if [ -f "$RUNNER_TEMP/base/examples/app.policy.edn" ]; then
+          if [ -f "$RUNNER_TEMP/base/scripts/diagram/app.policy.edn" ]; then
             (
               cd "$RUNNER_TEMP/base"
               clojure -Sdeps '{:deps {io.github.unclebob/uml-viewer {:git/url "https://github.com/unclebob/uml-viewer.git" :git/sha "f65dafe93b3cb1b4e6bb02dbe41503ed05bd9ebf"}}}' \
                 -M -m uml-viewer.main.ir-generator \
-                examples/app.policy.edn "$RUNNER_TEMP/before.edn"
+                scripts/diagram/app.policy.edn "$RUNNER_TEMP/before.edn"
             )
           else
             printf '%s\n' '{:title "8004-web3-agent-chat" :classes [] :edges []}' > "$RUNNER_TEMP/before.edn"
