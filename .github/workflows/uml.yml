@@ -1,0 +1,103 @@
+name: uml
+
+# Before/after architecture diagram page, linked from one sticky PR comment.
+# The generator and renderer follow janmichek/dev-template-2026.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  diagram:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: DeLaGuardo/setup-clojure@13.7.0
+        with:
+          cli: 1.12.6.1673
+          java-version: "21"
+      - name: Diagram the pull request
+        run: |
+          clojure -Sdeps '{:deps {io.github.unclebob/uml-viewer {:git/url "https://github.com/unclebob/uml-viewer.git" :git/sha "f65dafe93b3cb1b4e6bb02dbe41503ed05bd9ebf"}}}' \
+            -M -m uml-viewer.main.ir-generator \
+            examples/app.policy.edn "$RUNNER_TEMP/after.edn"
+      - name: Diagram the base branch
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          git worktree add --detach "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}"
+          if [ -f "$RUNNER_TEMP/base/examples/app.policy.edn" ]; then
+            (
+              cd "$RUNNER_TEMP/base"
+              clojure -Sdeps '{:deps {io.github.unclebob/uml-viewer {:git/url "https://github.com/unclebob/uml-viewer.git" :git/sha "f65dafe93b3cb1b4e6bb02dbe41503ed05bd9ebf"}}}' \
+                -M -m uml-viewer.main.ir-generator \
+                examples/app.policy.edn "$RUNNER_TEMP/before.edn"
+            )
+          else
+            printf '%s\n' '{:title "8004-web3-agent-chat" :classes [] :edges []}' > "$RUNNER_TEMP/before.edn"
+          fi
+      - name: Render the diagram diff
+        run: |
+          mkdir -p preview
+          bun scripts/diagram-page.ts \
+            "$RUNNER_TEMP/after.edn" "$RUNNER_TEMP/before.edn" preview/diagram.html \
+            "${{ github.head_ref }}" "${{ github.event.pull_request.head.sha }}" \
+            "${{ github.base_ref }}" "${{ github.event.pull_request.base.sha }}"
+      - name: Publish the diagram page
+        id: page
+        run: |
+          url=""
+          for _ in 1 2 3; do
+            url="$(curl -fsS -F "file=@preview/diagram.html" https://x0.at || true)"
+            printf '%s' "$url" | grep -q '^https://' && break
+            sleep 2
+          done
+          printf '%s\n' "$url" | grep -q '^https://'
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Summarize the diagram
+        run: |
+          echo "Open the diagram: ${{ steps.page.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment on the pull request
+        uses: actions/github-script@v7
+        env:
+          DIAGRAM_URL: ${{ steps.page.outputs.url }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        with:
+          script: |
+            const url = process.env.DIAGRAM_URL
+            const marker = '<!-- uml-preview -->'
+            const body = [
+              marker,
+              '### UML diagram',
+              '',
+              `**[Open the diagram](${url})**`,
+              '',
+              `\`${process.env.BASE_REF}\` → \`${process.env.HEAD_REF}\``,
+              '',
+              '<sub>Before and after. Click a module to isolate arrows, search modules, or switch between changed and all imports.</sub>',
+            ].join('\n')
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })
+            const existing = comments.find((comment) => comment.body && comment.body.includes(marker))
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              })
+            }

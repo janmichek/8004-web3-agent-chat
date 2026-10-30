@@ -17,5 +17,6 @@
       "file": "src/actions/**/index.ts",
       "exports": ["*"]
     }
-  ]
+  ],
+  "ignorePatterns": ["scripts/diagram/**", "scripts/diagram-page.ts"]
 }

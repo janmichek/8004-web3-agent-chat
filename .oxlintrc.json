@@ -2,6 +2,12 @@
 // (see package.json: `oxlint --type-aware --type-check --deny-warnings`).
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": ["dist/", "frontend/dist/", "agents/"],
+  "ignorePatterns": [
+    "dist/",
+    "frontend/dist/",
+    "agents/",
+    "scripts/diagram/",
+    "scripts/diagram-page.ts"
+  ],
   "rules": {}
 }

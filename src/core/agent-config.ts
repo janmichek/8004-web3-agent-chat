@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
 import { AGENTS_DIR } from "./wallet.js";
+import { agentDirPath } from "./agent-path.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY, getStandaloneToolInstance } from "./action-registry.js";
 import type { Skill } from "../actions/types.js";
 
@@ -124,7 +125,7 @@ function normalizeConfig(parsed: Record<string, unknown>): AgentConfig {
 export function saveAgentConfig(agentName: string, config: AgentConfig): void {
   // On Vercel, also mirror to /tmp and warn that env should be used for persistence
   try {
-    const agentDir = path.join(AGENTS_DIR, agentName);
+    const agentDir = agentDirPath(AGENTS_DIR, agentName);
     fs.mkdirSync(agentDir, { recursive: true });
     const configPath = path.join(agentDir, "agent-config.json");
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
@@ -150,7 +151,7 @@ export function loadAgentConfig(agentName: string): AgentConfig | null {
   const candidates = [AGENTS_DIR];
   if (process.env.VERCEL) candidates.push(path.resolve(process.cwd(), "agents"));
   for (const dir of candidates) {
-    const configPath = path.join(dir, agentName, "agent-config.json");
+    const configPath = path.join(agentDirPath(dir, agentName), "agent-config.json");
     if (!fs.existsSync(configPath)) continue;
     try {
       const raw = fs.readFileSync(configPath, "utf-8");
@@ -169,7 +170,7 @@ export function deleteAgentConfig(agentName: string): boolean {
   const candidates = [AGENTS_DIR];
   if (process.env.VERCEL) candidates.push(path.resolve(process.cwd(), "agents"));
   for (const dir of candidates) {
-    const agentDir = path.join(dir, agentName);
+    const agentDir = agentDirPath(dir, agentName);
     if (fs.existsSync(agentDir)) {
       fs.rmSync(agentDir, { recursive: true, force: true });
       removed = true;

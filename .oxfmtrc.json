@@ -17,7 +17,9 @@
     "**/*.html",
     "docs/",
     "**/*.vue",
-    "*.md"
+    "*.md",
+    "scripts/diagram/",
+    "scripts/diagram-page.ts"
   ],
   "overrides": [
     {

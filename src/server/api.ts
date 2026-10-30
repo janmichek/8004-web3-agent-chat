@@ -5,6 +5,7 @@
  *   npm run serve
  */
 
+import { AGENT_NAME_RE } from "../core/agent-path.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { timingSafeEqual } from "node:crypto";
@@ -61,7 +62,6 @@ import { canonicalizeEndpoint, isAdvertisableUrl } from "../core/registration-se
 dotenv.config();
 
 const PORT = Number(process.env.API_PORT || 8787);
-const AGENT_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/;
 
 // --- MCP (stateless, Bearer-authenticated) -------------------------------------
 // Served at /api/mcp and /mcp so `${origin}/api/mcp` (prefilled in wizard) is verifiable on 8004scan.

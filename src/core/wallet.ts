@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { ethers } from "ethers";
 import { getProvider } from "./config.js";
+import { agentDirPath } from "./agent-path.js";
 import type { WalletData, WalletOptions, FundAgentOptions } from "./types.js";
 
 /**
@@ -75,7 +76,7 @@ export function getOrCreateAgentWallet(options: WalletOptions): WalletData {
   const candidates = [AGENTS_DIR];
   if (process.env.VERCEL) candidates.push(path.resolve(process.cwd(), "agents"));
   for (const dir of candidates) {
-    const walletPath = path.join(dir, agentName, "wallet.json");
+    const walletPath = path.join(agentDirPath(dir, agentName), "wallet.json");
     if (fs.existsSync(walletPath)) {
       try {
         const raw = fs.readFileSync(walletPath, "utf-8");
@@ -93,7 +94,7 @@ export function getOrCreateAgentWallet(options: WalletOptions): WalletData {
   // works for this request (fund + register + chat) but is lost on cold start
   // or redeploy unless the user saves the private key to Vercel env vars.
   // Callers detect this via getAgentWalletEnvVars() and surface the key once.
-  const agentDir = path.join(AGENTS_DIR, agentName);
+  const agentDir = agentDirPath(AGENTS_DIR, agentName);
   const walletPath = path.join(agentDir, "wallet.json");
   const wallet = ethers.Wallet.createRandom();
   const data: WalletData = {

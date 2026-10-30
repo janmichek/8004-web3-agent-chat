@@ -13,6 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { MemorySaver } from "@langchain/langgraph";
 import { AGENTS_DIR } from "./wallet.js";
+import { agentDirPath } from "./agent-path.js";
 import { loadRemoteMemory, remoteMemoryEnabled, saveRemoteMemory } from "./memory-store.js";
 
 /** Fill a MemorySaver from parsed memory.json data. */
@@ -92,9 +93,11 @@ export function createFileCheckpointer(agentName: string) {
   // Memory is per-invocation only on Vercel; see createPersistentCheckpointer for the Redis-backed path
   const isVercel = !!process.env.VERCEL;
   const baseDir = isVercel ? path.join(os.tmpdir(), "agents") : AGENTS_DIR;
-  const memoryPath = path.join(baseDir, agentName, "memory.json");
+  const memoryPath = path.join(agentDirPath(baseDir, agentName), "memory.json");
   // Also try original AGENTS_DIR as fallback for read (local dev bundle on Vercel)
-  const fallbackPath = isVercel ? path.join(AGENTS_DIR, agentName, "memory.json") : null;
+  const fallbackPath = isVercel
+    ? path.join(agentDirPath(AGENTS_DIR, agentName), "memory.json")
+    : null;
   const saver = new MemorySaver();
 
   // Load existing state — try tmp first, then fallback
