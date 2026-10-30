@@ -1,401 +1,399 @@
-import { chainIdOfAgentId, networkInfo, txExplorerUrl } from '../config'
+import { chainIdOfAgentId, networkInfo, txExplorerUrl } from "../config";
 
 export type AgentSummary = {
-  name: string
-  description: string
+  name: string;
+  description: string;
   /** Public avatar URL (https gateway form when the config stores ipfs://). */
-  image?: string
-  walletAddress?: string
-  walletChainId: number
-  agentId?: string
-  agentURI?: string
-  owners?: string[]
-  operators?: string[]
-  actions: string[]
-  tools: string[]
-  active: boolean
-  x402support?: boolean
+  image?: string;
+  walletAddress?: string;
+  walletChainId: number;
+  agentId?: string;
+  agentURI?: string;
+  owners?: string[];
+  operators?: string[];
+  actions: string[];
+  tools: string[];
+  active: boolean;
+  x402support?: boolean;
   /** Present when x402support: how the server handles A2A payments. */
-  x402Mode?: X402Mode
-  endpoints?: { type: string; value: string }[]
-  services?: CreateAgentService[]
-  oasfDomains?: string[]
-  oasfSkills?: string[]
+  x402Mode?: X402Mode;
+  endpoints?: { type: string; value: string }[];
+  services?: CreateAgentService[];
+  oasfDomains?: string[];
+  oasfSkills?: string[];
   /** Last conversation checkpoint (list endpoint only). */
-  lastActive?: string | null
+  lastActive?: string | null;
   /** Total human + agent + tool messages across sessions (list endpoint only). */
-  messageCount?: number
+  messageCount?: number;
   /** Number of detected conversation sessions (list endpoint only). */
-  sessionCount?: number
-}
+  sessionCount?: number;
+};
 
 /** Latest `lastActive` first; agents with no activity keep their relative order. */
 export function sortAgentsByLastUsed<T extends { lastActive?: string | null }>(agents: T[]): T[] {
   return [...agents].sort((a, b) => {
-    const aTs = a.lastActive ? Date.parse(a.lastActive) : 0
-    const bTs = b.lastActive ? Date.parse(b.lastActive) : 0
-    return (Number.isFinite(bTs) ? bTs : 0) - (Number.isFinite(aTs) ? aTs : 0)
-  })
+    const aTs = a.lastActive ? Date.parse(a.lastActive) : 0;
+    const bTs = b.lastActive ? Date.parse(b.lastActive) : 0;
+    return (Number.isFinite(bTs) ? bTs : 0) - (Number.isFinite(aTs) ? aTs : 0);
+  });
 }
 
 type ReputationSummary = {
-  count: number
-  averageValue: number
-  scanUrl?: string
-}
+  count: number;
+  averageValue: number;
+  scanUrl?: string;
+};
 
 export type ChatEvent =
-  | { type: 'tool_call'; name: string; args: unknown }
-  | { type: 'tool_result'; content: string }
-  | { type: 'message'; content: string }
+  | { type: "tool_call"; name: string; args: unknown }
+  | { type: "tool_result"; content: string }
+  | { type: "message"; content: string };
 
 type ChatResponse = {
-  reply: string
-  events: ChatEvent[]
-}
+  reply: string;
+  events: ChatEvent[];
+};
 
 export type CatalogAction = {
-  name: string
-  description: string
-  toolNames: string[]
-  skillName: string
-}
+  name: string;
+  description: string;
+  toolNames: string[];
+  skillName: string;
+};
 
 export type CatalogTool = {
-  name: string
-  description: string
+  name: string;
+  description: string;
   /** Never signs or sends; the only tools an agent uses when called over A2A. */
-  readOnly?: boolean
-}
+  readOnly?: boolean;
+};
 
 /** "mock": payments simulated. "facilitator": verified and settled on-chain. */
-export type X402Mode = 'mock' | 'facilitator'
+export type X402Mode = "mock" | "facilitator";
 
 /** A network agents can be created on, with the master wallet's balance there. */
 export type CatalogNetwork = {
-  network: string
-  name: string
-  chainId: number
-  explorerUrl?: string
-  masterBalanceEth?: string
-}
+  network: string;
+  name: string;
+  chainId: number;
+  explorerUrl?: string;
+  masterBalanceEth?: string;
+};
 
 export type CatalogResponse = {
   /** Default network (server NETWORK env). */
-  network: string
-  networkName: string
-  chainId: number
-  master: { address?: string; balanceEth?: string }
+  network: string;
+  networkName: string;
+  chainId: number;
+  master: { address?: string; balanceEth?: string };
   /** Absent on servers that predate multichain. */
-  networks?: CatalogNetwork[]
-  actions: CatalogAction[]
-  tools: CatalogTool[]
-  x402?: { mode: X402Mode; network: string; maxAmountRequired: string }
-}
+  networks?: CatalogNetwork[];
+  actions: CatalogAction[];
+  tools: CatalogTool[];
+  x402?: { mode: X402Mode; network: string; maxAmountRequired: string };
+};
 
 export type CreateAgentService = {
-  name: string
-  endpoint: string
-}
+  name: string;
+  endpoint: string;
+};
 
 export type CreateAgentRequest = {
-  name: string
+  name: string;
   /** Connected (signed-in) wallet that will own the identity NFT. */
-  owner: string
+  owner: string;
   /** Chain to create the agent on; the server default when omitted. */
-  chainId?: number
-  description?: string
-  imageUri?: string
-  actions?: string[]
-  tools?: string[]
-  oasfDomains?: string[]
-  oasfSkills?: string[]
-  fundEth?: string
-  skipRegister?: boolean
-  active?: boolean
-  x402support?: boolean
-  services?: CreateAgentService[]
-  mcpEndpoint?: string
-  a2aEndpoint?: string
-}
+  chainId?: number;
+  description?: string;
+  imageUri?: string;
+  actions?: string[];
+  tools?: string[];
+  oasfDomains?: string[];
+  oasfSkills?: string[];
+  skipRegister?: boolean;
+  active?: boolean;
+  x402support?: boolean;
+  services?: CreateAgentService[];
+  mcpEndpoint?: string;
+  a2aEndpoint?: string;
+};
 
 type CreateAgentResponse = {
-  ok: boolean
-  agent: AgentSummary
-  balanceEth: string
-  fundTxHash?: string
-  ephemeral?: boolean
-  privateKey?: string
-  privateKeyEnvVar?: string
+  ok: boolean;
+  agent: AgentSummary;
+  balanceEth: string;
+  ephemeral?: boolean;
+  privateKey?: string;
+  privateKeyEnvVar?: string;
   /** Full agent config — present in ephemeral mode so the browser can back it up. */
-  config?: Record<string, unknown>
-  ephemeralWarning?: string
-}
+  config?: Record<string, unknown>;
+  ephemeralWarning?: string;
+};
 
 /** Browser-held backup of an ephemeral agent (config + private key). */
 export type AgentBackup = {
-  config: Record<string, unknown>
-  privateKey: string
-  savedAt: string
-}
+  config: Record<string, unknown>;
+  privateKey: string;
+  savedAt: string;
+};
 
-const BACKUP_KEY = 'web3agent:backups:v1'
+const BACKUP_KEY = "web3agent:backups:v1";
 
 function readBackups(): Record<string, AgentBackup> {
   try {
-    const raw = localStorage.getItem(BACKUP_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as Record<string, AgentBackup>
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    const raw = localStorage.getItem(BACKUP_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, AgentBackup>;
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    return {}
+    return {};
   }
 }
 
 /** Persist an ephemeral agent's config + key so cold instances can be healed. */
 export function saveAgentBackup(name: string, config: Record<string, unknown>, privateKey: string) {
   try {
-    const all = readBackups()
-    all[name] = { config, privateKey, savedAt: new Date().toISOString() }
-    localStorage.setItem(BACKUP_KEY, JSON.stringify(all))
+    const all = readBackups();
+    all[name] = { config, privateKey, savedAt: new Date().toISOString() };
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(all));
   } catch {
     /* storage full or unavailable — backup is best-effort */
   }
 }
 
 export function loadAgentBackup(name: string): AgentBackup | null {
-  return readBackups()[name] ?? null
+  return readBackups()[name] ?? null;
 }
 
 export function deleteAgentBackup(name: string) {
   try {
-    const all = readBackups()
-    delete all[name]
-    localStorage.setItem(BACKUP_KEY, JSON.stringify(all))
+    const all = readBackups();
+    delete all[name];
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(all));
   } catch {
     /* ignore */
   }
 }
 
 async function restoreAgent(name: string): Promise<boolean> {
-  const backup = loadAgentBackup(name)
-  if (!backup) return false
+  const backup = loadAgentBackup(name);
+  if (!backup) return false;
   try {
     const res = await fetch(`/api/agents/${encodeURIComponent(name)}/restore`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ config: backup.config, privateKey: backup.privateKey }),
-    })
-    return res.ok
+    });
+    return res.ok;
   } catch {
-    return false
+    return false;
   }
 }
 
 async function request<T>(path: string, init?: RequestInit, retryRestore = true): Promise<T> {
   // Merge headers via the Headers API: spreading init.headers into an
   // object literal silently drops Headers instances and mangles arrays.
-  const headers = new Headers(init?.headers)
+  const headers = new Headers(init?.headers);
   // Only default to JSON for string bodies — FormData needs the browser's
   // multipart Content-Type (with boundary) and must stay untouched.
-  if (!headers.has('Content-Type') && typeof init?.body === 'string') {
-    headers.set('Content-Type', 'application/json')
+  if (!headers.has("Content-Type") && typeof init?.body === "string") {
+    headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(path, { ...init, headers })
+  const res = await fetch(path, { ...init, headers });
   // Read as text first: backends/proxies can return non-JSON bodies
   // (plain-text 404s, proxy errors, empty responses). Parsing those with
   // res.json() throws a cryptic "unexpected non-whitespace character
   // after JSON data" instead of the real error.
-  const text = await res.text()
-  let data: { error?: string } | null = null
+  const text = await res.text();
+  let data: { error?: string } | null = null;
   if (text) {
     try {
-      data = JSON.parse(text)
+      data = JSON.parse(text);
     } catch {
-      throw new Error(`Request failed (${res.status}): ${text.slice(0, 160) || res.statusText}`)
+      throw new Error(`Request failed (${res.status}): ${text.slice(0, 160) || res.statusText}`);
     }
   }
   if (!res.ok) {
     // Cold serverless instance forgot this agent but the browser holds a
     // backup (ephemeral mode): heal the instance, then retry once.
     // Skipped for the restore endpoint itself to avoid recursion.
-    const agentMatch = path.match(/^\/api\/agents\/([^/]+)\/.+/)
-    if (retryRestore && res.status === 404 && agentMatch && !path.endsWith('/restore')) {
-      const agentName = decodeURIComponent(agentMatch[1] ?? '')
+    const agentMatch = path.match(/^\/api\/agents\/([^/]+)\/.+/);
+    if (retryRestore && res.status === 404 && agentMatch && !path.endsWith("/restore")) {
+      const agentName = decodeURIComponent(agentMatch[1] ?? "");
       if (agentName && (await restoreAgent(agentName))) {
-        return request<T>(path, init, false)
+        return request<T>(path, init, false);
       }
     }
-    throw new Error(data?.error || `Request failed (${res.status})`)
+    throw new Error(data?.error || `Request failed (${res.status})`);
   }
-  return data as T
+  return data as T;
 }
 
 export function fetchAgents() {
-  return request<{ agents: AgentSummary[] }>('/api/agents')
+  return request<{ agents: AgentSummary[] }>("/api/agents");
 }
 
 export function fetchCatalog() {
-  return request<CatalogResponse>('/api/catalog')
+  return request<CatalogResponse>("/api/catalog");
 }
 
 export function createAgent(body: CreateAgentRequest) {
-  return request<CreateAgentResponse>('/api/agents', {
-    method: 'POST',
+  return request<CreateAgentResponse>("/api/agents", {
+    method: "POST",
     body: JSON.stringify(body),
-  })
+  });
 }
 
 type UploadImageResponse = {
-  ok: boolean
-  imageUri: string
-}
+  ok: boolean;
+  imageUri: string;
+};
 
 /** Upload an agent image (multipart) — backend pins it to IPFS. */
 export function uploadImage(file: File) {
-  const form = new FormData()
-  form.append('file', file)
-  return request<UploadImageResponse>('/api/upload/image', {
-    method: 'POST',
+  const form = new FormData();
+  form.append("file", file);
+  return request<UploadImageResponse>("/api/upload/image", {
+    method: "POST",
     body: form,
-  })
+  });
 }
 
 export function deleteAgent(name: string) {
   return request<{ ok: boolean; name: string }>(`/api/agents/${encodeURIComponent(name)}`, {
-    method: 'DELETE',
-  })
+    method: "DELETE",
+  });
 }
 
 export function chatWithAgent(name: string, message: string) {
   return request<ChatResponse>(`/api/agents/${encodeURIComponent(name)}/chat`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ message }),
-  })
+  });
 }
 
 export function fundAgent(name: string, amountEth: string) {
   return request<{
-    ok: boolean
-    txHash: string
-    amountEth: string
-    to: string
-    from: string
+    ok: boolean;
+    txHash: string;
+    amountEth: string;
+    to: string;
+    from: string;
   }>(`/api/agents/${encodeURIComponent(name)}/fund`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify({ amountEth }),
-  })
+  });
 }
 
 type PreparedFeedback = {
-  ok: boolean
-  to: `0x${string}`
-  data: `0x${string}`
-  chainId: number
-  agentId: string
-  value: number
-  scanUrl: string
-  feedbackURI?: string
-}
+  ok: boolean;
+  to: `0x${string}`;
+  data: `0x${string}`;
+  chainId: number;
+  agentId: string;
+  value: number;
+  scanUrl: string;
+  feedbackURI?: string;
+};
 
 /** Unsigned giveFeedback tx; the connected wallet signs it so it is the feedback author. */
 export function prepareFeedback(
   agentName: string,
   body: {
-    agentId?: string
-    value: number
-    tag?: string
-    endpoint?: string
-    comment?: string
-    clientAddress: string
+    agentId?: string;
+    value: number;
+    tag?: string;
+    endpoint?: string;
+    comment?: string;
+    clientAddress: string;
   },
 ) {
   return request<PreparedFeedback>(
     `/api/agents/${encodeURIComponent(agentName)}/feedback/prepare`,
     {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(body),
     },
-  )
+  );
 }
 
 export function fetchReputation(agentId: string, tag?: string) {
-  const q = tag ? `?tag=${encodeURIComponent(tag)}` : ''
+  const q = tag ? `?tag=${encodeURIComponent(tag)}` : "";
   return request<ReputationSummary & { agentId: string }>(
     `/api/reputation/${encodeURIComponent(agentId)}${q}`,
-  )
+  );
 }
 
 export type MemoryMessage = {
-  role: 'user' | 'assistant' | 'tool' | 'system' | 'unknown'
-  content: string
-  name?: string
-  toolCalls?: { name: string; args: unknown }[]
-  id?: string
-  ts?: string
-}
+  role: "user" | "assistant" | "tool" | "system" | "unknown";
+  content: string;
+  name?: string;
+  toolCalls?: { name: string; args: unknown }[];
+  id?: string;
+  ts?: string;
+};
 
 export type MemorySession = {
-  id: string
-  index: number
-  startedAt: string
-  endedAt: string
-  messageCount: number
-  humanCount: number
-  assistantCount: number
-  toolCount: number
-  title: string
-  preview: string
-  messages: MemoryMessage[]
-  txHashes: string[]
-  recipients: string[]
-  summary: string
-}
+  id: string;
+  index: number;
+  startedAt: string;
+  endedAt: string;
+  messageCount: number;
+  humanCount: number;
+  assistantCount: number;
+  toolCount: number;
+  title: string;
+  preview: string;
+  messages: MemoryMessage[];
+  txHashes: string[];
+  recipients: string[];
+  summary: string;
+};
 
 export type MemorySummary = {
-  agent: string
-  exists: boolean
-  empty: boolean
-  threads: string[]
-  checkpointCount: number
-  firstActive: string | null
-  lastActive: string | null
+  agent: string;
+  exists: boolean;
+  empty: boolean;
+  threads: string[];
+  checkpointCount: number;
+  firstActive: string | null;
+  lastActive: string | null;
   stats: {
-    totalMessages: number
-    humanCount: number
-    aiCount: number
-    toolCount: number
-    toolCallsByName: Record<string, number>
-    uniqueRecipients: string[]
-    txHashes: string[]
-    totalEthSent: string
-  }
-  summary: string
-  preview: MemoryMessage[]
-  recentTxHashes: string[]
-  sessions: MemorySession[]
-}
+    totalMessages: number;
+    humanCount: number;
+    aiCount: number;
+    toolCount: number;
+    toolCallsByName: Record<string, number>;
+    uniqueRecipients: string[];
+    txHashes: string[];
+    totalEthSent: string;
+  };
+  summary: string;
+  preview: MemoryMessage[];
+  recentTxHashes: string[];
+  sessions: MemorySession[];
+};
 
 export function fetchMemory(agentName: string) {
-  return request<MemorySummary>(`/api/agents/${encodeURIComponent(agentName)}/memory`)
+  return request<MemorySummary>(`/api/agents/${encodeURIComponent(agentName)}/memory`);
 }
 
 /** Detect a mined/success tx hash in agent tool output (not an Error: line). */
 export function extractSuccessfulTxHash(content: string): string | null {
-  if (/^\s*Error:/i.test(content) || /\bError:/i.test(content.split('\n')[0] ?? '')) return null
-  const m = content.match(/\b(0x[a-fA-F0-9]{64})\b/)
-  return m?.[1] ?? null
+  if (/^\s*Error:/i.test(content) || /\bError:/i.test(content.split("\n")[0] ?? "")) return null;
+  const m = content.match(/\b(0x[a-fA-F0-9]{64})\b/);
+  return m?.[1] ?? null;
 }
 
 /** 8004scan page of an agent. `chainId` applies to bare token IDs; a "<chainId>:<tokenId>" ID wins. */
 export function scanUrlForAgent(agentId: string, chainId: number, tab?: string): string {
-  const parts = agentId.split(':')
-  const tokenId = parts[parts.length - 1] || agentId
-  const network = networkInfo(chainIdOfAgentId(agentId) ?? chainId)
-  const base = `${network.scanUrl}/agents/${network.scanSlug}/${tokenId}`
-  return tab ? `${base}?tab=${tab}` : base
+  const parts = agentId.split(":");
+  const tokenId = parts[parts.length - 1] || agentId;
+  const network = networkInfo(chainIdOfAgentId(agentId) ?? chainId);
+  const base = `${network.scanUrl}/agents/${network.scanSlug}/${tokenId}`;
+  return tab ? `${base}?tab=${tab}` : base;
 }
 
 export function txScanUrl(txHash: string, chainId: number): string {
-  return txExplorerUrl(txHash, chainId)
+  return txExplorerUrl(txHash, chainId);
 }

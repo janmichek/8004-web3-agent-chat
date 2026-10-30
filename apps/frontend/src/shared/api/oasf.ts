@@ -8,21 +8,21 @@
  * Skills  = second-level capabilities (e.g. id "602" → Web Development).
  * Leaf modules ([10101]…) are intentionally omitted — selection stops at skill level.
  */
-export type OasfSkill = { id: string; name: string; slug: string }
-export type OasfDomain = { id: string; name: string; slug: string; skills: OasfSkill[] }
+export type OasfSkill = { id: string; name: string; slug: string };
+export type OasfDomain = { id: string; name: string; slug: string; skills: OasfSkill[] };
 
-export const OASF_SCHEMA_URL = 'https://schema.oasf.outshift.com/'
-const OASF_VERSION = '1.1.0'
-const OASF_TAXONOMY_URL = `${OASF_SCHEMA_URL}api/${OASF_VERSION}/skill_categories`
+export const OASF_SCHEMA_URL = "https://schema.oasf.outshift.com/";
+const OASF_VERSION = "1.1.0";
+const OASF_TAXONOMY_URL = `${OASF_SCHEMA_URL}api/${OASF_VERSION}/skill_categories`;
 
 type OasfApiSkillNode = {
-  id: number | string
-  caption?: string
-  name?: string
-  classes?: Record<string, OasfApiSkillNode>
-}
+  id: number | string;
+  caption?: string;
+  name?: string;
+  classes?: Record<string, OasfApiSkillNode>;
+};
 
-type OasfApiTaxonomy = Record<string, OasfApiSkillNode>
+type OasfApiTaxonomy = Record<string, OasfApiSkillNode>;
 
 /**
  * Fetch the live OASF skill taxonomy and transform it to the
@@ -34,25 +34,25 @@ type OasfApiTaxonomy = Record<string, OasfApiSkillNode>
  *            used for the `domains` array 8004scan renders.
  */
 export async function fetchOasfDomains(): Promise<OasfDomain[]> {
-  const res = await fetch(OASF_TAXONOMY_URL)
+  const res = await fetch(OASF_TAXONOMY_URL);
   if (!res.ok) {
-    throw new Error(`OASF taxonomy fetch failed (${res.status})`)
+    throw new Error(`OASF taxonomy fetch failed (${res.status})`);
   }
-  const data = (await res.json()) as OasfApiTaxonomy
+  const data = (await res.json()) as OasfApiTaxonomy;
   const domains: OasfDomain[] = Object.values(data).map((d) => {
     const skills: OasfSkill[] = Object.values(d.classes ?? {}).map((s) => ({
       id: String(s.id),
       name: s.caption ?? s.name ?? String(s.id),
       slug: String(s.name ?? s.id),
-    }))
-    skills.sort((a, b) => Number(a.id) - Number(b.id))
+    }));
+    skills.sort((a, b) => Number(a.id) - Number(b.id));
     return {
       id: String(d.id),
       name: d.caption ?? d.name ?? String(d.id),
       slug: String(d.name ?? d.id),
       skills,
-    }
-  })
-  domains.sort((a, b) => Number(a.id) - Number(b.id))
-  return domains
+    };
+  });
+  domains.sort((a, b) => Number(a.id) - Number(b.id));
+  return domains;
 }

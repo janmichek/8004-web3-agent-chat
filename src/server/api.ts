@@ -50,6 +50,7 @@ import type { NetworkName } from "../core/types.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
 import { parseAgentConfig, saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
 import { registerAgent } from "../core/registry.js";
+import { serializeTurn, withSigningKey } from "./signing-key.js";
 import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemoryAsync } from "../core/memory-reader.js";
 import type { Skill } from "../actions/types.js";
@@ -71,11 +72,17 @@ const PORT = Number(process.env.API_PORT || 8787);
 // requires `Authorization: Bearer $MCP_AUTH_TOKEN`. Fails closed when the
 // token is not configured. Optional `?agent=<name>` scopes the server to that
 // agent's `metadata.tools` allowlist.
-const MCP_RATE_WINDOW_MS = Number(process.env.MCP_RATE_WINDOW_MS || 60_000);
+const RATE_WINDOW_MS = Number(process.env.MCP_RATE_WINDOW_MS || 60_000);
 const MCP_RATE_MAX = Number(process.env.MCP_RATE_MAX || 60);
-const mcpRateHits = new Map<string, number[]>();
+/** Per-IP budget for routes that spend master funds or call the LLM. */
+const SPEND_RATE_MAX = Number(process.env.SPEND_RATE_MAX || 20);
+/** Per-IP budget for the JSON-RPC proxy (in-page viem + connected wallets are chatty). */
+const RPC_RATE_MAX = Number(process.env.RPC_RATE_MAX || 300);
+/** Upper bound for a proxied JSON-RPC body; real calls are a few KB. */
+const RPC_MAX_BODY_BYTES = 64 * 1024;
+const rateHits = new Map<string, number[]>();
 
-function getMcpClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
+function getClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
   return (
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.req.header("x-real-ip")?.trim() ||
@@ -83,18 +90,30 @@ function getMcpClientIp(c: { req: { header: (name: string) => string | undefined
   );
 }
 
-/** Shared by MCP tool calls and A2A requests; pass a prefixed key to keep the buckets apart. */
-function checkMcpRateLimit(ip: string): boolean {
+/** First line of an error's message, falling back to a stringified throw. */
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+const RATE_LIMITED = "rate limited, try again later";
+
+/** Anonymous routes that move master funds or run the LLM: per-IP budget, checked before any work. */
+function overSpendBudget(c: Context, route: string): boolean {
+  return !checkRateLimit(`${route}:${getClientIp(c)}`, SPEND_RATE_MAX);
+}
+
+/** Sliding-window counter per key (e.g. `mcp:<ip>`, `fund:<ip>`). */
+function checkRateLimit(key: string, max: number): boolean {
   const now = Date.now();
-  const hits = (mcpRateHits.get(ip) ?? []).filter((t) => now - t < MCP_RATE_WINDOW_MS);
+  const hits = (rateHits.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
   hits.push(now);
-  mcpRateHits.set(ip, hits);
+  rateHits.set(key, hits);
   // Prevent unbounded growth across many IPs (serverless instance memory).
-  if (mcpRateHits.size > 1000) {
-    const oldest = [...mcpRateHits.keys()].slice(0, mcpRateHits.size - 1000);
-    for (const k of oldest) mcpRateHits.delete(k);
+  if (rateHits.size > 1000) {
+    const oldest = [...rateHits.keys()].slice(0, rateHits.size - 1000);
+    for (const k of oldest) rateHits.delete(k);
   }
-  return hits.length <= MCP_RATE_MAX;
+  return hits.length <= max;
 }
 
 function mcpAuthOk(c: { req: { header: (name: string) => string | undefined } }): boolean {
@@ -223,7 +242,7 @@ function listEnvAgents(): string[] {
   return [...agents];
 }
 
-function listExistingAgentsSync(): string[] {
+function listExistingAgents(): string[] {
   const fromFs = new Set<string>();
   const dirsToScan = [AGENTS_DIR];
   if (process.env.VERCEL) dirsToScan.push(path.resolve(process.cwd(), "agents"));
@@ -245,17 +264,13 @@ function listExistingAgentsSync(): string[] {
   return [...fromFs];
 }
 
-async function listExistingAgents(): Promise<string[]> {
-  return listExistingAgentsSync();
-}
-
 /**
  * Check the agent exists on this instance's filesystem or env vars.
  * Cold Vercel instances heal via POST /api/agents/:name/restore
  * (browser-held backup + retry in the frontend), not via shared storage.
  */
-async function ensureAgentLoaded(name: string): Promise<boolean> {
-  return listExistingAgentsSync().includes(name);
+function agentExists(name: string): boolean {
+  return listExistingAgents().includes(name);
 }
 
 async function publicAgentSummary(name: string, withUsage = false) {
@@ -344,9 +359,13 @@ async function runChat(
   reply: string;
   events: ChatEvent[];
 }> {
-  // The agent's tools read the active network, so run the whole turn on its chain.
+  // The agent's tools read the active network, so run the whole turn on its chain,
+  // and sign with its key only for the duration of the turn.
   return runWithNetwork(agentNetwork(loadAgentConfig(agentName)), () =>
-    runChatOnActiveNetwork(agentName, message, a2a),
+    withSigningKey(
+      () => getOrCreateAgentWallet({ agentName }).privateKey,
+      () => runChatOnActiveNetwork(agentName, message, a2a),
+    ),
   );
 }
 
@@ -359,8 +378,6 @@ async function runChatOnActiveNetwork(
   events: ChatEvent[];
 }> {
   const wallet = getOrCreateAgentWallet({ agentName });
-  process.env.AGENT_PRIVATE_KEY = wallet.privateKey;
-
   let agentConfig = loadAgentConfig(agentName);
   let tools: Awaited<ReturnType<typeof resolveAgentSkills>>;
   let skills: Skill[] = [];
@@ -466,7 +483,7 @@ async function runChatOnActiveNetwork(
       }
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     if (!/recursion/i.test(msg)) throw err;
     // Ran out of steps: salvage what happened instead of surfacing the
     // raw graph error. A transfer may well have gone through — surface
@@ -564,7 +581,7 @@ async function handleMcp(c: McpContext) {
     if (!process.env.MCP_AUTH_TOKEN?.trim()) {
       return c.json({ error: "MCP is not configured (missing MCP_AUTH_TOKEN)" }, 503);
     }
-    if (!checkMcpRateLimit(getMcpClientIp(c))) {
+    if (!checkRateLimit(`mcp:${getClientIp(c)}`, MCP_RATE_MAX)) {
       return c.json({ error: "rate limited, try again later" }, 429);
     }
     if (!mcpAuthOk(c)) {
@@ -699,7 +716,7 @@ async function handleA2A(c: Context) {
   }
 
   // Anonymous callers can make the agent's LLM work, so cap them per IP.
-  if (!checkMcpRateLimit(`a2a:${getMcpClientIp(c)}`)) {
+  if (!checkRateLimit(`a2a:${getClientIp(c)}`, MCP_RATE_MAX)) {
     return c.json(
       {
         jsonrpc: "2.0",
@@ -823,11 +840,29 @@ app.post("/api/rpc", async (c) => {
   try {
     rpcUrl = getRpcUrl(network);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: msg } }, 500);
   }
 
   const body = await c.req.text();
+  if (Buffer.byteLength(body) > RPC_MAX_BODY_BYTES) {
+    return c.json(
+      { jsonrpc: "2.0", id: null, error: { code: -32600, message: "request body too large" } },
+      413,
+    );
+  }
+  // The proxy relays to the configured (paid) RPC, so cap each client's quota.
+  // No method allowlist: connected wallets also broadcast eth_sendRawTransaction here.
+  if (!checkRateLimit(`rpc:${getClientIp(c)}`, RPC_RATE_MAX)) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32000, message: "rate limited, try again later" },
+      },
+      429,
+    );
+  }
   try {
     const upstream = await fetch(rpcUrl, {
       method: "POST",
@@ -840,7 +875,7 @@ app.post("/api/rpc", async (c) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: msg } }, 502);
   }
 });
@@ -885,7 +920,7 @@ app.get("/api/catalog", async (c) => {
 });
 
 app.get("/api/agents", async (c) => {
-  const names = await listExistingAgents();
+  const names = listExistingAgents();
   const agents = await Promise.all(names.map((name) => publicAgentSummary(name, true)));
   // Latest conversation first; never-used agents keep their relative order.
   agents.sort((a, b) => {
@@ -936,7 +971,6 @@ app.post("/api/agents", async (c) => {
     tools?: string[];
     oasfDomains?: string[];
     oasfSkills?: string[];
-    fundEth?: string;
     skipRegister?: boolean;
     active?: boolean;
     services?: { name?: string; endpoint?: string }[];
@@ -962,7 +996,7 @@ app.post("/api/agents", async (c) => {
       400,
     );
   }
-  if ((await listExistingAgents()).includes(name)) {
+  if (agentExists(name)) {
     return c.json({ error: `Agent "${name}" already exists` }, 409);
   }
 
@@ -1006,15 +1040,8 @@ app.post("/api/agents", async (c) => {
     return c.json({ error: "Too many OASF domains/skills selected" }, 400);
   }
 
-  // Funding happens post-creation from the done step (master or connected
-  // wallet), so creation itself does not fund. fundEth stays accepted for
-  // API/CLI backward compatibility when explicitly passed.
-  const fundEth = body.fundEth?.trim() || "0";
-  const fundAmount = Number(fundEth);
-  if (!Number.isFinite(fundAmount) || fundAmount < 0 || fundAmount > 1) {
-    return c.json({ error: "fundEth must be a number between 0 and 1" }, 400);
-  }
-
+  // Creation never moves master funds: the done step calls POST /fund. Creating
+  // an agent is anonymous, so letting it fund would let anyone spend the master wallet.
   const skipRegister = Boolean(body.skipRegister);
   const active = body.active !== false;
   const rawServices = body.services ?? [
@@ -1094,32 +1121,19 @@ app.post("/api/agents", async (c) => {
   try {
     masterWallet = getMasterWallet();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: `Master wallet unavailable: ${msg}` }, 500);
   }
 
   // --- Create wallet ---
+  // Resolve inside the turn queue: `getOrCreateAgentWallet` falls back to the
+  // ambient AGENT_PRIVATE_KEY, which a concurrent chat turn may have set.
   let agentWallet: ReturnType<typeof getOrCreateAgentWallet>;
   try {
-    agentWallet = getOrCreateAgentWallet({ agentName: name });
+    agentWallet = await serializeTurn(async () => getOrCreateAgentWallet({ agentName: name }));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: `Wallet creation failed: ${msg}` }, 500);
-  }
-
-  // --- Fund ---
-  let fundTxHash: string | undefined;
-  if (fundAmount > 0) {
-    try {
-      fundTxHash = await fundAgentWallet({
-        agentAddress: agentWallet.address,
-        amountEth: fundEth,
-      });
-      const provider = getProvider();
-      await provider.waitForTransaction(fundTxHash);
-    } catch {
-      // Funding failure is non-fatal: the agent exists and can be funded later.
-    }
   }
 
   // --- Persist config ---
@@ -1148,7 +1162,7 @@ app.post("/api/agents", async (c) => {
   try {
     saveAgentConfig(name, config);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: `Failed to save config: ${msg}` }, 500);
   }
 
@@ -1203,7 +1217,6 @@ app.post("/api/agents", async (c) => {
       ok: true,
       agent: await publicAgentSummary(name),
       balanceEth,
-      fundTxHash,
       ...(ephemeral
         ? {
             ephemeral: true,
@@ -1222,7 +1235,7 @@ app.post("/api/agents", async (c) => {
 
 app.get("/api/agents/:name", async (c) => {
   const name = c.req.param("name");
-  if (!(await ensureAgentLoaded(name))) {
+  if (!agentExists(name)) {
     return c.json({ error: "Agent not found" }, 404);
   }
   return c.json({ agent: await publicAgentSummary(name) });
@@ -1278,6 +1291,11 @@ app.post("/api/agents/:name/restore", async (c) => {
   if (derived.toLowerCase() !== walletAddress.toLowerCase()) {
     return c.json({ error: "privateKey does not match config.walletAddress" }, 403);
   }
+  // Heal only missing agents. A key proves ownership of its *own* wallet, not of
+  // an existing agent, so overwriting would let anyone take over a live agent.
+  if (agentExists(name)) {
+    return c.json({ error: "Agent already exists on this instance; restore is heal-only" }, 409);
+  }
   try {
     const agentDir = path.join(AGENTS_DIR, name);
     fs.mkdirSync(agentDir, { recursive: true });
@@ -1288,7 +1306,7 @@ app.post("/api/agents/:name/restore", async (c) => {
     );
     saveAgentConfig(name, { ...validated, name });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: `Restore failed: ${msg}` }, 500);
   }
   return c.json({ ok: true, agent: await publicAgentSummary(name) });
@@ -1296,7 +1314,7 @@ app.post("/api/agents/:name/restore", async (c) => {
 
 app.delete("/api/agents/:name", async (c) => {
   const name = c.req.param("name");
-  if (!(await ensureAgentLoaded(name))) {
+  if (!agentExists(name)) {
     return c.json({ error: "Agent not found" }, 404);
   }
   if (process.env.VERCEL && !process.env.ALLOW_AGENT_DELETE) {
@@ -1316,8 +1334,9 @@ app.delete("/api/agents/:name", async (c) => {
 });
 
 app.post("/api/agents/:name/fund", async (c) => {
+  if (overSpendBudget(c, "fund")) return c.json({ error: RATE_LIMITED }, 429);
   const name = c.req.param("name");
-  if (!(await ensureAgentLoaded(name))) {
+  if (!agentExists(name)) {
     return c.json({ error: "Agent not found" }, 404);
   }
 
@@ -1352,28 +1371,29 @@ app.post("/api/agents/:name/fund", async (c) => {
       from: getMasterWallet().address,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: msg }, 500);
   }
 });
 
 app.get("/api/agents/:name/memory", async (c) => {
   const name = c.req.param("name");
-  if (!(await ensureAgentLoaded(name))) {
+  if (!agentExists(name)) {
     return c.json({ error: "Agent not found" }, 404);
   }
   try {
     const memory = await readAgentMemoryAsync(name);
     return c.json(memory);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: msg }, 500);
   }
 });
 
 app.post("/api/agents/:name/chat", async (c) => {
+  if (overSpendBudget(c, "chat")) return c.json({ error: RATE_LIMITED }, 429);
   const name = c.req.param("name");
-  if (!(await ensureAgentLoaded(name))) {
+  if (!agentExists(name)) {
     return c.json({ error: "Agent not found" }, 404);
   }
 
@@ -1393,7 +1413,7 @@ app.post("/api/agents/:name/chat", async (c) => {
     const result = await runChat(name, message);
     return c.json(result);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: msg }, 500);
   }
 });
@@ -1401,7 +1421,7 @@ app.post("/api/agents/:name/chat", async (c) => {
 // Unsigned giveFeedback tx for the connected wallet to sign (feedback author = that wallet).
 app.post("/api/agents/:name/feedback/prepare", async (c) => {
   const name = c.req.param("name");
-  if (!(await ensureAgentLoaded(name))) {
+  if (!agentExists(name)) {
     return c.json({ error: "Agent not found" }, 404);
   }
   let body: {
@@ -1438,7 +1458,7 @@ app.post("/api/agents/:name/feedback/prepare", async (c) => {
     });
     return c.json({ ok: true, ...tx, scanUrl: getAgentScanUrl(String(agentId)) });
   } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    return c.json({ error: errMsg(err) }, 500);
   }
 });
 
@@ -1452,7 +1472,7 @@ app.get("/api/reputation/:agentId", async (c) => {
     const summary = await getReputationSummary(agentId, c.req.query("tag"));
     return c.json({ agentId, ...summary });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     return c.json({ error: msg }, 500);
   }
 });

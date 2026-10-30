@@ -1,5 +1,5 @@
-import { CHAIN_NAMESPACES, WEB3AUTH_NETWORK, type Web3AuthOptions } from '@web3auth/modal'
-import type { Web3AuthContextConfig } from '@web3auth/modal/vue'
+import { CHAIN_NAMESPACES, WEB3AUTH_NETWORK, type Web3AuthOptions } from "@web3auth/modal";
+import type { Web3AuthContextConfig } from "@web3auth/modal/vue";
 
 /**
  * Web3Auth requires an absolute https rpcTarget (`new URL(...)`), and the
@@ -9,85 +9,85 @@ import type { Web3AuthContextConfig } from '@web3auth/modal/vue'
  */
 const arbitrumSepolia = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
-  chainId: '0x66eee',
-  rpcTarget: 'https://sepolia-rollup.arbitrum.io/rpc',
-  displayName: 'Arbitrum Sepolia',
-  blockExplorerUrl: 'https://sepolia.arbiscan.io',
-  ticker: 'ETH',
-  tickerName: 'Ether',
+  chainId: "0x66eee",
+  rpcTarget: "https://sepolia-rollup.arbitrum.io/rpc",
+  displayName: "Arbitrum Sepolia",
+  blockExplorerUrl: "https://sepolia.arbiscan.io",
+  ticker: "ETH",
+  tickerName: "Ether",
   decimals: 18,
-  logo: 'https://cryptologos.cc/logos/arbitrum-arb-logo.png',
-}
+  logo: "https://cryptologos.cc/logos/arbitrum-arb-logo.png",
+};
 
 const ethereumSepolia = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
-  chainId: '0xaa36a7',
-  rpcTarget: 'https://ethereum-sepolia-rpc.publicnode.com',
-  displayName: 'Ethereum Sepolia',
-  blockExplorerUrl: 'https://sepolia.etherscan.io',
-  ticker: 'ETH',
-  tickerName: 'Ether',
+  chainId: "0xaa36a7",
+  rpcTarget: "https://ethereum-sepolia-rpc.publicnode.com",
+  displayName: "Ethereum Sepolia",
+  blockExplorerUrl: "https://sepolia.etherscan.io",
+  ticker: "ETH",
+  tickerName: "Ether",
   decimals: 18,
-  logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.png',
-}
+  logo: "https://cryptologos.cc/logos/ethereum-eth-logo.png",
+};
 
 const arbitrumOne = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
-  chainId: '0xa4b1',
-  rpcTarget: 'https://arb1.arbitrum.io/rpc',
-  displayName: 'Arbitrum One',
-  blockExplorerUrl: 'https://arbiscan.io',
-  ticker: 'ETH',
-  tickerName: 'Ether',
+  chainId: "0xa4b1",
+  rpcTarget: "https://arb1.arbitrum.io/rpc",
+  displayName: "Arbitrum One",
+  blockExplorerUrl: "https://arbiscan.io",
+  ticker: "ETH",
+  tickerName: "Ether",
   decimals: 18,
-  logo: 'https://cryptologos.cc/logos/arbitrum-arb-logo.png',
-}
+  logo: "https://cryptologos.cc/logos/arbitrum-arb-logo.png",
+};
 
 const mantleMainnet = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
-  chainId: '0x1388',
-  rpcTarget: 'https://rpc.mantle.xyz',
-  displayName: 'Mantle',
-  blockExplorerUrl: 'https://mantlescan.io',
-  ticker: 'MNT',
-  tickerName: 'MNT',
+  chainId: "0x1388",
+  rpcTarget: "https://rpc.mantle.xyz",
+  displayName: "Mantle",
+  blockExplorerUrl: "https://mantlescan.io",
+  ticker: "MNT",
+  tickerName: "MNT",
   decimals: 18,
-  logo: 'https://cryptologos.cc/logos/mantle-mnt-logo.png',
-}
+  logo: "https://cryptologos.cc/logos/mantle-mnt-logo.png",
+};
 
 const mantleSepolia = {
   chainNamespace: CHAIN_NAMESPACES.EIP155,
-  chainId: '0x138b',
-  rpcTarget: 'https://rpc.sepolia.mantle.xyz',
-  displayName: 'Mantle Sepolia',
-  blockExplorerUrl: 'https://sepolia.mantlescan.io',
-  ticker: 'MNT',
-  tickerName: 'MNT',
+  chainId: "0x138b",
+  rpcTarget: "https://rpc.sepolia.mantle.xyz",
+  displayName: "Mantle Sepolia",
+  blockExplorerUrl: "https://sepolia.mantlescan.io",
+  ticker: "MNT",
+  tickerName: "MNT",
   decimals: 18,
-  logo: 'https://cryptologos.cc/logos/mantle-mnt-logo.png',
-}
+  logo: "https://cryptologos.cc/logos/mantle-mnt-logo.png",
+};
 
 /** Absolute asset URL so Web3Auth modal (and any iframe) can load the app mark. */
 function assetUrl(path: string): string {
-  if (typeof window === 'undefined') return path
-  return new URL(path, window.location.origin).href
+  if (typeof window === "undefined") return path;
+  return new URL(path, window.location.origin).href;
 }
 
 const web3AuthOptions: Web3AuthOptions = {
   clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID,
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
   chains: [arbitrumSepolia, ethereumSepolia, arbitrumOne, mantleMainnet, mantleSepolia],
-  defaultChainId: '0x66eee',
+  defaultChainId: "0x66eee",
   uiConfig: {
-    appName: 'Web3 Agent Chat',
-    logoLight: assetUrl('/logo-light.svg'),
-    logoDark: assetUrl('/favicon.svg'),
-    mode: 'auto',
+    appName: "Web3 Agent Chat",
+    logoLight: assetUrl("/logo-light.svg"),
+    logoDark: assetUrl("/favicon.svg"),
+    mode: "auto",
   },
-}
+};
 
 const web3AuthContextConfig: Web3AuthContextConfig = {
   web3AuthOptions,
-}
+};
 
-export default web3AuthContextConfig
+export default web3AuthContextConfig;
