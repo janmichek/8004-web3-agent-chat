@@ -29,7 +29,7 @@ export default defineConfig({
   },
   // Auto-start Vite when it isn't already running (`--reuse` keeps `npm run dev` workflows fast).
   webServer: {
-    command: "npx vite frontend --port 5173 --strictPort",
+    command: "npx vite frontend --host 127.0.0.1 --port 5173 --strictPort",
     url: FRONTEND,
     reuseExistingServer: !CI,
     timeout: 120_000,
