@@ -48,7 +48,7 @@ import {
 } from "../core/config.js";
 import type { NetworkName } from "../core/types.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
-import { saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
+import { parseAgentConfig, saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
 import { registerAgent } from "../core/registry.js";
 import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemoryAsync } from "../core/memory-reader.js";
@@ -1259,16 +1259,23 @@ app.post("/api/agents/:name/restore", async (c) => {
   if (!AGENT_NAME_RE.test(name)) {
     return c.json({ error: "invalid agent name" }, 400);
   }
-  if (!config.walletAddress || !ethers.isAddress(config.walletAddress)) {
+  let validated: AgentConfig;
+  try {
+    validated = parseAgentConfig(config);
+  } catch {
+    return c.json({ error: "config has an invalid shape" }, 400);
+  }
+  if (!validated.walletAddress || !ethers.isAddress(validated.walletAddress)) {
     return c.json({ error: "config.walletAddress is invalid" }, 400);
   }
+  const walletAddress = validated.walletAddress;
   let derived: string;
   try {
     derived = new ethers.Wallet(privateKey).address;
   } catch {
     return c.json({ error: "privateKey is invalid" }, 400);
   }
-  if (derived.toLowerCase() !== config.walletAddress.toLowerCase()) {
+  if (derived.toLowerCase() !== walletAddress.toLowerCase()) {
     return c.json({ error: "privateKey does not match config.walletAddress" }, 403);
   }
   try {
@@ -1276,10 +1283,10 @@ app.post("/api/agents/:name/restore", async (c) => {
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(
       path.join(agentDir, "wallet.json"),
-      JSON.stringify({ address: config.walletAddress, privateKey }, null, 2),
+      JSON.stringify({ address: walletAddress, privateKey }, null, 2),
       "utf-8",
     );
-    saveAgentConfig(name, { ...config, name });
+    saveAgentConfig(name, { ...validated, name });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return c.json({ error: `Restore failed: ${msg}` }, 500);

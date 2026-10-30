@@ -14,6 +14,7 @@ import {
   buildCapabilitySummary,
   deleteAgentConfig,
   loadAgentConfig,
+  parseAgentConfig,
   resolveToolsFromConfig,
   saveAgentConfig,
   type AgentConfig,
@@ -177,5 +178,34 @@ describe('buildCapabilitySummary', () => {
     expect(
       buildCapabilitySummary({ ...config(), metadata: undefined } as unknown as AgentConfig),
     ).toBe('No capabilities configured.')
+  })
+})
+
+describe('parseAgentConfig', () => {
+  it('accepts a valid config and returns an equal copy', () => {
+    const cfg = config({ actions: ['transfer-eth'] })
+    const parsed = parseAgentConfig(cfg)
+    expect(parsed).toEqual(cfg)
+    expect(parsed).not.toBe(cfg)
+  })
+
+  it('drops unknown top-level keys but keeps extra metadata', () => {
+    const parsed = parseAgentConfig({
+      ...config({ oasfSkills: ['602'] }),
+      evil: '../../etc/passwd',
+    })
+    expect(parsed).not.toHaveProperty('evil')
+    expect(parsed.metadata.oasfSkills).toEqual(['602'])
+  })
+
+  it.each([
+    ['null', null],
+    ['missing name', { ...config(), name: undefined }],
+    ['wrong type', { ...config(), active: 'yes' }],
+    ['oversized description', { ...config(), description: 'x'.repeat(10_001) }],
+    ['bad endpoint type', { ...config(), endpoints: [{ type: 'FTP', value: 'x' }] }],
+    ['non-array actions', { ...config(), metadata: { actions: 'transfer-eth', tools: [] } }],
+  ])('rejects %s', (_label, input) => {
+    expect(() => parseAgentConfig(input)).toThrow()
   })
 })

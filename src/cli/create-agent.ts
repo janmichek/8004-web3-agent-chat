@@ -37,6 +37,13 @@ import {
 } from "../core/registration-services.js";
 import type { Skill } from "../actions/types.js";
 
+/** Subset of a LangChain message as emitted by `agent.stream(..., { streamMode: "updates" })`. */
+type StreamedMessage = {
+  _getType?: () => string;
+  content: unknown;
+  tool_calls?: { name: string; args: unknown }[];
+};
+
 dotenv.config();
 
 // ---------------------------------------------------------------------------
@@ -249,7 +256,8 @@ async function startChat(
 
         for await (const update of stream) {
           for (const output of Object.values(update)) {
-            const messages = (output as any)?.messages ?? [];
+            const messages =
+              (output as { messages?: StreamedMessage[] } | undefined)?.messages ?? [];
 
             for (const msg of messages) {
               const role = msg._getType?.() ?? "unknown";

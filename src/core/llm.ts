@@ -44,6 +44,9 @@ interface ORToolDef {
   function: { name: string; description?: string; parameters?: Record<string, unknown> };
 }
 
+/** Request body accepted by the OpenRouter SDK's chat.send(). */
+type ChatRequest = Parameters<OpenRouter["chat"]["send"]>[0]["chatRequest"];
+
 export type LLMProvider = "openrouter" | "anthropic" | "openai";
 type Provider = LLMProvider;
 
@@ -183,10 +186,10 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
     const response = (await this.client.chat.send({
       chatRequest: {
         model: this.model,
-        messages: orMessages as any,
+        messages: orMessages as unknown as ChatRequest["messages"],
         maxTokens: this.maxTokens,
         stream: false,
-        ...(tools ? { tools: tools as any } : {}),
+        ...(tools ? { tools: tools as unknown as ChatRequest["tools"] } : {}),
       },
     })) as unknown as {
       choices?: Array<{
@@ -205,7 +208,9 @@ class ChatOpenRouter extends BaseChatModel<ChatOpenRouterCallOptions> {
         JSON.stringify(
           tools?.map((t: ORToolDef) => ({
             name: t.function.name,
-            params: Object.keys((t.function.parameters as any)?.properties ?? {}),
+            params: Object.keys(
+              (t.function.parameters as { properties?: object } | undefined)?.properties ?? {},
+            ),
           })),
         ),
       );
@@ -263,7 +268,10 @@ function jsonSchemaFromZod(schema: unknown): Record<string, unknown> {
       return (schema as { jsonSchema: () => Record<string, unknown> }).jsonSchema();
     }
     try {
-      const result = zodToJsonSchema(schema as any) as Record<string, unknown>;
+      const result = zodToJsonSchema(schema as Parameters<typeof zodToJsonSchema>[0]) as Record<
+        string,
+        unknown
+      >;
       // Remove $schema, some providers reject it
       delete result.$schema;
       return result;

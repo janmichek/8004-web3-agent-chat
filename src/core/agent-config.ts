@@ -13,6 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DynamicStructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
 import { AGENTS_DIR } from "./wallet.js";
 import { agentDirPath } from "./agent-path.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY, getStandaloneToolInstance } from "./action-registry.js";
@@ -74,6 +75,50 @@ export interface AgentConfig {
   // --- Timestamps ---
   createdAt: string;
   updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Validation of untrusted configs (e.g. browser backups sent to /restore)
+// ---------------------------------------------------------------------------
+
+const shortText = z.string().max(2_000);
+const nameList = z.array(z.string().max(200)).max(100);
+
+const agentConfigSchema = z.object({
+  agentId: shortText.optional(),
+  agentURI: shortText.optional(),
+  name: z.string().min(1).max(200),
+  description: z.string().max(10_000),
+  image: shortText.optional(),
+  walletAddress: z.string().max(100).optional(),
+  walletChainId: z.number().int().nonnegative().optional(),
+  endpoints: z
+    .array(
+      z.object({
+        type: z.enum(["MCP", "A2A", "ENS", "DID", "wallet", "OASF"]),
+        value: shortText,
+        meta: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .max(50),
+  trustModels: nameList,
+  owners: nameList,
+  operators: nameList,
+  active: z.boolean(),
+  x402support: z.boolean(),
+  metadata: z.object({ actions: nameList, tools: nameList }).catchall(z.unknown()),
+  createdAt: z.string().max(100),
+  updatedAt: z.number(),
+});
+
+/**
+ * @notice Validate an untrusted value as an AgentConfig and return a freshly built copy.
+ * Unknown top-level keys are dropped and sizes are bounded, so request bodies cannot
+ * smuggle arbitrary content into agent-config.json.
+ * @throws ZodError when the shape is invalid.
+ */
+export function parseAgentConfig(input: unknown): AgentConfig {
+  return agentConfigSchema.parse(input) as AgentConfig;
 }
 
 // ---------------------------------------------------------------------------

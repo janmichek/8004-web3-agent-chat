@@ -12,7 +12,9 @@ schedule(async () => {
     /^(src|frontend\/src)\/.*\.(ts|vue)$/.test(f) && !isTest(f) && !f.endsWith(".d.ts");
 
   // ── PR hygiene ────────────────────────────────────────────────────────────
-  const size = danger.github.pr.additions + danger.github.pr.deletions;
+  // Lockfile churn is machine-generated noise, so it does not count towards PR size.
+  const lockLines = (await danger.git.linesOfCode("package-lock.json")) ?? 0;
+  const size = danger.github.pr.additions + danger.github.pr.deletions - lockLines;
   if (size > MAX_PR_LINES) {
     warn(`Large PR (${size} changed lines). Consider splitting it (limit ${MAX_PR_LINES}).`);
   }
@@ -43,7 +45,9 @@ schedule(async () => {
   }
 
   const SMELLS = /(:\s*any\b|\bas any\b|@ts-ignore|@ts-nocheck|oxlint-disable|eslint-disable)/;
-  for (const file of touched.filter((f) => /\.(ts|vue)$/.test(f) && !isTest(f))) {
+  // The dangerfile itself spells out the patterns it looks for, so it is exempt.
+  const scanned = (f: string) => /\.(ts|vue)$/.test(f) && !isTest(f) && f !== "dangerfile.ts";
+  for (const file of touched.filter(scanned)) {
     const diff = await danger.git.diffForFile(file);
     const hit = diff?.added.split("\n").find((l) => l.startsWith("+") && SMELLS.test(l));
     if (hit) warn(`\`${file}\` adds a type/lint escape hatch: \`${hit.slice(1).trim()}\``);
