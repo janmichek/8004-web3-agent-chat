@@ -8,69 +8,82 @@
  *   npm run create-agent -- --name paid --a2a-endpoint https://host/api/a2a --x402
  */
 
-import * as readline from "node:readline"
-import dotenv from "dotenv"
-import * as p from "@clack/prompts"
-import { createReactAgent } from "@langchain/langgraph/prebuilt"
-import { getLLM } from "../core/llm.js"
-import { getActiveNetwork, getNetworkConfig, getProvider } from "../core/config.js"
+import * as readline from "node:readline";
+import dotenv from "dotenv";
+import * as p from "@clack/prompts";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { getLLM } from "../core/llm.js";
+import { getActiveNetwork, getNetworkConfig, getProvider } from "../core/config.js";
 import {
   getOrCreateAgentWallet,
   getMasterWallet,
   getMasterWalletBalance,
   fundAgentWallet,
-} from "../core/wallet.js"
-import { registerAgent } from "../core/registry.js"
-import { createFileCheckpointer } from "../core/file-checkpoint.js"
-import { ACTION_REGISTRY, TOOL_REGISTRY } from "../core/action-registry.js"
-import { saveAgentConfig, resolveToolsFromConfig, buildCapabilitySummary } from "../core/agent-config.js"
-import type { AgentConfig } from "../core/agent-config.js"
-import { getChainId, getNetworkNameByChainId } from "../core/config.js"
-import { isAdvertisableUrl, normalizeA2AEndpoint, buildDID } from "../core/registration-services.js"
-import type { Skill } from "../actions/types.js"
+} from "../core/wallet.js";
+import { registerAgent } from "../core/registry.js";
+import { createFileCheckpointer } from "../core/file-checkpoint.js";
+import { ACTION_REGISTRY, TOOL_REGISTRY } from "../core/action-registry.js";
+import {
+  saveAgentConfig,
+  resolveToolsFromConfig,
+  buildCapabilitySummary,
+} from "../core/agent-config.js";
+import type { AgentConfig } from "../core/agent-config.js";
+import { getChainId, getNetworkNameByChainId } from "../core/config.js";
+import {
+  isAdvertisableUrl,
+  normalizeA2AEndpoint,
+  buildDID,
+} from "../core/registration-services.js";
+import type { Skill } from "../actions/types.js";
 
-dotenv.config()
+/** Subset of a LangChain message as emitted by `agent.stream(..., { streamMode: "updates" })`. */
+type StreamedMessage = {
+  _getType?: () => string;
+  content: unknown;
+  tool_calls?: { name: string; args: unknown }[];
+};
+
+dotenv.config();
 
 // ---------------------------------------------------------------------------
 // Parse flags
 // ---------------------------------------------------------------------------
-const args = process.argv.slice(2)
+const args = process.argv.slice(2);
 
 function getFlag(name: string): string | undefined {
-  const idx = args.indexOf(`--${name}`)
-  return idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith("--")
-    ? args[idx + 1]
-    : undefined
+  const idx = args.indexOf(`--${name}`);
+  return idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith("--") ? args[idx + 1] : undefined;
 }
 function hasFlag(name: string): boolean {
-  return args.includes(`--${name}`)
+  return args.includes(`--${name}`);
 }
 
-const skipRegister = hasFlag("skip-register")
-const x402FromFlag = hasFlag("x402")
+const skipRegister = hasFlag("skip-register");
+const x402FromFlag = hasFlag("x402");
 
 // ---------------------------------------------------------------------------
 // Selection state
 // ---------------------------------------------------------------------------
 interface SelectionState {
-  actions: string[]
-  actionToolNames: Set<string>
-  tools: string[]
+  actions: string[];
+  actionToolNames: Set<string>;
+  tools: string[];
 }
 
 function selectionSummary(state: SelectionState): string {
-  const lines: string[] = []
+  const lines: string[] = [];
 
   if (state.actions.length > 0) {
-    lines.push(`Actions : ${state.actions.join(", ")}`)
-    lines.push(`  Tools : ${[...state.actionToolNames].join(", ")}`)
+    lines.push(`Actions : ${state.actions.join(", ")}`);
+    lines.push(`  Tools : ${[...state.actionToolNames].join(", ")}`);
   }
 
   if (state.tools.length > 0) {
-    lines.push(`Standalone tools : ${state.tools.join(", ")}`)
+    lines.push(`Standalone tools : ${state.tools.join(", ")}`);
   }
 
-  return lines.length > 0 ? lines.join("\n") : "(nothing selected)"
+  return lines.length > 0 ? lines.join("\n") : "(nothing selected)";
 }
 
 // ---------------------------------------------------------------------------
@@ -78,31 +91,31 @@ function selectionSummary(state: SelectionState): string {
 // ---------------------------------------------------------------------------
 async function selectActions(state: SelectionState): Promise<void> {
   const options = ACTION_REGISTRY.map((a) => {
-    const toolList = a.toolNames.join(", ")
-    const selected = state.actions.includes(a.name)
+    const toolList = a.toolNames.join(", ");
+    const selected = state.actions.includes(a.name);
     return {
       value: a.name,
       label: a.name,
       hint: `${a.description}  [tools: ${toolList}]${selected ? " (selected)" : ""}`,
-    }
-  })
+    };
+  });
 
   const result = await p.multiselect({
     message: "Select actions (skill + tools bundled)",
     options,
     initialValues: state.actions,
     required: false,
-  })
+  });
 
-  if (p.isCancel(result)) return
+  if (p.isCancel(result)) return;
 
-  state.actions = result as string[]
-  state.actionToolNames.clear()
+  state.actions = result as string[];
+  state.actionToolNames.clear();
   for (const actionName of state.actions) {
-    const entry = ACTION_REGISTRY.find((a) => a.name === actionName)
+    const entry = ACTION_REGISTRY.find((a) => a.name === actionName);
     if (entry) {
       for (const t of entry.toolNames) {
-        state.actionToolNames.add(t)
+        state.actionToolNames.add(t);
       }
     }
   }
@@ -110,27 +123,25 @@ async function selectActions(state: SelectionState): Promise<void> {
 
 async function selectTools(state: SelectionState): Promise<void> {
   const options = TOOL_REGISTRY.map((t) => {
-    const fromAction = state.actionToolNames.has(t.name)
+    const fromAction = state.actionToolNames.has(t.name);
     return {
       value: t.name,
       label: t.name,
-      hint: fromAction
-        ? `${t.description}  (included via action)`
-        : t.description,
+      hint: fromAction ? `${t.description}  (included via action)` : t.description,
       disabled: fromAction,
-    }
-  })
+    };
+  });
 
   const result = await p.multiselect({
     message: "Select tools",
     options,
     initialValues: state.tools,
     required: false,
-  })
+  });
 
-  if (p.isCancel(result)) return
+  if (p.isCancel(result)) return;
 
-  state.tools = (result as string[]).filter((name) => !state.actionToolNames.has(name))
+  state.tools = (result as string[]).filter((name) => !state.actionToolNames.has(name));
 }
 
 async function actionSelectionLoop(): Promise<SelectionState> {
@@ -138,7 +149,7 @@ async function actionSelectionLoop(): Promise<SelectionState> {
     actions: [],
     actionToolNames: new Set(),
     tools: [],
-  }
+  };
 
   while (true) {
     const choice = await p.select({
@@ -148,25 +159,25 @@ async function actionSelectionLoop(): Promise<SelectionState> {
         { value: "tools", label: "Tools", hint: "Standalone tools, no reasoning layer" },
         { value: "continue", label: "Continue", hint: "Proceed with current selection" },
       ],
-    })
+    });
 
     if (p.isCancel(choice)) {
-      p.cancel("Cancelled.")
-      process.exit(0)
+      p.cancel("Cancelled.");
+      process.exit(0);
     }
 
     switch (choice) {
       case "actions":
-        await selectActions(state)
-        break
+        await selectActions(state);
+        break;
       case "tools":
-        await selectTools(state)
-        break
+        await selectTools(state);
+        break;
       case "continue":
-        return state
+        return state;
     }
 
-    p.note(selectionSummary(state), "Current selection")
+    p.note(selectionSummary(state), "Current selection");
   }
 }
 
@@ -179,27 +190,27 @@ async function startChat(
   masterAddress: string,
   config: AgentConfig,
 ): Promise<void> {
-  process.env.AGENT_PRIVATE_KEY = privateKey
+  process.env.AGENT_PRIVATE_KEY = privateKey;
 
-  const { tools, skills } = resolveToolsFromConfig(config)
-  const toolNames = tools.map((t) => t.name)
-  const { saver, flush } = createFileCheckpointer(agentName)
+  const { tools, skills } = resolveToolsFromConfig(config);
+  const toolNames = tools.map((t) => t.name);
+  const { saver, flush } = createFileCheckpointer(agentName);
 
-  console.log()
-  console.log(`  Agent  : ${agentName}`)
-  console.log(`  Tools  : ${toolNames.join(", ") || "none"}`)
-  console.log(`  Skills : ${skills.map((s) => s.name).join(", ") || "none"}`)
-  console.log(`  Master : ${masterAddress}`)
-  console.log()
-  console.log('  Type your message and press Enter. Type "exit" to quit.')
-  console.log()
+  console.log();
+  console.log(`  Agent  : ${agentName}`);
+  console.log(`  Tools  : ${toolNames.join(", ") || "none"}`);
+  console.log(`  Skills : ${skills.map((s) => s.name).join(", ") || "none"}`);
+  console.log(`  Master : ${masterAddress}`);
+  console.log();
+  console.log('  Type your message and press Enter. Type "exit" to quit.');
+  console.log();
 
   const networkName = config.walletChainId
     ? getNetworkNameByChainId(config.walletChainId)
-    : getNetworkConfig().name
+    : getNetworkConfig().name;
 
-  const skillContext = skills.map((s: Skill) => `## Skill: ${s.name}\n\n${s.context}`).join("\n\n")
-  const capabilitySummary = buildCapabilitySummary(config)
+  const skillContext = skills.map((s: Skill) => `## Skill: ${s.name}\n\n${s.context}`).join("\n\n");
+  const capabilitySummary = buildCapabilitySummary(config);
   const systemMessage = [
     `You are "${config.name}", an onchain AI agent on ${networkName}.`,
     `Your wallet address is: ${config.walletAddress}`,
@@ -208,151 +219,168 @@ async function startChat(
     "",
     `## Your Capabilities\n\n${capabilitySummary}`,
     skillContext,
-  ].filter(Boolean).join("\n")
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-  const llm = getLLM()
+  const llm = getLLM();
   const agent = createReactAgent({
     llm,
     tools,
     checkpointSaver: saver,
     prompt: systemMessage,
-  })
-  const threadId = agentName
+  });
+  const threadId = agentName;
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  rl.on("close", () => { flush(); console.log("\nGoodbye!\n"); process.exit(0) })
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  rl.on("close", () => {
+    flush();
+    console.log("\nGoodbye!\n");
+    process.exit(0);
+  });
 
   const prompt = (): void => {
     rl.question("you > ", async (input) => {
-      const trimmed = input.trim()
-      if (!trimmed) return prompt()
-      if (trimmed.toLowerCase() === "exit") { rl.close(); return }
+      const trimmed = input.trim();
+      if (!trimmed) return prompt();
+      if (trimmed.toLowerCase() === "exit") {
+        rl.close();
+        return;
+      }
 
       try {
         const stream = await agent.stream(
           { messages: [{ role: "user", content: trimmed }] },
           { configurable: { thread_id: threadId }, recursionLimit: 25, streamMode: "updates" },
-        )
+        );
 
         for await (const update of stream) {
           for (const output of Object.values(update)) {
-            const messages = (output as any)?.messages ?? []
+            const messages =
+              (output as { messages?: StreamedMessage[] } | undefined)?.messages ?? [];
 
             for (const msg of messages) {
-              const role = msg._getType?.() ?? "unknown"
-              const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)
+              const role = msg._getType?.() ?? "unknown";
+              const content =
+                typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 
               if (role === "ai") {
-                const calls = msg.tool_calls ?? []
+                const calls = msg.tool_calls ?? [];
                 if (calls.length > 0) {
                   for (const tc of calls) {
-                    console.log(`\n  [calling ${tc.name}] ${JSON.stringify(tc.args)}`)
+                    console.log(`\n  [calling ${tc.name}] ${JSON.stringify(tc.args)}`);
                   }
                 }
                 if (content.trim()) {
-                  console.log(`\nagent > ${content}`)
+                  console.log(`\nagent > ${content}`);
                 }
               } else if (role === "tool") {
-                console.log(`  [result] ${content.slice(0, 500)}`)
+                console.log(`  [result] ${content.slice(0, 500)}`);
               }
             }
           }
         }
 
-        console.log()
-        flush()
+        console.log();
+        flush();
       } catch (err: unknown) {
-        console.error(`\n[error] ${err instanceof Error ? err.message : String(err)}\n`)
+        console.error(`\n[error] ${err instanceof Error ? err.message : String(err)}\n`);
       }
-      prompt()
-    })
-  }
-  prompt()
+      prompt();
+    });
+  };
+  prompt();
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
-  p.intro("Create Agent")
+  p.intro("Create Agent");
 
   // --- Network info ---
-  const network = getActiveNetwork()
-  const networkConfig = getNetworkConfig()
-  const masterWallet = getMasterWallet()
-  const masterBalance = await getMasterWalletBalance()
+  const network = getActiveNetwork();
+  const networkConfig = getNetworkConfig();
+  const masterWallet = getMasterWallet();
+  const masterBalance = await getMasterWalletBalance();
 
   p.note(
     `Network : ${networkConfig.name} (${network})\n` +
-    `Master  : ${masterWallet.address}\n` +
-    `Balance : ${masterBalance} ETH`,
+      `Master  : ${masterWallet.address}\n` +
+      `Balance : ${masterBalance} ETH`,
     "Environment",
-  )
+  );
 
   // --- Agent name ---
-  const nameFromFlag = getFlag("name")
-  let agentName: string
+  const nameFromFlag = getFlag("name");
+  let agentName: string;
 
   if (nameFromFlag) {
-    agentName = nameFromFlag
+    agentName = nameFromFlag;
   } else {
     const nameResult = await p.text({
       message: "Agent name",
       placeholder: "my-agent",
       validate: (v) => (!v?.trim() ? "Name is required" : undefined),
-    })
-    if (p.isCancel(nameResult)) { p.cancel("Cancelled."); process.exit(0) }
-    agentName = nameResult
+    });
+    if (p.isCancel(nameResult)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+    agentName = nameResult;
   }
 
   // --- Action selection ---
-  const state = await actionSelectionLoop()
+  const state = await actionSelectionLoop();
 
   // --- MCP / A2A endpoints (optional — advertised on 8004scan Services) ---
-  const urlError = "must be an https:// URL (or http://localhost/...)"
+  const urlError = "must be an https:// URL (or http://localhost/...)";
   async function askEndpoint(flag: string, message: string, placeholder: string): Promise<string> {
-    const fromFlag = getFlag(flag)
+    const fromFlag = getFlag(flag);
     if (fromFlag !== undefined) {
-      const value = fromFlag.trim()
+      const value = fromFlag.trim();
       if (value && !isAdvertisableUrl(value)) {
-        p.cancel(`Invalid --${flag}: ${urlError}`)
-        process.exit(1)
+        p.cancel(`Invalid --${flag}: ${urlError}`);
+        process.exit(1);
       }
-      return value
+      return value;
     }
     const result = await p.text({
       message,
       placeholder,
       initialValue: "",
       validate: (v) => {
-        const t = v?.trim() ?? ""
-        return !t || isAdvertisableUrl(t) ? undefined : `Endpoint ${urlError}`
+        const t = v?.trim() ?? "";
+        return !t || isAdvertisableUrl(t) ? undefined : `Endpoint ${urlError}`;
       },
-    })
-    if (p.isCancel(result)) { p.cancel("Cancelled."); process.exit(0) }
-    return (result as string | undefined)?.trim() ?? ""
+    });
+    if (p.isCancel(result)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+    return (result as string | undefined)?.trim() ?? "";
   }
 
   const mcpEndpoint = await askEndpoint(
     "mcp-endpoint",
     "MCP endpoint (optional — https://…/mcp to advertise tools on 8004scan)",
     "https://your-host/mcp",
-  )
+  );
   if (!mcpEndpoint && (state.actions.length > 0 || state.tools.length > 0)) {
-    p.log.warn("No MCP endpoint — actions/tools will run locally in chat only, not on 8004scan.")
+    p.log.warn("No MCP endpoint — actions/tools will run locally in chat only, not on 8004scan.");
   }
   const a2aEndpoint = await askEndpoint(
     "a2a-endpoint",
     "A2A endpoint (optional — https://…/api/a2a for agent-to-agent + x402)",
     "https://your-host/api/a2a",
-  )
+  );
 
   // x402 is the payment step of the A2A flow, so it needs an A2A endpoint.
-  const x402Live = Boolean(process.env.X402_FACILITATOR_URL?.trim())
-  let x402support = x402FromFlag
+  const x402Live = Boolean(process.env.X402_FACILITATOR_URL?.trim());
+  let x402support = x402FromFlag;
   if (x402FromFlag && !a2aEndpoint) {
-    p.cancel("--x402 requires --a2a-endpoint")
-    process.exit(1)
+    p.cancel("--x402 requires --a2a-endpoint");
+    process.exit(1);
   }
   if (!x402FromFlag && a2aEndpoint) {
     const x402Result = await p.confirm({
@@ -360,56 +388,62 @@ async function main(): Promise<void> {
         ? "Charge A2A callers 0.01 USDC (Base Sepolia) per request via x402?"
         : "Declare x402 on the A2A endpoint? (test mode: payments are simulated, set X402_FACILITATOR_URL to charge for real)",
       initialValue: x402Live,
-    })
-    if (p.isCancel(x402Result)) { p.cancel("Cancelled."); process.exit(0) }
-    x402support = Boolean(x402Result)
+    });
+    if (p.isCancel(x402Result)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+    x402support = Boolean(x402Result);
   }
 
-  const endpoints: AgentConfig["endpoints"] = []
-  if (mcpEndpoint) endpoints.push({ type: "MCP", value: mcpEndpoint })
+  const endpoints: AgentConfig["endpoints"] = [];
+  if (mcpEndpoint) endpoints.push({ type: "MCP", value: mcpEndpoint });
   if (a2aEndpoint) {
-    endpoints.push({ type: "A2A", value: normalizeA2AEndpoint(a2aEndpoint) })
+    endpoints.push({ type: "A2A", value: normalizeA2AEndpoint(a2aEndpoint) });
   }
 
   // --- Create wallet ---
-  const s = p.spinner()
-  s.start(`Creating agent "${agentName}"...`)
-  const agentWallet = getOrCreateAgentWallet({ agentName })
-  s.stop(`Agent wallet: ${agentWallet.address}`)
+  const s = p.spinner();
+  s.start(`Creating agent "${agentName}"...`);
+  const agentWallet = getOrCreateAgentWallet({ agentName });
+  s.stop(`Agent wallet: ${agentWallet.address}`);
 
   // --- Fund amount ---
-  const fundFromFlag = getFlag("fund")
-  let fundAmount: string
+  const fundFromFlag = getFlag("fund");
+  let fundAmount: string;
 
   if (fundFromFlag) {
-    fundAmount = fundFromFlag
+    fundAmount = fundFromFlag;
   } else {
     const fundResult = await p.text({
       message: "ETH to fund agent",
       placeholder: "0.002",
       initialValue: "0.002",
-    })
-    if (p.isCancel(fundResult)) { p.cancel("Cancelled."); process.exit(0) }
-    fundAmount = fundResult || "0.002"
+    });
+    if (p.isCancel(fundResult)) {
+      p.cancel("Cancelled.");
+      process.exit(0);
+    }
+    fundAmount = fundResult || "0.002";
   }
 
   // --- Fund agent ---
-  s.start(`Funding agent with ${fundAmount} ETH...`)
+  s.start(`Funding agent with ${fundAmount} ETH...`);
   try {
     const txHash = await fundAgentWallet({
       agentAddress: agentWallet.address,
       amountEth: fundAmount,
-    })
-    const provider = getProvider()
-    const receipt = await provider.waitForTransaction(txHash)
-    s.stop(`Funded (block ${receipt?.blockNumber}): ${txHash}`)
+    });
+    const provider = getProvider();
+    const receipt = await provider.waitForTransaction(txHash);
+    s.stop(`Funded (block ${receipt?.blockNumber}): ${txHash}`);
   } catch (err) {
-    s.stop(`Funding failed: ${err instanceof Error ? err.message : String(err)}`)
+    s.stop(`Funding failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // --- Persist ERC-8004 config ---
-  const chainId = getChainId()
-  const did = buildDID(chainId, agentWallet.address)
+  const chainId = getChainId();
+  const did = buildDID(chainId, agentWallet.address);
   const config: AgentConfig = {
     name: agentName,
     description: `Agent ${agentName}`,
@@ -428,12 +462,12 @@ async function main(): Promise<void> {
     },
     createdAt: new Date().toISOString(),
     updatedAt: Math.floor(Date.now() / 1000),
-  }
-  saveAgentConfig(agentName, config)
+  };
+  saveAgentConfig(agentName, config);
 
   // --- Registration ---
   if (!skipRegister) {
-    s.start("Registering on ERC-8004...")
+    s.start("Registering on ERC-8004...");
     try {
       const reg = await registerAgent({
         name: config.name,
@@ -448,62 +482,59 @@ async function main(): Promise<void> {
           tools: [...new Set([...state.actionToolNames, ...state.tools])],
           did,
         },
-      })
+      });
       // Persist agentId and URI back into the config
-      config.agentId = reg.agentId
-      config.agentURI = reg.agentURI
-      config.metadata.updatedAt = reg.updatedAt
-      config.updatedAt = Math.floor(Date.now() / 1000)
-      saveAgentConfig(agentName, config)
-      s.stop(`Registered. Agent ID: ${reg.agentId}`)
+      config.agentId = reg.agentId;
+      config.agentURI = reg.agentURI;
+      config.metadata.updatedAt = reg.updatedAt;
+      config.updatedAt = Math.floor(Date.now() / 1000);
+      saveAgentConfig(agentName, config);
+      s.stop(`Registered. Agent ID: ${reg.agentId}`);
     } catch (err) {
-      s.stop(`Registration failed: ${err instanceof Error ? err.message : String(err)}`)
+      s.stop(`Registration failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   } else {
-    p.log.info("Skipping ERC-8004 registration (--skip-register)")
+    p.log.info("Skipping ERC-8004 registration (--skip-register)");
   }
 
   // --- Summary ---
-  const provider = getProvider()
-  const agentBalance = await provider.getBalance(agentWallet.address)
-  const { ethers } = await import("ethers")
+  const provider = getProvider();
+  const agentBalance = await provider.getBalance(agentWallet.address);
+  const { ethers } = await import("ethers");
 
-  const allToolNames = [
-    ...state.actionToolNames,
-    ...state.tools,
-  ]
+  const allToolNames = [...state.actionToolNames, ...state.tools];
 
   p.note(
     `Name     : ${agentName}\n` +
-    (config.agentId ? `Agent ID : ${config.agentId}\n` : "") +
-    `Wallet   : ${agentWallet.address}\n` +
-    `Chain    : ${config.walletChainId}\n` +
-    `Balance  : ${ethers.formatEther(agentBalance)} ETH\n` +
-    `Actions  : ${state.actions.join(", ") || "none"}\n` +
-    `Tools    : ${allToolNames.join(", ") || "none"}\n` +
-    `MCP      : ${mcpEndpoint || "not advertised"}\n` +
-    `A2A      : ${a2aEndpoint || "not advertised"}\n` +
-    `x402     : ${x402support ? (x402Live ? "enabled" : "enabled (test mode, payments simulated)") : "disabled"}\n` +
-    `Owner    : ${masterWallet.address}`,
+      (config.agentId ? `Agent ID : ${config.agentId}\n` : "") +
+      `Wallet   : ${agentWallet.address}\n` +
+      `Chain    : ${config.walletChainId}\n` +
+      `Balance  : ${ethers.formatEther(agentBalance)} ETH\n` +
+      `Actions  : ${state.actions.join(", ") || "none"}\n` +
+      `Tools    : ${allToolNames.join(", ") || "none"}\n` +
+      `MCP      : ${mcpEndpoint || "not advertised"}\n` +
+      `A2A      : ${a2aEndpoint || "not advertised"}\n` +
+      `x402     : ${x402support ? (x402Live ? "enabled" : "enabled (test mode, payments simulated)") : "disabled"}\n` +
+      `Owner    : ${masterWallet.address}`,
     "Agent Created (ERC-8004)",
-  )
+  );
 
   // --- Open chat ---
   const chatResult = await p.confirm({
     message: "Open interactive chat?",
     initialValue: true,
-  })
+  });
 
   if (p.isCancel(chatResult) || !chatResult) {
-    p.outro("Done. Run `npm run chat -- --agent " + agentName + "` to chat later.")
-    return
+    p.outro("Done. Run `npm run chat -- --agent " + agentName + "` to chat later.");
+    return;
   }
 
-  p.outro("Starting chat...")
-  await startChat(agentName, agentWallet.privateKey, masterWallet.address, config)
+  p.outro("Starting chat...");
+  await startChat(agentName, agentWallet.privateKey, masterWallet.address, config);
 }
 
 main().catch((err) => {
-  p.cancel(`Fatal: ${err instanceof Error ? err.message : err}`)
-  process.exit(1)
-})
+  p.cancel(`Fatal: ${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+});

@@ -48,7 +48,10 @@ test.describe('create agent wizard', () => {
 
     const bundles = [
       { action: 'transfer-eth', tools: ['send_eth', 'get_token_balance'] },
-      { action: 'ens-name', tools: ['resolve_ens', 'lookup_ens', 'register_ens', 'set_primary_ens'] },
+      {
+        action: 'ens-name',
+        tools: ['resolve_ens', 'lookup_ens', 'register_ens', 'set_primary_ens'],
+      },
     ]
 
     for (const bundle of bundles) {
@@ -115,7 +118,9 @@ test.describe('create agent wizard', () => {
     await page.getByRole('button', { name: 'Open chat' }).click()
     await expect(page.getByTestId('create-dialog')).toHaveCount(0)
     // wizard selected the new agent in the picker
-    await expect(page.getByTestId('agent-select')).toHaveAttribute('data-value', 'fresh-agent', { timeout: 15000 })
+    await expect(page.getByTestId('agent-select')).toHaveAttribute('data-value', 'fresh-agent', {
+      timeout: 15000,
+    })
   })
 
   test('creates the agent on the picked network and links its explorer', async ({ page }) => {
@@ -294,7 +299,9 @@ test.describe('create agent wizard', () => {
     })
   })
 
-  test('a2a endpoint follows the agent name until edited; x402 is opt-in in test mode', async ({ page }) => {
+  test('a2a endpoint follows the agent name until edited; x402 is opt-in in test mode', async ({
+    page,
+  }) => {
     const created: unknown[] = []
     await setupOffline(page, { capture: { create: created } })
     await gotoWithAgent(page)
@@ -366,7 +373,9 @@ test.describe('create agent — step 1 image & description', () => {
     })
   }
 
-  test('uploads image via file picker and sends description + imageUri with creation', async ({ page }) => {
+  test('uploads image via file picker and sends description + imageUri with creation', async ({
+    page,
+  }) => {
     const cid = randomCid()
     const created: unknown[] = []
     await setupOffline(page, { capture: { create: created } })
@@ -381,13 +390,11 @@ test.describe('create agent — step 1 image & description', () => {
     await expect(page.getByTestId('create-web-endpoint')).toHaveValue('https://example.com')
     await expect(page.getByTestId('create-email-endpoint')).toHaveValue('e@mail.fun')
 
-    await page
-      .getByTestId('create-image-input')
-      .setInputFiles({
-        name: 'avatar.png',
-        mimeType: 'image/png',
-        buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
-      })
+    await page.getByTestId('create-image-input').setInputFiles({
+      name: 'avatar.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
+    })
 
     // Picking an image only stages it locally — the upload happens at creation time.
     await expect(page.getByTestId('create-image-preview')).toBeVisible()
@@ -436,7 +443,9 @@ test.describe('create agent — step 1 image & description', () => {
       const dropzone = document.querySelector('[data-testid="create-image-dropzone"]')!
       const dt = new DataTransfer()
       dt.items.add(new File(['png-bytes'], 'dropped.png', { type: 'image/png' }))
-      dropzone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }))
+      dropzone.dispatchEvent(
+        new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }),
+      )
     })
 
     await expect(page.getByTestId('create-image-preview')).toBeVisible()

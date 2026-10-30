@@ -15,7 +15,11 @@ import { SDK } from "@blockbyvlog/agent0-sdk";
 import type { RegisterAgentOptions, RegistrationResult } from "./types.js";
 import { getActiveNetwork, getNetworkConfig, getRpcUrl } from "./config.js";
 import { toGatewayUrl, uploadJson } from "./ipfs.js";
-import { buildRegistrationServices, canonicalizeEndpoint, buildDID } from "./registration-services.js";
+import {
+  buildRegistrationServices,
+  canonicalizeEndpoint,
+  buildDID,
+} from "./registration-services.js";
 
 /**
  * Registers an agent on the ERC-8004 Identity Registry.
@@ -57,9 +61,7 @@ import { buildRegistrationServices, canonicalizeEndpoint, buildDID } from "./reg
  * }
  * ```
  */
-export async function registerAgent(
-  options: RegisterAgentOptions
-): Promise<RegistrationResult> {
+export async function registerAgent(options: RegisterAgentOptions): Promise<RegistrationResult> {
   const { name, description, privateKey, walletAddress, agentWalletPrivateKey } = options;
   const network = getActiveNetwork();
   const config = getNetworkConfig(network);
@@ -69,8 +71,7 @@ export async function registerAgent(
   const ownerAddress = options.owner?.trim() || signerAddress;
   // The registry has no "mint to" argument: the signer is always the initial
   // owner, so a different owner means minting and then transferring the NFT.
-  const needsAgentWallet =
-    walletAddress.toLowerCase() !== signerAddress.toLowerCase();
+  const needsAgentWallet = walletAddress.toLowerCase() !== signerAddress.toLowerCase();
 
   console.log(`[registry] Registering agent "${name}" on ERC-8004 (${network})...`);
   console.log(`[registry]   Creator (signer): ${signerAddress}`);
@@ -108,7 +109,13 @@ export async function registerAgent(
   // creation metadata is DID-bound from birth.
   const updatedAt = Math.floor(Date.now() / 1000);
   const did = buildDID(config.chainId, walletAddress);
-  agent.setMetadata({ ...options.metadata, owners: [ownerAddress], owner: ownerAddress, updatedAt, did });
+  agent.setMetadata({
+    ...options.metadata,
+    owners: [ownerAddress],
+    owner: ownerAddress,
+    updatedAt,
+    did,
+  });
   if (options.endpoints && options.endpoints.length > 0) {
     // Canonical names, well-known A2A URL and protocol `version` meta — the
     // same shape SDK setA2A/setMCP would write.
@@ -130,8 +137,7 @@ export async function registerAgent(
     };
     const agentId = agent.agentId ?? "unknown";
     const txHash = (handle as unknown as { hash?: string }).hash ?? "unknown";
-    let agentURI =
-      mined?.result?.agentURI ?? agent.agentURI ?? "unknown";
+    let agentURI = mined?.result?.agentURI ?? agent.agentURI ?? "unknown";
 
     console.log(`[registry] Agent registered successfully (IPFS mode).`);
     console.log(`[registry]   Agent ID: ${agentId}`);
@@ -156,19 +162,24 @@ export async function registerAgent(
       console.log(`[registry]   Enriched Token URI: ${agentURI}`);
     } catch (err) {
       console.warn(
-        `[registry] Enriched metadata pin failed, keeping SDK URI: ${err instanceof Error ? err.message : String(err)}`
+        `[registry] Enriched metadata pin failed, keeping SDK URI: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
     await transferOwnership(agent, ownerAddress, signerAddress);
 
-    return { agentId: String(agentId), txHash: String(txHash), agentURI: String(agentURI), updatedAt };
+    return {
+      agentId: String(agentId),
+      txHash: String(txHash),
+      agentURI: String(agentURI),
+      updatedAt,
+    };
   }
 
   // HTTP fallback (no IPFS configured): tokenURI has no pinned metadata,
   // so 8004scan shows the agent without name/description.
   console.warn(
-    "[registry] PINATA_JWT/ IPFS_NODE_URL not set — falling back to HTTP mode (no IPFS metadata)."
+    "[registry] PINATA_JWT/ IPFS_NODE_URL not set — falling back to HTTP mode (no IPFS metadata).",
   );
   const agentHttpUri = `https://8004scan.com/api/agent/${walletAddress}`;
   const handle = await agent.registerHTTP(agentHttpUri);
@@ -186,7 +197,12 @@ export async function registerAgent(
   await bindAgentWallet(agent, walletAddress, agentWalletPrivateKey, needsAgentWallet);
   await transferOwnership(agent, ownerAddress, signerAddress);
 
-  return { agentId: String(agentId), txHash: String(txHash), agentURI: agentHttpUri, updatedAt: Math.floor(Date.now() / 1000) };
+  return {
+    agentId: String(agentId),
+    txHash: String(txHash),
+    agentURI: agentHttpUri,
+    updatedAt: Math.floor(Date.now() / 1000),
+  };
 }
 
 /**
@@ -218,8 +234,13 @@ async function pinEnrichedRegistrationFile(
     active?: boolean;
     agentId?: string;
   };
-  const tokenId = Number(String(file.agentId ?? "").split(":").pop());
-  if (!Number.isFinite(tokenId)) throw new Error("Missing agentId, cannot enrich registration file");
+  const tokenId = Number(
+    String(file.agentId ?? "")
+      .split(":")
+      .pop(),
+  );
+  if (!Number.isFinite(tokenId))
+    throw new Error("Missing agentId, cannot enrich registration file");
 
   const x402Support = Boolean(options.x402support);
   const services = await buildRegistrationServices({
@@ -261,7 +282,9 @@ async function pinEnrichedRegistrationFile(
 
   const cid = await uploadJson(enriched, "agent-registration.json");
   const uri = `ipfs://${cid}`;
-  const handle = (await agent.setAgentURI(uri)) as { waitMined: () => Promise<unknown> } | undefined;
+  const handle = (await agent.setAgentURI(uri)) as
+    | { waitMined: () => Promise<unknown> }
+    | undefined;
   if (handle) await handle.waitMined();
   return uri;
 }
@@ -308,7 +331,7 @@ async function bindAgentWallet(
   if (!agentWalletPrivateKey) {
     console.warn(
       `[registry] Agent wallet ${walletAddress} differs from signer — ` +
-        `skipping on-chain setAgentWallet (no agentWalletPrivateKey provided).`
+        `skipping on-chain setAgentWallet (no agentWalletPrivateKey provided).`,
     );
     return;
   }

@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { gotoWithAgent, openAgentPanel, openConversations, openCreateDialog, setupOffline } from './helpers'
+import {
+  gotoWithAgent,
+  openAgentPanel,
+  openConversations,
+  openCreateDialog,
+  setupOffline,
+} from './helpers'
 
 test.describe('app shell', () => {
   test('brand header + sign-in CTA render when disconnected', async ({ page }) => {

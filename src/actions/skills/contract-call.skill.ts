@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Skill } from "../types.js"
+import type { Skill } from "../types.js";
 
 /**
  * @notice Skill context for the contract-call action.
@@ -41,17 +41,19 @@ export const contractCallSkill: Skill = {
     {
       user: "What functions does 0xabc... expose?",
       thought: "The user wants the contract surface, so only the ABI lookup is needed.",
-      action: "Call fetch_contract_abi with address 0xabc..."
+      action: "Call fetch_contract_abi with address 0xabc...",
     },
     {
       user: "What's the total supply of 0xabc...?",
       thought: "Read call. Discover the exact function and confirm it is view/pure before calling.",
-      action: "Call fetch_contract_abi, then call call_contract with functionName totalSupply"
+      action: "Call fetch_contract_abi, then call call_contract with functionName totalSupply",
     },
     {
       user: "Approve 100 USDC for 0xdef... on the token contract",
-      thought: "State-changing call. Verify the function signature and amount argument order, then confirm.",
-      action: "Call fetch_contract_abi, confirm the approval with the user, then call call_contract with args [\"0xdef...\", \"100\"]"
-    }
-  ]
-}
+      thought:
+        "State-changing call. Verify the function signature and amount argument order, then confirm.",
+      action:
+        'Call fetch_contract_abi, confirm the approval with the user, then call call_contract with args ["0xdef...", "100"]',
+    },
+  ],
+};

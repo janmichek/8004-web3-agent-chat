@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Skill } from "../types.js"
+import type { Skill } from "../types.js";
 
 /**
  * @notice Skill context for the token-balance action.
@@ -20,12 +20,13 @@ export const tokenBalanceSkill: Skill = {
     {
       user: "What's my ETH balance?",
       thought: "ETH balance requested. Omit address to use own wallet, no tokenAddress needed.",
-      action: "Call get_token_balance with no args"
+      action: "Call get_token_balance with no args",
     },
     {
       user: "How much USDC do I have?",
-      thought: "USDC is a known token. Use tokenAddress from known list, omit address for own wallet.",
-      action: "Call get_token_balance with USDC contract address only"
-    }
-  ]
-}
+      thought:
+        "USDC is a known token. Use tokenAddress from known list, omit address for own wallet.",
+      action: "Call get_token_balance with USDC contract address only",
+    },
+  ],
+};

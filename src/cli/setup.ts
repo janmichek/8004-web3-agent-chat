@@ -48,10 +48,7 @@ if (privateKey) {
 
   // Write the private key into .env
   if (envContent.includes("MASTER_PRIVATE_KEY=")) {
-    envContent = envContent.replace(
-      /MASTER_PRIVATE_KEY=.*/,
-      `MASTER_PRIVATE_KEY=${privateKey}`
-    );
+    envContent = envContent.replace(/MASTER_PRIVATE_KEY=.*/, `MASTER_PRIVATE_KEY=${privateKey}`);
   } else {
     envContent += `\nMASTER_PRIVATE_KEY=${privateKey}\n`;
   }
@@ -69,7 +66,7 @@ const network = process.env.NETWORK || "arbitrum-sepolia";
 const networkLabels: Record<string, string> = {
   "arbitrum-sepolia": "Arbitrum Sepolia (testnet)",
   "arbitrum-one": "Arbitrum One (mainnet)",
-  "mantle": "Mantle (mainnet)",
+  mantle: "Mantle (mainnet)",
   "mantle-sepolia": "Mantle Sepolia (testnet)",
   "robinhood-testnet": "Robinhood Testnet",
 };
@@ -77,7 +74,7 @@ const networkLabel = networkLabels[network] ?? network;
 
 const faucets: Record<string, string> = {
   "arbitrum-sepolia": "https://cloud.google.com/application/web3/faucet/ethereum/sepolia",
-  "sepolia": "https://cloud.google.com/application/web3/faucet/ethereum/sepolia",
+  sepolia: "https://cloud.google.com/application/web3/faucet/ethereum/sepolia",
   "mantle-sepolia": "https://faucet.sepolia.mantle.xyz",
   "robinhood-testnet": "Check Robinhood Testnet docs for faucet availability",
 };

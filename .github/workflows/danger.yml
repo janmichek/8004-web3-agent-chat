@@ -1,0 +1,38 @@
+name: danger
+
+# One sticky PR comment: Danger rules + coverage + Lighthouse + module diagram.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: danger-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  danger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Reports below feed dangerfile.ts; failures there must not hide the comment.
+      - run: npm run test:coverage
+        continue-on-error: true
+      - run: npm run diagram > diagram.mmd
+        continue-on-error: true
+      - run: npm run frontend:build && npx lhci autorun --config=config/lighthouserc.json
+        continue-on-error: true
+      - run: npx danger ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

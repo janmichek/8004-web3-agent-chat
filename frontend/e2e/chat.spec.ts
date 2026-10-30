@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentPanel, selectAgent, sendChat, setupOffline } from './helpers'
+import {
+  DEMO_AGENT,
+  SECOND_AGENT,
+  gotoWithAgent,
+  openAgentPanel,
+  selectAgent,
+  sendChat,
+  setupOffline,
+} from './helpers'
 
 test.describe('chat composer + thread', () => {
   test('shows no-agent empty state when no agents exist', async ({ page }) => {
@@ -165,7 +173,9 @@ test.describe('chat composer + thread', () => {
     await page.getByTestId('chat-send').click()
     await expect(page.getByTestId('chat-busy')).toBeVisible()
     await expect(page.getByTestId('chat-send')).toBeDisabled()
-    await expect(page.getByTestId('chat-bubble-agent').first()).toContainText('slow', { timeout: 15000 })
+    await expect(page.getByTestId('chat-bubble-agent').first()).toContainText('slow', {
+      timeout: 15000,
+    })
     await expect(page.getByTestId('chat-busy')).toHaveCount(0)
   })
 

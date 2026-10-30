@@ -3,26 +3,23 @@
  *
  * Run: npx vitest run src/a2a/tests/mock-facilitator.test.ts
  */
-import { describe, it, expect } from "vitest"
-import {
-  MockFacilitatorClient,
-  buildMockPaymentPayload,
-} from "../mock-facilitator.js"
-import { buildPaymentRequirements } from "../x402.js"
+import { describe, it, expect } from 'vitest'
+import { MockFacilitatorClient, buildMockPaymentPayload } from '../mock-facilitator.js'
+import { buildPaymentRequirements } from '../x402.js'
 
-const PAY_TO = "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B"
-const PAYER = "0x857b06519E91e3A54538791bDbb0E22373e36b66"
+const PAY_TO = '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B'
+const PAYER = '0x857b06519E91e3A54538791bDbb0E22373e36b66'
 
 function req() {
   return buildPaymentRequirements({
     payTo: PAY_TO,
-    resource: "https://example.com/api/a2a",
-    amount: "10000",
+    resource: 'https://example.com/api/a2a',
+    amount: '10000',
   })
 }
 
-describe("MockFacilitatorClient (x402 only)", () => {
-  it("verifies and settles a well-formed payload", async () => {
+describe('MockFacilitatorClient (x402 only)', () => {
+  it('verifies and settles a well-formed payload', async () => {
     const fac = new MockFacilitatorClient()
     const requirements = req()
     const payload = buildMockPaymentPayload({ requirements, from: PAYER })
@@ -34,7 +31,7 @@ describe("MockFacilitatorClient (x402 only)", () => {
     expect(settled.transaction).toMatch(/^0x[a-f0-9]{64}$/)
   })
 
-  it("rejects missing authorization/signature", async () => {
+  it('rejects missing authorization/signature', async () => {
     const fac = new MockFacilitatorClient()
     const requirements = req()
     const bad = buildMockPaymentPayload({ requirements, from: PAYER })
@@ -42,75 +39,75 @@ describe("MockFacilitatorClient (x402 only)", () => {
     bad.payload.authorization = undefined
     const verified = await fac.verify(bad, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("INVALID_PAYMENT")
+    expect(verified.errorCode).toBe('INVALID_PAYMENT')
   })
 
-  it("rejects malformed signature", async () => {
+  it('rejects malformed signature', async () => {
     const fac = new MockFacilitatorClient()
     const requirements = req()
     const payload = buildMockPaymentPayload({
       requirements,
       from: PAYER,
-      signature: "0xdead",
+      signature: '0xdead',
     })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("INVALID_SIGNATURE")
+    expect(verified.errorCode).toBe('INVALID_SIGNATURE')
   })
 
-  it("rejects wrong amount", async () => {
+  it('rejects wrong amount', async () => {
     const fac = new MockFacilitatorClient()
     const requirements = req()
     const payload = buildMockPaymentPayload({
       requirements,
       from: PAYER,
-      value: "1",
+      value: '1',
     })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("WRONG_AMOUNT")
+    expect(verified.errorCode).toBe('WRONG_AMOUNT')
   })
 
-  it("rejects wrong payee", async () => {
+  it('rejects wrong payee', async () => {
     const fac = new MockFacilitatorClient()
     const requirements = req()
     const payload = buildMockPaymentPayload({
       requirements,
       from: PAYER,
-      to: "0x0000000000000000000000000000000000000001",
+      to: '0x0000000000000000000000000000000000000001',
     })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("WRONG_PAYEE")
+    expect(verified.errorCode).toBe('WRONG_PAYEE')
   })
 
-  it("rejects wrong network", async () => {
+  it('rejects wrong network', async () => {
     const fac = new MockFacilitatorClient()
     const requirements = req()
     const payload = buildMockPaymentPayload({
       requirements,
       from: PAYER,
-      network: "ethereum",
+      network: 'ethereum',
     })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("WRONG_NETWORK")
+    expect(verified.errorCode).toBe('WRONG_NETWORK')
   })
 
-  it("rejects wrong asset", async () => {
+  it('rejects wrong asset', async () => {
     const fac = new MockFacilitatorClient()
     const requirements = req()
     const payload = buildMockPaymentPayload({
       requirements,
       from: PAYER,
-      asset: "0x00000000000000000000000000000000000000aa",
+      asset: '0x00000000000000000000000000000000000000aa',
     })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("WRONG_ASSET")
+    expect(verified.errorCode).toBe('WRONG_ASSET')
   })
 
-  it("rejects expired authorization", async () => {
+  it('rejects expired authorization', async () => {
     const now = 1_700_000_000
     const fac = new MockFacilitatorClient({ now: () => now })
     const requirements = req()
@@ -122,10 +119,10 @@ describe("MockFacilitatorClient (x402 only)", () => {
     })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("EXPIRED_PAYMENT")
+    expect(verified.errorCode).toBe('EXPIRED_PAYMENT')
   })
 
-  it("rejects not-yet-valid authorization", async () => {
+  it('rejects not-yet-valid authorization', async () => {
     const now = 1_700_000_000
     const fac = new MockFacilitatorClient({ now: () => now })
     const requirements = req()
@@ -137,31 +134,31 @@ describe("MockFacilitatorClient (x402 only)", () => {
     })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("INVALID_PAYMENT")
+    expect(verified.errorCode).toBe('INVALID_PAYMENT')
   })
 
-  it("rejects underfunded payer", async () => {
+  it('rejects underfunded payer', async () => {
     const fac = new MockFacilitatorClient({ underfundedPayers: [PAYER.toLowerCase()] })
     const requirements = req()
     const payload = buildMockPaymentPayload({ requirements, from: PAYER })
     const verified = await fac.verify(payload, requirements)
     expect(verified.isValid).toBe(false)
-    expect(verified.errorCode).toBe("INSUFFICIENT_FUNDS")
+    expect(verified.errorCode).toBe('INSUFFICIENT_FUNDS')
   })
 
-  it("forceVerifyFail / forceSettleFail overrides", async () => {
+  it('forceVerifyFail / forceSettleFail overrides', async () => {
     const fac = new MockFacilitatorClient({
-      forceVerifyFail: { reason: "boom", errorCode: "SERVER_ERROR" },
+      forceVerifyFail: { reason: 'boom', errorCode: 'SERVER_ERROR' },
     })
     const requirements = req()
     const payload = buildMockPaymentPayload({ requirements, from: PAYER })
-    expect((await fac.verify(payload, requirements)).errorCode).toBe("SERVER_ERROR")
+    expect((await fac.verify(payload, requirements)).errorCode).toBe('SERVER_ERROR')
 
     const fac2 = new MockFacilitatorClient({
-      forceSettleFail: { reason: "settle boom", errorCode: "SETTLEMENT_FAILED" },
+      forceSettleFail: { reason: 'settle boom', errorCode: 'SETTLEMENT_FAILED' },
     })
     const settled = await fac2.settle(payload, requirements)
     expect(settled.success).toBe(false)
-    expect(settled.errorCode).toBe("SETTLEMENT_FAILED")
+    expect(settled.errorCode).toBe('SETTLEMENT_FAILED')
   })
 })

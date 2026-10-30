@@ -32,12 +32,12 @@ npm run dev            # API :8787 + MCP :8788 + web console :5173
 
 ## What an agent is
 
-| Part | Where | Notes |
-|---|---|---|
-| Wallet | `agents/<name>/wallet.json` | Own private key, funded from the master wallet or your connected wallet |
-| Config | `agents/<name>/agent-config.json` | ERC-8004-shaped: endpoints, selected actions/tools, OASF domains/skills, `x402support` |
-| Chat memory | `agents/<name>/` | LangGraph checkpoints, one thread per agent |
-| On-chain identity | ERC-8004 Identity Registry | Master wallet is owner, agent wallet is bound as `agentWallet`; registration file pinned to IPFS |
+| Part              | Where                             | Notes                                                                                            |
+| ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Wallet            | `agents/<name>/wallet.json`       | Own private key, funded from the master wallet or your connected wallet                          |
+| Config            | `agents/<name>/agent-config.json` | ERC-8004-shaped: endpoints, selected actions/tools, OASF domains/skills, `x402support`           |
+| Chat memory       | `agents/<name>/`                  | LangGraph checkpoints, one thread per agent                                                      |
+| On-chain identity | ERC-8004 Identity Registry        | Master wallet is owner, agent wallet is bound as `agentWallet`; registration file pinned to IPFS |
 
 `agents/` is gitignored. On Vercel it lives in `/tmp` and is lost on cold
 start; see [Deploying to Vercel](#deploying-to-vercel).
@@ -47,18 +47,18 @@ start; see [Deploying to Vercel](#deploying-to-vercel).
 Actions bundle tools with prompt context; tools can also be picked one by one.
 Details in [`src/actions/README.md`](./src/actions/README.md).
 
-| Kind | Name | Does |
-|---|---|---|
-| Action | `transfer-eth` | `send_eth` + `get_token_balance` with transfer guidance |
-| Action | `ens-name` | `resolve_ens`, `lookup_ens`, `register_ens`, `set_primary_ens` |
-| Tool | `send_eth` | Send ETH from the agent wallet |
-| Tool | `get_token_balance` | ETH / ERC-20 balance |
-| Tool | `fetch_contract_abi` | Fetch a verified contract's ABI (experimental) |
-| Tool | `call_contract` | Call any verified contract function (experimental) |
-| Tool | `resolve_ens` | Resolve an ENS name to an address |
-| Tool | `lookup_ens` | Look up the primary ENS name for an address |
-| Tool | `register_ens` | Register a `.eth` name for the agent wallet |
-| Tool | `set_primary_ens` | Set the agent wallet's primary ENS name |
+| Kind   | Name                 | Does                                                           |
+| ------ | -------------------- | -------------------------------------------------------------- |
+| Action | `transfer-eth`       | `send_eth` + `get_token_balance` with transfer guidance        |
+| Action | `ens-name`           | `resolve_ens`, `lookup_ens`, `register_ens`, `set_primary_ens` |
+| Tool   | `send_eth`           | Send ETH from the agent wallet                                 |
+| Tool   | `get_token_balance`  | ETH / ERC-20 balance                                           |
+| Tool   | `fetch_contract_abi` | Fetch a verified contract's ABI (experimental)                 |
+| Tool   | `call_contract`      | Call any verified contract function (experimental)             |
+| Tool   | `resolve_ens`        | Resolve an ENS name to an address                              |
+| Tool   | `lookup_ens`         | Look up the primary ENS name for an address                    |
+| Tool   | `register_ens`       | Register a `.eth` name for the agent wallet                    |
+| Tool   | `set_primary_ens`    | Set the agent wallet's primary ENS name                        |
 
 Chat can use every action and tool above. The MCP server exposes `send_eth`,
 `get_token_balance`, `fetch_contract_abi`, `call_contract`, `give_feedback`,
@@ -92,35 +92,35 @@ npm run frontend       # Vite on :5173, proxies /api, /mcp, /a2a and /.well-know
 
 ## CLI
 
-| Command | Does |
-|---|---|
-| `npm run setup` | First run: master wallet + `.env` |
-| `npm run create-agent` | Interactive builder. Flags: `--name`, `--fund <eth>`, `--skip-register`, `--mcp-endpoint <url>`, `--a2a-endpoint <url>`, `--x402` |
-| `npm run chat -- --agent <name>` | Chat with an existing agent |
-| `npm run delete-agent -- --name <name> [--yes]` | Delete the agent's local directory |
-| `npm run deploy -- --name <name>` | Legacy flow without action selection |
-| `npm run mcp` / `npm run mcp:http` | MCP server over stdio / HTTP on `MCP_PORT` (8788). `--agent <name>` limits tools to that agent's selection |
+| Command                                         | Does                                                                                                                              |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run setup`                                 | First run: master wallet + `.env`                                                                                                 |
+| `npm run create-agent`                          | Interactive builder. Flags: `--name`, `--fund <eth>`, `--skip-register`, `--mcp-endpoint <url>`, `--a2a-endpoint <url>`, `--x402` |
+| `npm run chat -- --agent <name>`                | Chat with an existing agent                                                                                                       |
+| `npm run delete-agent -- --name <name> [--yes]` | Delete the agent's local directory                                                                                                |
+| `npm run deploy -- --name <name>`               | Legacy flow without action selection                                                                                              |
+| `npm run mcp` / `npm run mcp:http`              | MCP server over stdio / HTTP on `MCP_PORT` (8788). `--agent <name>` limits tools to that agent's selection                        |
 
 ## HTTP API
 
 Served by `npm run serve` (Hono) and by the Vercel function.
 
-| Route | Does |
-|---|---|
-| `GET /api/health` | Network, chain id, master wallet (`?chainId=` picks the network) |
-| `GET /api/catalog` | Available actions, tools and `networks[]` (with the master balance on each) |
-| `GET /api/agents`, `GET /api/agents/:name` | Agent summaries |
-| `POST /api/agents` | Create (wallet, optional funding, config, registration). `chainId` in the body picks the network |
-| `DELETE /api/agents/:name` | Delete (disabled on Vercel unless `ALLOW_AGENT_DELETE`) |
-| `POST /api/agents/:name/restore` | Re-create an agent on a cold instance from a browser-held backup |
-| `POST /api/agents/:name/chat` | One chat turn, returns reply + tool events |
-| `POST /api/agents/:name/fund` | Fund from the master wallet (max 1 ETH) |
-| `GET /api/agents/:name/memory` | Conversation history |
-| `POST /api/agents/:name/feedback`, `GET /api/reputation/:agentId` | ERC-8004 reputation |
-| `POST /api/upload/image` | Pin an image to IPFS |
-| `POST /api/rpc` | JSON-RPC proxy to the network's RPC (`?chainId=`, default `NETWORK`) |
-| `/api/mcp`, `/mcp` | MCP over Streamable HTTP |
-| `/api/a2a`, `/a2a`, `/.well-known/agent-card.json` | A2A |
+| Route                                                             | Does                                                                                             |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET /api/health`                                                 | Network, chain id, master wallet (`?chainId=` picks the network)                                 |
+| `GET /api/catalog`                                                | Available actions, tools and `networks[]` (with the master balance on each)                      |
+| `GET /api/agents`, `GET /api/agents/:name`                        | Agent summaries                                                                                  |
+| `POST /api/agents`                                                | Create (wallet, optional funding, config, registration). `chainId` in the body picks the network |
+| `DELETE /api/agents/:name`                                        | Delete (disabled on Vercel unless `ALLOW_AGENT_DELETE`)                                          |
+| `POST /api/agents/:name/restore`                                  | Re-create an agent on a cold instance from a browser-held backup                                 |
+| `POST /api/agents/:name/chat`                                     | One chat turn, returns reply + tool events                                                       |
+| `POST /api/agents/:name/fund`                                     | Fund from the master wallet (max 1 ETH)                                                          |
+| `GET /api/agents/:name/memory`                                    | Conversation history                                                                             |
+| `POST /api/agents/:name/feedback`, `GET /api/reputation/:agentId` | ERC-8004 reputation                                                                              |
+| `POST /api/upload/image`                                          | Pin an image to IPFS                                                                             |
+| `POST /api/rpc`                                                   | JSON-RPC proxy to the network's RPC (`?chainId=`, default `NETWORK`)                             |
+| `/api/mcp`, `/mcp`                                                | MCP over Streamable HTTP                                                                         |
+| `/api/a2a`, `/a2a`, `/.well-known/agent-card.json`                | A2A                                                                                              |
 
 ### MCP
 
@@ -180,32 +180,32 @@ name, description or services.
 
 Copy `.env.example` to `.env`.
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `RPC_URL` | yes | RPC endpoint for the default network (`NETWORK`) |
-| `RPC_URL_<NETWORK>` | no | RPC endpoint for one network, e.g. `RPC_URL_ETHEREUM_SEPOLIA`. Wins over `RPC_URL`; other networks fall back to a public RPC |
-| `MASTER_PRIVATE_KEY` | yes | Owner of registered agents, funds agent wallets. Written by `npm run setup` |
-| `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | one | LLM key for the chosen provider |
-| `LLM_PROVIDER` | no | `openrouter` (default), `anthropic`, `openai` |
-| `LLM_MODEL` | no | Model override |
-| `NETWORK` | no | Default network: `arbitrum-sepolia` (default), `ethereum-sepolia`, `arbitrum-one`, `mantle`, `mantle-sepolia`, `robinhood-testnet` |
-| `PINATA_JWT` or `IPFS_NODE_URL` | no | IPFS backend for registration files and images |
-| `PINATA_GATEWAY_URL` | no | IPFS gateway override |
-| `MCP_AUTH_TOKEN` | for MCP tool calls | Bearer token for `tools/call` |
-| `MCP_RATE_MAX`, `MCP_RATE_WINDOW_MS` | no | MCP rate limit (60 per 60 s) |
-| `MCP_PORT`, `MCP_AGENT` | no | Standalone MCP server port (8788) and agent scope |
-| `X402_FACILITATOR_URL` | for real payments | x402 facilitator base URL, e.g. `https://x402.org/facilitator`. Unset = test mode (simulated) |
-| `A2A_PAY_TO` | no | Makes the generic (no `?agent=`) A2A endpoint paid, to this address |
-| `A2A_X402` | no | `0` keeps the generic endpoint free even with `A2A_PAY_TO` |
-| `RATER_PRIVATE_KEY` | for rating | Only for agent-side/MCP feedback tool; web UI ratings are signed by the connected wallet |
-| `SCAN_API_KEY`, `SCAN_API_BASE` | for scan tools | 8004scan API access |
-| `ENS_RPC_URL` | no | RPC for ENS resolution and `.eth` registration. Testnet agents fall back to the Ethereum Sepolia RPC; mainnet agents fall back to a public Ethereum RPC |
-| `ETHERSCAN_API_KEY` | for ABI lookups | Etherscan API V2 key for `fetch_contract_abi`. `ARBISCAN_API_KEY` is accepted as a fallback |
-| `API_PORT` | no | API port (8787) |
-| `CORS_ORIGIN` | no | Comma-separated allowed origins |
-| `ALLOW_AGENT_DELETE` | no | Allow `DELETE /api/agents/:name` on Vercel |
-| `AGENT_<NAME>_PRIVATE_KEY`, `AGENT_<NAME>_CONFIG` | no | Provide an agent through env vars instead of files (Vercel) |
-| `VITE_WEB3AUTH_CLIENT_ID` | frontend | Web3Auth client id (`frontend/.env`) |
+| Variable                                                      | Required           | Purpose                                                                                                                                                 |
+| ------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RPC_URL`                                                     | yes                | RPC endpoint for the default network (`NETWORK`)                                                                                                        |
+| `RPC_URL_<NETWORK>`                                           | no                 | RPC endpoint for one network, e.g. `RPC_URL_ETHEREUM_SEPOLIA`. Wins over `RPC_URL`; other networks fall back to a public RPC                            |
+| `MASTER_PRIVATE_KEY`                                          | yes                | Owner of registered agents, funds agent wallets. Written by `npm run setup`                                                                             |
+| `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | one                | LLM key for the chosen provider                                                                                                                         |
+| `LLM_PROVIDER`                                                | no                 | `openrouter` (default), `anthropic`, `openai`                                                                                                           |
+| `LLM_MODEL`                                                   | no                 | Model override                                                                                                                                          |
+| `NETWORK`                                                     | no                 | Default network: `arbitrum-sepolia` (default), `ethereum-sepolia`, `arbitrum-one`, `mantle`, `mantle-sepolia`, `robinhood-testnet`                      |
+| `PINATA_JWT` or `IPFS_NODE_URL`                               | no                 | IPFS backend for registration files and images                                                                                                          |
+| `PINATA_GATEWAY_URL`                                          | no                 | IPFS gateway override                                                                                                                                   |
+| `MCP_AUTH_TOKEN`                                              | for MCP tool calls | Bearer token for `tools/call`                                                                                                                           |
+| `MCP_RATE_MAX`, `MCP_RATE_WINDOW_MS`                          | no                 | MCP rate limit (60 per 60 s)                                                                                                                            |
+| `MCP_PORT`, `MCP_AGENT`                                       | no                 | Standalone MCP server port (8788) and agent scope                                                                                                       |
+| `X402_FACILITATOR_URL`                                        | for real payments  | x402 facilitator base URL, e.g. `https://x402.org/facilitator`. Unset = test mode (simulated)                                                           |
+| `A2A_PAY_TO`                                                  | no                 | Makes the generic (no `?agent=`) A2A endpoint paid, to this address                                                                                     |
+| `A2A_X402`                                                    | no                 | `0` keeps the generic endpoint free even with `A2A_PAY_TO`                                                                                              |
+| `RATER_PRIVATE_KEY`                                           | for rating         | Only for agent-side/MCP feedback tool; web UI ratings are signed by the connected wallet                                                                |
+| `SCAN_API_KEY`, `SCAN_API_BASE`                               | for scan tools     | 8004scan API access                                                                                                                                     |
+| `ENS_RPC_URL`                                                 | no                 | RPC for ENS resolution and `.eth` registration. Testnet agents fall back to the Ethereum Sepolia RPC; mainnet agents fall back to a public Ethereum RPC |
+| `ETHERSCAN_API_KEY`                                           | for ABI lookups    | Etherscan API V2 key for `fetch_contract_abi`. `ARBISCAN_API_KEY` is accepted as a fallback                                                             |
+| `API_PORT`                                                    | no                 | API port (8787)                                                                                                                                         |
+| `CORS_ORIGIN`                                                 | no                 | Comma-separated allowed origins                                                                                                                         |
+| `ALLOW_AGENT_DELETE`                                          | no                 | Allow `DELETE /api/agents/:name` on Vercel                                                                                                              |
+| `AGENT_<NAME>_PRIVATE_KEY`, `AGENT_<NAME>_CONFIG`             | no                 | Provide an agent through env vars instead of files (Vercel)                                                                                             |
+| `VITE_WEB3AUTH_CLIENT_ID`                                     | frontend           | Web3Auth client id (`frontend/.env`)                                                                                                                    |
 
 ## Networks
 
@@ -216,14 +216,14 @@ Ethereum Sepolia, and Mantle Sepolia; the CLI uses `NETWORK`. The master
 wallet is the same address on every network and needs that network's gas
 token (ETH, or MNT on Mantle) on each one it funds or registers on.
 
-| Network | Chain ID | Notes |
-|---|---|---|
-| Arbitrum Sepolia | 421614 | Default, in the web app |
-| Ethereum Sepolia | 11155111 | In the web app. `.eth` registration runs here |
-| Arbitrum One | 42161 | Mainnet, `NETWORK` only |
-| Mantle | 5000 | Mainnet, gas is MNT, `NETWORK` only |
-| Mantle Sepolia | 5003 | In the web app, gas is MNT |
-| Robinhood Testnet | 46630 | Experimental, `NETWORK` only |
+| Network           | Chain ID | Notes                                         |
+| ----------------- | -------- | --------------------------------------------- |
+| Arbitrum Sepolia  | 421614   | Default, in the web app                       |
+| Ethereum Sepolia  | 11155111 | In the web app. `.eth` registration runs here |
+| Arbitrum One      | 42161    | Mainnet, `NETWORK` only                       |
+| Mantle            | 5000     | Mainnet, gas is MNT, `NETWORK` only           |
+| Mantle Sepolia    | 5003     | In the web app, gas is MNT                    |
+| Robinhood Testnet | 46630    | Experimental, `NETWORK` only                  |
 
 ## Deploying to Vercel
 

@@ -52,8 +52,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
       : JSON.stringify(lastMessage.content);
 
   for (const msg of resultMessages) {
-    const content =
-      typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+    const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
     const role = msg._getType?.() ?? "unknown";
     steps.push(`[${role}] ${content.slice(0, 200)}`);
   }

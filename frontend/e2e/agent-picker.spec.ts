@@ -1,6 +1,15 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, gotoWithAgent, openAgentInfo, openAgentPanel, openFundAgent, selectAgent, setupOffline } from './helpers'
+import {
+  DEMO_AGENT,
+  SECOND_AGENT,
+  gotoWithAgent,
+  openAgentInfo,
+  openAgentPanel,
+  openFundAgent,
+  selectAgent,
+  setupOffline,
+} from './helpers'
 
 test.describe('agent picker', () => {
   test('lists agents and auto-selects the first', async ({ page }) => {
@@ -18,8 +27,18 @@ test.describe('agent picker', () => {
   })
 
   test('lists agents with most recently used first', async ({ page }) => {
-    const older = { ...DEMO_AGENT, lastActive: '2024-01-01T00:00:00.000Z', messageCount: 2, sessionCount: 1 }
-    const newer = { ...SECOND_AGENT, lastActive: '2025-06-01T12:00:00.000Z', messageCount: 5, sessionCount: 2 }
+    const older = {
+      ...DEMO_AGENT,
+      lastActive: '2024-01-01T00:00:00.000Z',
+      messageCount: 2,
+      sessionCount: 1,
+    }
+    const newer = {
+      ...SECOND_AGENT,
+      lastActive: '2025-06-01T12:00:00.000Z',
+      messageCount: 5,
+      sessionCount: 2,
+    }
     const never = { ...DEMO_AGENT, name: 'zeta', agentId: '421614:99', lastActive: null }
     // API returns never-used / older first; UI should reorder latest → oldest → never.
     await setupOffline(page, { agents: [never, older, newer] })
@@ -27,9 +46,10 @@ test.describe('agent picker', () => {
     await openAgentPanel(page)
     await expect(page.getByTestId('agent-select')).toHaveAttribute('data-value', 'bravo')
     await page.getByTestId('agent-select').click()
-    const names = await page.getByTestId('agent-menu').getByRole('option').evaluateAll((els) =>
-      els.map((el) => el.getAttribute('data-agent-name')),
-    )
+    const names = await page
+      .getByTestId('agent-menu')
+      .getByRole('option')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-agent-name')))
     expect(names).toEqual(['bravo', 'demo', 'zeta'])
   })
 
@@ -47,7 +67,10 @@ test.describe('agent picker', () => {
   })
 
   test('shows an error banner when the agents API is down', async ({ page }) => {
-    await setupOffline(page, { agentsStatus: 500, agentsError: 'API unavailable — run npm run serve' })
+    await setupOffline(page, {
+      agentsStatus: 500,
+      agentsError: 'API unavailable — run npm run serve',
+    })
     await page.goto('/')
     await openAgentPanel(page)
     await expect(page.getByTestId('agent-select')).toBeVisible()
@@ -86,7 +109,12 @@ test.describe('agent picker', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ok: true, network: 'arbitrum-sepolia', chainId: 421614, master: {} }),
+        body: JSON.stringify({
+          ok: true,
+          network: 'arbitrum-sepolia',
+          chainId: 421614,
+          master: {},
+        }),
       })
     })
     await page.route('**/api/agents**', async (route: Route) => {

@@ -41,3 +41,15 @@ npm-debug.log*
 test-results/
 playwright-report/
 .env*.local
+
+# Test coverage output
+coverage/
+.fallow/
+
+# Mutation testing
+reports/
+.stryker-tmp/
+
+# CI report artifacts
+.lighthouseci/
+diagram.mmd

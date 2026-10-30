@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "entry": [
+    "src/cli/*.ts",
+    "src/mcp/server.ts",
+    "frontend/src/app/main.ts",
+    "config/steiger.config.ts"
+  ],
+  "ignoreDependencies": [
+    "@lhci/cli",
+    "@stryker-mutator/vitest-runner",
+    "danger",
+    "dependency-cruiser",
+    "graphql"
+  ],
+  "duplicates": {
+    "minOccurrences": 2,
+    "threshold": 7
+  },
+  "ignoreExports": [
+    {
+      "file": "src/actions/**/index.ts",
+      "exports": ["*"]
+    }
+  ],
+  "ignorePatterns": ["scripts/diagram/**", "scripts/diagram-page.ts"],
+  // Steiger and the other lint tools run from config/ at dev time only; not a production dependency.
+  "rules": {
+    "dev-dependencies-in-production": "off"
+  }
+}

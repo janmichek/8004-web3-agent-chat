@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "semi": true,
+  "singleQuote": false,
+  "ignorePatterns": [
+    "dist/",
+    "frontend/dist/",
+    "coverage/",
+    "agents/",
+    "playwright-report/",
+    "test-results/",
+    "package-lock.json",
+    "guide.html",
+    ".stryker-tmp/",
+    "reports/",
+    "**/*.html",
+    "docs/",
+    "**/*.vue",
+    "*.md",
+    "scripts/diagram/",
+    "scripts/diagram-page.ts"
+  ],
+  "overrides": [
+    {
+      "files": ["frontend/**", "**/tests/**", "**/*.test.ts", "config/vitest.config.ts"],
+      "options": {
+        "semi": false,
+        "singleQuote": true
+      }
+    }
+  ]
+}

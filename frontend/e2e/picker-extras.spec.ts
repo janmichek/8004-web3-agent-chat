@@ -1,6 +1,15 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, SECOND_AGENT, closeAgentPanel, gotoWithAgent, openAgentInfo, openFundAgent, selectAgent, setupOffline } from './helpers'
+import {
+  DEMO_AGENT,
+  SECOND_AGENT,
+  closeAgentPanel,
+  gotoWithAgent,
+  openAgentInfo,
+  openFundAgent,
+  selectAgent,
+  setupOffline,
+} from './helpers'
 
 test.describe('agent picker extras', () => {
   test('Agent Info shows ERC-8004 id, wallet, balance and tool chips', async ({ page }) => {

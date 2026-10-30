@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test'
 import type { Route } from '@playwright/test'
-import { DEMO_AGENT, closeAgentPanel, gotoWithAgent, openAgentPanel, sendChat, setupOffline } from './helpers'
+import {
+  DEMO_AGENT,
+  closeAgentPanel,
+  gotoWithAgent,
+  openAgentPanel,
+  sendChat,
+  setupOffline,
+} from './helpers'
 
 /**
  * Chat rate UI after a successful tool tx + real on-chain feedback from the connected wallet.
@@ -12,8 +19,7 @@ test.describe('chat reputation after successful tx', () => {
   test('shows rate UI after success tx and submits feedback with 8004scan link @onchain', async ({
     page,
   }) => {
-    const fakeTx =
-      '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const fakeTx = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
     await page.route('**/api/agents/*/chat', async (route: Route) => {
       await route.fulfill({
@@ -73,8 +79,7 @@ test.describe('chat reputation after successful tx', () => {
   })
 
   test('disables rate UI when connected wallet is owner', async ({ page }) => {
-    const fakeTx =
-      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const fakeTx = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     const owner = '0xfeedfeedfeedfeedfeedfeedfeedfeedfeedfeed'
 
     await page.addInitScript((addr) => {

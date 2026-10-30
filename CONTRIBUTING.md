@@ -7,6 +7,7 @@ Thank you for contributing. This guide covers branch naming, commit format, PR p
 Use the format: `<type>/<short-description>`
 
 Examples:
+
 - `feat/add-aave-lending-skill`
 - `fix/wallet-creation-race-condition`
 - `docs/update-quickstart`
@@ -21,6 +22,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) with a scope wh
 Format: `<type>(<scope>): <description>`
 
 Examples for this repo:
+
 - `feat(skills): add Aave V3 lending skill`
 - `fix(wallet): prevent overwriting existing wallet on concurrent access`
 - `docs(quickstart): add Robinhood Testnet instructions`

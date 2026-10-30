@@ -3,14 +3,19 @@ import type { Route } from '@playwright/test'
 import { gotoWithAgent, sendChat, setupOffline, DEMO_AGENT } from './helpers'
 
 test.describe('chat extras', () => {
-  test('shows the busy indicator and locks the composer while the reply is pending', async ({ page }) => {
+  test('shows the busy indicator and locks the composer while the reply is pending', async ({
+    page,
+  }) => {
     await setupOffline(page, {
       chat: async (route: Route) => {
         await new Promise((r) => setTimeout(r, 1500))
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ reply: 'slow reply', events: [{ type: 'message', content: 'slow reply' }] }),
+          body: JSON.stringify({
+            reply: 'slow reply',
+            events: [{ type: 'message', content: 'slow reply' }],
+          }),
         })
       },
     })
@@ -29,7 +34,9 @@ test.describe('chat extras', () => {
     await setupOffline(page, { chat: { reply: 'plain fallback reply', events: [] } })
     await gotoWithAgent(page)
     await sendChat(page, 'hello')
-    await expect(page.getByTestId('chat-bubble-agent').first()).toContainText('plain fallback reply')
+    await expect(page.getByTestId('chat-bubble-agent').first()).toContainText(
+      'plain fallback reply',
+    )
   })
 
   test('renders a multi-event exchange in order', async ({ page }) => {
@@ -37,10 +44,17 @@ test.describe('chat extras', () => {
       chat: {
         reply: 'all done',
         events: [
-          { type: 'tool_call', name: 'get_token_balance', args: { address: DEMO_AGENT.walletAddress } },
+          {
+            type: 'tool_call',
+            name: 'get_token_balance',
+            args: { address: DEMO_AGENT.walletAddress },
+          },
           { type: 'tool_result', content: 'Balance: 1.0 ETH' },
           { type: 'tool_call', name: 'send_eth', args: { to: '0xabc', amount: '0.01' } },
-          { type: 'tool_result', content: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+          {
+            type: 'tool_result',
+            content: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          },
           { type: 'message', content: 'all done' },
         ],
       },
@@ -61,7 +75,10 @@ test.describe('chat extras', () => {
     await page.goto('/')
     await expect(page.getByTestId('chat-empty-no-agent')).toBeVisible()
     await expect(page.getByTestId('chat-input')).toBeDisabled()
-    await expect(page.getByTestId('chat-input')).toHaveAttribute('placeholder', 'Select an agent first…')
+    await expect(page.getByTestId('chat-input')).toHaveAttribute(
+      'placeholder',
+      'Select an agent first…',
+    )
     await expect(page.getByTestId('chat-send')).toBeDisabled()
   })
 

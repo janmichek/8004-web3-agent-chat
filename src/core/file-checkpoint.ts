@@ -13,6 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { MemorySaver } from "@langchain/langgraph";
 import { AGENTS_DIR } from "./wallet.js";
+import { agentDirPath } from "./agent-path.js";
 import { loadRemoteMemory, remoteMemoryEnabled, saveRemoteMemory } from "./memory-store.js";
 
 /** Fill a MemorySaver from parsed memory.json data. */
@@ -50,7 +51,10 @@ function hydrate(saver: MemorySaver, data: any) {
 
 /** Serialize a MemorySaver to memory.json text (Uint8Arrays as base64). */
 function serialize(saver: MemorySaver): string {
-  const storage: Record<string, Record<string, Record<string, [string, string, string | undefined]>>> = {};
+  const storage: Record<
+    string,
+    Record<string, Record<string, [string, string, string | undefined]>>
+  > = {};
   for (const threadId of Object.keys(saver.storage)) {
     storage[threadId] = {};
     for (const ns of Object.keys(saver.storage[threadId])) {
@@ -71,11 +75,7 @@ function serialize(saver: MemorySaver): string {
     writes[threadId] = {};
     for (const key of Object.keys(saver.writes[threadId])) {
       const entry = saver.writes[threadId][key];
-      writes[threadId][key] = [
-        entry[0],
-        entry[1],
-        Buffer.from(entry[2]).toString("base64"),
-      ];
+      writes[threadId][key] = [entry[0], entry[1], Buffer.from(entry[2]).toString("base64")];
     }
   }
 
@@ -93,9 +93,11 @@ export function createFileCheckpointer(agentName: string) {
   // Memory is per-invocation only on Vercel; see createPersistentCheckpointer for the Redis-backed path
   const isVercel = !!process.env.VERCEL;
   const baseDir = isVercel ? path.join(os.tmpdir(), "agents") : AGENTS_DIR;
-  const memoryPath = path.join(baseDir, agentName, "memory.json");
+  const memoryPath = path.join(agentDirPath(baseDir, agentName), "memory.json");
   // Also try original AGENTS_DIR as fallback for read (local dev bundle on Vercel)
-  const fallbackPath = isVercel ? path.join(AGENTS_DIR, agentName, "memory.json") : null;
+  const fallbackPath = isVercel
+    ? path.join(agentDirPath(AGENTS_DIR, agentName), "memory.json")
+    : null;
   const saver = new MemorySaver();
 
   // Load existing state — try tmp first, then fallback
@@ -147,7 +149,9 @@ export async function createPersistentCheckpointer(agentName: string) {
       console.log(`[memory] Loaded conversation for ${agentName} from remote store`);
     }
   } catch (err) {
-    console.warn(`[memory] Could not load remote memory for ${agentName}, starting fresh: ${(err as Error).message}`);
+    console.warn(
+      `[memory] Could not load remote memory for ${agentName}, starting fresh: ${(err as Error).message}`,
+    );
   }
 
   async function flush() {
