@@ -24,6 +24,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { mainnet, sepolia } from "viem/chains";
 import { labelhash, normalize, packetToBytes, toCoinType } from "viem/ens";
 import { getActiveNetwork, getChainId, getNetworkConfig, getRpcUrl } from "../../core/config.js";
+import { truncateError } from "./errors.js";
 
 /** L1 ReverseRegistrar.setName — also present on ENS L2 reverse registrars. */
 const reverseRegistrarAbi = parseAbi(["function setName(string name) returns (bytes32)"]);
@@ -195,11 +196,6 @@ function agentAddress(): Address {
   const pk = process.env.AGENT_PRIVATE_KEY;
   if (!pk) throw new Error("AGENT_PRIVATE_KEY environment variable is not set");
   return privateKeyToAccount(pk as `0x${string}`).address;
-}
-
-function truncateError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err);
-  return message.length > 300 ? message.slice(0, 300) + "..." : message;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

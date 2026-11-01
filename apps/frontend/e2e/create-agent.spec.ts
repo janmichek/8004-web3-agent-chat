@@ -153,7 +153,7 @@ test.describe("create agent wizard", () => {
 
     expect(created[0]).toMatchObject({ name: "my-agent", chainId: 11155111 });
     const dialog = page.getByTestId("create-dialog");
-    await expect(page.getByTestId("create-done-network")).toContainText("Ethereum Sepolia");
+    await expect(page.getByTestId("agent-card-network")).toContainText("Ethereum Sepolia");
     await expect(dialog.locator('a[href*="sepolia.etherscan.io/address/0x1111"]')).toBeVisible();
     await expect(dialog.locator('a[href*="8004scan.io/agents/sepolia/7"]')).toBeVisible();
   });
@@ -213,10 +213,12 @@ test.describe("create agent wizard", () => {
     await page.getByRole("button", { name: "Next →" }).last().click();
     await page.getByTestId("create-dialog").getByRole("button", { name: "Create agent" }).click();
     await expect(page.getByText("Agent created")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("create-fund-currency")).toContainText("ETH");
+    await expect(page.getByTestId("create-fund-network")).toBeVisible();
     await page.getByTestId("create-fund-amount").fill("0.001");
     await page.getByTestId("create-fund-master").click();
-    await expect(page.getByTestId("create-fund-status")).toContainText("Confirmed");
-    await expect(page.getByTestId("create-fund-status")).toContainText("0xeeeeee");
+    await expect(page.getByTestId("create-fund-wallet")).toHaveText("Add more");
+    await expect(page.getByTestId("create-fund-status")).toHaveCount(0);
     await expect(page.getByTestId("create-fund-tx-link")).toHaveAttribute("href", /\/tx\/0xeeeeee/);
     expect(funded).toHaveLength(1);
   });

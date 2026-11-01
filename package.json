@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "typecheck:frontend": "npm run typecheck -w apps/frontend",
+    "typecheck:frontend": "npm --prefix apps/frontend run typecheck",
     "typecheck:all": "npm run typecheck && npm run typecheck:frontend",
     "lint": "oxlint -c config/oxlintrc.json --ignore-pattern dist --ignore-pattern apps/frontend/dist --ignore-pattern agents --ignore-pattern scripts/diagram --ignore-pattern scripts/diagram-page.ts --type-aware --type-check --deny-warnings",
     "lint:fix": "oxlint -c config/oxlintrc.json --ignore-pattern dist --ignore-pattern apps/frontend/dist --ignore-pattern agents --ignore-pattern scripts/diagram --ignore-pattern scripts/diagram-page.ts --type-aware --type-check --deny-warnings --fix",
@@ -39,11 +39,11 @@
     "serve": "npx tsx src/server/api.ts",
     "mcp": "npx tsx src/mcp/server.ts",
     "mcp:http": "npx tsx src/mcp/server.ts --http",
-    "dev:frontend": "npm run dev -w apps/frontend",
-    "dev": "concurrently --kill-others-on-fail --names \"api,mcp,frontend\" --prefix-colors \"cyan,green,magenta\" \"npm run serve\" \"npm run mcp:http\" \"sleep 3 && npm run dev -w apps/frontend\"",
-    "frontend": "npm run dev -w apps/frontend",
-    "frontend:build": "npm run build -w apps/frontend",
-    "preview": "npm run preview -w apps/frontend",
+    "dev:frontend": "npm --prefix apps/frontend run dev",
+    "dev": "concurrently --kill-others-on-fail --names \"api,mcp,frontend\" --prefix-colors \"cyan,green,magenta\" \"npm run serve\" \"npm run mcp:http\" \"sleep 3 && npm --prefix apps/frontend run dev\"",
+    "frontend": "npm --prefix apps/frontend run dev",
+    "frontend:build": "npm --prefix apps/frontend run build",
+    "preview": "npm --prefix apps/frontend run preview",
     "test": "npx tsx src/cli/test-workflow.ts",
     "test:unit": "vitest run --config config/vitest.config.ts",
     "test:e2e": "playwright test -c config/playwright.config.ts",
@@ -56,10 +56,11 @@
     "fsd": "steiger apps/frontend/src",
     "dead-code": "fallow dead-code -c config/.fallowrc.json --fail-on-issues",
     "duplicates": "fallow dupes -c config/.fallowrc.json --quiet",
+    "health": "fallow health -c config/.fallowrc.json --min-score 85",
     "test:coverage": "vitest run --config config/vitest.config.ts --coverage",
     "test:mutate": "stryker run config/stryker.config.json",
     "diagram": "node scripts/architecture-diagram.mjs",
-    "check": "npm run typecheck:all && npm run lint && npm run format:check && npm run fsd && npm run dead-code && npm run duplicates && npm run test:coverage"
+    "check": "npm run typecheck:all && npm run lint && npm run format:check && npm run fsd && npm run dead-code && npm run duplicates && npm run health && npm run test:coverage"
   },
   "dependencies": {
     "@blockbyvlog/agent0-sdk": "^1.5.6",

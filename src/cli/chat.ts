@@ -7,7 +7,6 @@
  */
 
 import * as fs from "node:fs";
-import * as readline from "node:readline";
 import dotenv from "dotenv";
 import * as p from "@clack/prompts";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
@@ -15,26 +14,14 @@ import { getLLM } from "../core/llm.js";
 import { AGENTS_DIR, getOrCreateAgentWallet } from "../core/wallet.js";
 import { discoverAgentSkills, resolveAgentSkills } from "../core/agent-skills.js";
 import { createFileCheckpointer } from "../core/file-checkpoint.js";
-import {
-  loadAgentConfig,
-  resolveToolsFromConfig,
-  buildCapabilitySummary,
-} from "../core/agent-config.js";
-import {
-  findNetworkByChainId,
-  getNetworkNameByChainId,
-  getNetworkConfig,
-  setProcessNetwork,
-} from "../core/config.js";
+import { loadAgentConfig, resolveToolsFromConfig } from "../core/agent-config.js";
+import { findNetworkByChainId, setProcessNetwork } from "../core/config.js";
+import { buildAgentSystemPrompt } from "../core/system-prompt.js";
 import type { Skill } from "../actions/types.js";
+import { runChatLoop } from "./chat-loop.js";
+import { getFlag } from "./flags.js";
 
 dotenv.config();
-
-const args = process.argv.slice(2);
-function getFlag(name: string): string | undefined {
-  const idx = args.indexOf(`--${name}`);
-  return idx !== -1 && args[idx + 1] ? args[idx + 1] : undefined;
-}
 
 function listExistingAgents(): string[] {
   if (!fs.existsSync(AGENTS_DIR)) return [];
@@ -120,23 +107,12 @@ async function main() {
     : undefined;
   if (agentNetwork) setProcessNetwork(agentNetwork);
 
-  const networkName = agentConfig?.walletChainId
-    ? getNetworkNameByChainId(agentConfig.walletChainId)
-    : getNetworkConfig().name;
-
-  const skillContext = skills.map((s) => `## Skill: ${s.name}\n\n${s.context}`).join("\n\n");
-  const capabilitySummary = agentConfig
-    ? buildCapabilitySummary(agentConfig)
-    : "No capabilities configured.";
-  const systemMessage = [
-    `You are "${agentName}", an onchain AI agent on ${networkName}.`,
-    `Your wallet address is: ${wallet.address}`,
-    agentConfig?.walletChainId ? `Chain ID: ${agentConfig.walletChainId}` : "",
-    agentConfig?.agentId ? `ERC-8004 Agent ID: ${agentConfig.agentId}` : "",
-    "",
-    `## Your Capabilities\n\n${capabilitySummary}`,
-    skillContext,
-  ]
+  const systemMessage = buildAgentSystemPrompt({
+    agentName,
+    walletAddress: wallet.address,
+    agentConfig,
+    skills,
+  })
     .filter(Boolean)
     .join("\n");
 
@@ -147,70 +123,7 @@ async function main() {
     checkpointSaver: saver,
     prompt: systemMessage,
   });
-  const threadId = agentName; // stable thread per agent
-
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl.on("close", () => {
-    flush();
-    console.log("\nGoodbye!\n");
-    process.exit(0);
-  });
-
-  const prompt = () => {
-    rl.question("you > ", async (input) => {
-      const trimmed = input.trim();
-      if (!trimmed) return prompt();
-      if (trimmed.toLowerCase() === "exit") {
-        rl.close();
-        return;
-      }
-
-      try {
-        const stream = await agent.stream(
-          { messages: [{ role: "user", content: trimmed }] },
-          { configurable: { thread_id: threadId }, recursionLimit: 25, streamMode: "updates" },
-        );
-
-        for await (const update of stream) {
-          // Each update is { nodeName: nodeOutput }
-          for (const output of Object.values(update)) {
-            const messages = (output as any)?.messages ?? [];
-
-            for (const msg of messages) {
-              const role = msg._getType?.() ?? "unknown";
-              const content =
-                typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-
-              if (role === "ai") {
-                // Show tool calls
-                const calls = msg.tool_calls ?? [];
-                if (calls.length > 0) {
-                  for (const tc of calls) {
-                    console.log(`\n  [calling ${tc.name}] ${JSON.stringify(tc.args)}`);
-                  }
-                }
-                // Show text response
-                if (content.trim() && (!calls.length || content.trim())) {
-                  if (content.trim()) {
-                    console.log(`\nagent > ${content}`);
-                  }
-                }
-              } else if (role === "tool") {
-                console.log(`  [result] ${content.slice(0, 500)}`);
-              }
-            }
-          }
-        }
-
-        console.log();
-        flush();
-      } catch (err: unknown) {
-        console.error(`\n[error] ${err instanceof Error ? err.message : String(err)}\n`);
-      }
-      prompt();
-    });
-  };
-  prompt();
+  runChatLoop(agent, agentName, flush);
 }
 
 main().catch((err) => {

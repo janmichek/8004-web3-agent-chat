@@ -3,6 +3,7 @@
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { giveFeedback, getReputationSummary } from "../../core/reputation.js";
+import { toolError } from "./errors.js";
 
 function raterPrivateKey(): string | undefined {
   return process.env.RATER_PRIVATE_KEY || process.env.AGENT_PRIVATE_KEY;
@@ -41,9 +42,7 @@ export const giveFeedbackTool: DynamicStructuredTool = new DynamicStructuredTool
         ? `${result.txHash} (feedback: ${result.feedbackURI})`
         : result.txHash;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const short = message.length > 300 ? message.slice(0, 300) + "..." : message;
-      return `Error: ${short}`;
+      return toolError(err);
     }
   },
 });

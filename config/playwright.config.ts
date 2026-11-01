@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const FRONTEND = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5173";
+const FRONTEND = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:5174";
 const ONCHAIN = process.env.PLAYWRIGHT_ONCHAIN === "1";
 const CI = !!process.env.CI;
 
@@ -29,8 +29,8 @@ export default defineConfig({
   },
   // Auto-start Vite when it isn't already running (`--reuse` keeps `npm run dev` workflows fast).
   webServer: {
-    command: "npx vite --host 127.0.0.1 --port 5173 --strictPort",
-    cwd: "..",
+    command: "npx vite --host 127.0.0.1 --port 5174 --strictPort",
+    cwd: "../apps/frontend",
     url: FRONTEND,
     reuseExistingServer: !CI,
     timeout: 120_000,

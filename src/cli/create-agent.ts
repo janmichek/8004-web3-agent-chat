@@ -8,19 +8,11 @@
  *   npm run create-agent -- --name paid --a2a-endpoint https://host/api/a2a --x402
  */
 
-import * as readline from "node:readline";
 import dotenv from "dotenv";
 import * as p from "@clack/prompts";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { getLLM } from "../core/llm.js";
-import { getActiveNetwork, getNetworkConfig, getProvider } from "../core/config.js";
-import {
-  getOrCreateAgentWallet,
-  getMasterWallet,
-  getMasterWalletBalance,
-  fundAgentWallet,
-} from "../core/wallet.js";
-import { registerAgent } from "../core/registry.js";
+import { getNetworkConfig, getNetworkNameByChainId, getProvider } from "../core/config.js";
 import { createFileCheckpointer } from "../core/file-checkpoint.js";
 import { ACTION_REGISTRY, TOOL_REGISTRY } from "../core/action-registry.js";
 import {
@@ -29,35 +21,26 @@ import {
   buildCapabilitySummary,
 } from "../core/agent-config.js";
 import type { AgentConfig } from "../core/agent-config.js";
-import { getChainId, getNetworkNameByChainId } from "../core/config.js";
+import { getChainId } from "../core/config.js";
 import {
   isAdvertisableUrl,
   normalizeA2AEndpoint,
   buildDID,
 } from "../core/registration-services.js";
 import type { Skill } from "../actions/types.js";
-
-/** Subset of a LangChain message as emitted by `agent.stream(..., { streamMode: "updates" })`. */
-type StreamedMessage = {
-  _getType?: () => string;
-  content: unknown;
-  tool_calls?: { name: string; args: unknown }[];
-};
+import { runChatLoop } from "./chat-loop.js";
+import { getFlag, hasFlag } from "./flags.js";
+import {
+  askAgentName,
+  askFundAmount,
+  createAgentWallet,
+  fundAgent,
+  offerChat,
+  printEnvironment,
+  registerWithSpinner,
+} from "./prompts.js";
 
 dotenv.config();
-
-// ---------------------------------------------------------------------------
-// Parse flags
-// ---------------------------------------------------------------------------
-const args = process.argv.slice(2);
-
-function getFlag(name: string): string | undefined {
-  const idx = args.indexOf(`--${name}`);
-  return idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith("--") ? args[idx + 1] : undefined;
-}
-function hasFlag(name: string): boolean {
-  return args.includes(`--${name}`);
-}
 
 const skipRegister = hasFlag("skip-register");
 const x402FromFlag = hasFlag("x402");
@@ -230,66 +213,7 @@ async function startChat(
     checkpointSaver: saver,
     prompt: systemMessage,
   });
-  const threadId = agentName;
-
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  rl.on("close", () => {
-    flush();
-    console.log("\nGoodbye!\n");
-    process.exit(0);
-  });
-
-  const prompt = (): void => {
-    rl.question("you > ", async (input) => {
-      const trimmed = input.trim();
-      if (!trimmed) return prompt();
-      if (trimmed.toLowerCase() === "exit") {
-        rl.close();
-        return;
-      }
-
-      try {
-        const stream = await agent.stream(
-          { messages: [{ role: "user", content: trimmed }] },
-          { configurable: { thread_id: threadId }, recursionLimit: 25, streamMode: "updates" },
-        );
-
-        for await (const update of stream) {
-          for (const output of Object.values(update)) {
-            const messages =
-              (output as { messages?: StreamedMessage[] } | undefined)?.messages ?? [];
-
-            for (const msg of messages) {
-              const role = msg._getType?.() ?? "unknown";
-              const content =
-                typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-
-              if (role === "ai") {
-                const calls = msg.tool_calls ?? [];
-                if (calls.length > 0) {
-                  for (const tc of calls) {
-                    console.log(`\n  [calling ${tc.name}] ${JSON.stringify(tc.args)}`);
-                  }
-                }
-                if (content.trim()) {
-                  console.log(`\nagent > ${content}`);
-                }
-              } else if (role === "tool") {
-                console.log(`  [result] ${content.slice(0, 500)}`);
-              }
-            }
-          }
-        }
-
-        console.log();
-        flush();
-      } catch (err: unknown) {
-        console.error(`\n[error] ${err instanceof Error ? err.message : String(err)}\n`);
-      }
-      prompt();
-    });
-  };
-  prompt();
+  runChatLoop(agent, agentName, flush);
 }
 
 // ---------------------------------------------------------------------------
@@ -298,37 +222,8 @@ async function startChat(
 async function main(): Promise<void> {
   p.intro("Create Agent");
 
-  // --- Network info ---
-  const network = getActiveNetwork();
-  const networkConfig = getNetworkConfig();
-  const masterWallet = getMasterWallet();
-  const masterBalance = await getMasterWalletBalance();
-
-  p.note(
-    `Network : ${networkConfig.name} (${network})\n` +
-      `Master  : ${masterWallet.address}\n` +
-      `Balance : ${masterBalance} ETH`,
-    "Environment",
-  );
-
-  // --- Agent name ---
-  const nameFromFlag = getFlag("name");
-  let agentName: string;
-
-  if (nameFromFlag) {
-    agentName = nameFromFlag;
-  } else {
-    const nameResult = await p.text({
-      message: "Agent name",
-      placeholder: "my-agent",
-      validate: (v) => (!v?.trim() ? "Name is required" : undefined),
-    });
-    if (p.isCancel(nameResult)) {
-      p.cancel("Cancelled.");
-      process.exit(0);
-    }
-    agentName = nameResult;
-  }
+  const { masterWallet } = await printEnvironment();
+  const agentName = await askAgentName();
 
   // --- Action selection ---
   const state = await actionSelectionLoop();
@@ -404,42 +299,9 @@ async function main(): Promise<void> {
 
   // --- Create wallet ---
   const s = p.spinner();
-  s.start(`Creating agent "${agentName}"...`);
-  const agentWallet = getOrCreateAgentWallet({ agentName });
-  s.stop(`Agent wallet: ${agentWallet.address}`);
+  const agentWallet = createAgentWallet(agentName, s);
 
-  // --- Fund amount ---
-  const fundFromFlag = getFlag("fund");
-  let fundAmount: string;
-
-  if (fundFromFlag) {
-    fundAmount = fundFromFlag;
-  } else {
-    const fundResult = await p.text({
-      message: "ETH to fund agent",
-      placeholder: "0.002",
-      initialValue: "0.002",
-    });
-    if (p.isCancel(fundResult)) {
-      p.cancel("Cancelled.");
-      process.exit(0);
-    }
-    fundAmount = fundResult || "0.002";
-  }
-
-  // --- Fund agent ---
-  s.start(`Funding agent with ${fundAmount} ETH...`);
-  try {
-    const txHash = await fundAgentWallet({
-      agentAddress: agentWallet.address,
-      amountEth: fundAmount,
-    });
-    const provider = getProvider();
-    const receipt = await provider.waitForTransaction(txHash);
-    s.stop(`Funded (block ${receipt?.blockNumber}): ${txHash}`);
-  } catch (err) {
-    s.stop(`Funding failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  await fundAgent(agentWallet.address, await askFundAmount(), s);
 
   // --- Persist ERC-8004 config ---
   const chainId = getChainId();
@@ -467,31 +329,27 @@ async function main(): Promise<void> {
 
   // --- Registration ---
   if (!skipRegister) {
-    s.start("Registering on ERC-8004...");
-    try {
-      const reg = await registerAgent({
-        name: config.name,
-        description: config.description,
-        privateKey: masterWallet.privateKey,
-        walletAddress: agentWallet.address,
-        agentWalletPrivateKey: agentWallet.privateKey,
-        endpoints,
-        x402support,
-        metadata: {
-          actions: state.actions,
-          tools: [...new Set([...state.actionToolNames, ...state.tools])],
-          did,
-        },
-      });
+    const reg = await registerWithSpinner(s, {
+      name: config.name,
+      description: config.description,
+      privateKey: masterWallet.privateKey,
+      walletAddress: agentWallet.address,
+      agentWalletPrivateKey: agentWallet.privateKey,
+      endpoints,
+      x402support,
+      metadata: {
+        actions: state.actions,
+        tools: [...new Set([...state.actionToolNames, ...state.tools])],
+        did,
+      },
+    });
+    if (reg) {
       // Persist agentId and URI back into the config
       config.agentId = reg.agentId;
       config.agentURI = reg.agentURI;
       config.metadata.updatedAt = reg.updatedAt;
       config.updatedAt = Math.floor(Date.now() / 1000);
       saveAgentConfig(agentName, config);
-      s.stop(`Registered. Agent ID: ${reg.agentId}`);
-    } catch (err) {
-      s.stop(`Registration failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   } else {
     p.log.info("Skipping ERC-8004 registration (--skip-register)");
@@ -520,18 +378,9 @@ async function main(): Promise<void> {
   );
 
   // --- Open chat ---
-  const chatResult = await p.confirm({
-    message: "Open interactive chat?",
-    initialValue: true,
-  });
-
-  if (p.isCancel(chatResult) || !chatResult) {
-    p.outro("Done. Run `npm run chat -- --agent " + agentName + "` to chat later.");
-    return;
-  }
-
-  p.outro("Starting chat...");
-  await startChat(agentName, agentWallet.privateKey, masterWallet.address, config);
+  await offerChat(agentName, () =>
+    startChat(agentName, agentWallet.privateKey, masterWallet.address, config),
+  );
 }
 
 main().catch((err) => {

@@ -2,16 +2,9 @@
 
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import {
-  createPublicClient,
-  createWalletClient,
-  http,
-  parseEther,
-  formatEther,
-  defineChain,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { getRpcUrl, getChainId } from "../../core/config.js";
+import { parseEther, formatEther } from "viem";
+import { getAgentPublicClient, getAgentWalletClient } from "./viem-clients.js";
+import { toolError } from "./errors.js";
 
 /**
  * @notice Sends ETH from the agent wallet to a destination address.
@@ -34,26 +27,8 @@ export const sendEthTool: DynamicStructuredTool = new DynamicStructuredTool({
         return "Error: AGENT_PRIVATE_KEY environment variable is not set";
       }
 
-      const rpcUrl = getRpcUrl();
-      const chain = defineChain({
-        id: getChainId(),
-        name: "Arbitrum",
-        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-        rpcUrls: { default: { http: [rpcUrl] } },
-      });
-
-      const account = privateKeyToAccount(privateKey as `0x${string}`);
-
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(rpcUrl),
-      });
-
-      const walletClient = createWalletClient({
-        account,
-        chain,
-        transport: http(rpcUrl),
-      });
+      const { account, walletClient } = getAgentWalletClient(privateKey as `0x${string}`);
+      const publicClient = getAgentPublicClient();
 
       const value = parseEther(amount);
 
@@ -69,9 +44,7 @@ export const sendEthTool: DynamicStructuredTool = new DynamicStructuredTool({
 
       return hash;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const short = message.length > 300 ? message.slice(0, 300) + "..." : message;
-      return `Error: ${short}`;
+      return toolError(err);
     }
   },
 });

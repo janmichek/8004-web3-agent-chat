@@ -4,7 +4,7 @@ import { useAccount, useBalance, useConfig, useSwitchChain } from '@wagmi/vue'
 import { useWeb3Auth, useWeb3AuthConnect, useWeb3AuthDisconnect } from '@web3auth/modal/vue'
 import { formatEther } from 'viem'
 import { ensureChain, getInjectedChainId } from '@/shared/lib'
-import { theme, toggleTheme } from '@/shared/lib'
+import { setThemePreference, themePreference, type ThemePreference } from '@/shared/lib'
 import { SUPPORTED_NETWORKS, findNetwork, isSupportedChain } from '@/shared/config'
 
 const wagmiConfig = useConfig()
@@ -41,6 +41,8 @@ const walletChainId = ref<number | undefined>(undefined)
 const switching = ref(false)
 const menuOpen = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
+const faucetCopied = ref(false)
+let faucetTimer: ReturnType<typeof setTimeout> | undefined
 
 async function refreshWalletChain() {
   if (!isConnected.value) {
@@ -71,6 +73,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onDocPointerDown)
   document.removeEventListener('keydown', onDocKeydown)
+  if (faucetTimer) clearTimeout(faucetTimer)
 })
 
 function onDocPointerDown(event: PointerEvent) {
@@ -116,6 +119,20 @@ const faucetLabel = computed(() => {
   return `Get test ${symbol}`
 })
 
+const THEME_OPTIONS: { value: ThemePreference; label: string; icon: string }[] = [
+  { value: 'auto', label: 'Auto', icon: '◐' },
+  { value: 'light', label: 'Light', icon: '☀' },
+  { value: 'dark', label: 'Dark', icon: '☾' },
+]
+
+const themePreferenceLabel = computed(
+  () => THEME_OPTIONS.find((o) => o.value === themePreference.value)?.label ?? 'Auto',
+)
+
+const themeLabel = computed(
+  () => `Appearance: ${themePreferenceLabel.value}. Choose Auto, Light or Dark.`,
+)
+
 const wrongNetwork = computed(() => isConnected.value && !isSupportedChain(activeChainId.value))
 
 const eth = useBalance({ address: address })
@@ -134,6 +151,35 @@ async function onSignIn() {
 async function onSignOut() {
   menuOpen.value = false
   await disconnect()
+}
+
+async function copyFaucetAddress(addr: string) {
+  try {
+    await navigator.clipboard.writeText(addr)
+    faucetCopied.value = true
+  } catch {
+    // Clipboard API unavailable (non-secure context) — still open the faucet.
+  }
+}
+
+function onFaucetClick(event: MouseEvent) {
+  const url = faucetUrl.value
+  const addr = address.value
+  if (!url || !addr) return
+  const modified = event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
+  if (modified) {
+    void copyFaucetAddress(addr)
+    return
+  }
+  event.preventDefault()
+  if (faucetTimer) clearTimeout(faucetTimer)
+  faucetCopied.value = false
+  void copyFaucetAddress(addr)
+  faucetTimer = setTimeout(() => {
+    faucetTimer = undefined
+    menuOpen.value = false
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, 1000)
 }
 
 async function onChainPicked(event: Event) {
@@ -241,35 +287,44 @@ async function onChainPicked(event: Event) {
               <a
                 v-if="faucetUrl"
                 class="faucet-link"
+                :class="{ copied: faucetCopied }"
                 :href="faucetUrl"
                 target="_blank"
                 rel="noopener noreferrer"
                 data-testid="faucet-link"
-                :title="`Open ${chainLabel} faucet`"
+                :title="`Copy address and open ${chainLabel} faucet`"
+                @click="onFaucetClick"
               >
-                <span class="faucet-icon" aria-hidden="true">↗</span>
+                <span class="faucet-icon" aria-hidden="true">{{ faucetCopied ? '✓' : '↗' }}</span>
                 <span class="faucet-copy">
-                  <span class="faucet-title">{{ faucetLabel }}</span>
-                  <span class="faucet-sub">{{ chainLabel }} faucet</span>
+                  <span class="faucet-title">{{ faucetCopied ? 'Address copied' : faucetLabel }}</span>
+                  <span class="faucet-sub">
+                    {{ faucetCopied ? 'Opening faucet…' : `${chainLabel} faucet` }}
+                  </span>
                 </span>
               </a>
 
-              <button
-                type="button"
-                class="theme-row"
-                data-testid="theme-toggle"
-                :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-                @click="toggleTheme"
-              >
-                <span class="theme-icon" aria-hidden="true">{{ theme === 'dark' ? '☀' : '☾' }}</span>
+              <div class="theme-row" role="group" data-testid="theme-toggle" :aria-label="themeLabel">
                 <span class="theme-copy">
                   <span class="theme-title">Appearance</span>
-                  <span class="theme-sub">{{ theme === 'dark' ? 'Dark' : 'Light' }}</span>
+                  <span class="theme-hint">Auto, Light or Dark</span>
                 </span>
-                <span class="theme-switch" :data-mode="theme" aria-hidden="true">
-                  <span class="theme-knob" />
-                </span>
-              </button>
+                <div class="theme-options">
+                  <button
+                    v-for="opt in THEME_OPTIONS"
+                    :key="opt.value"
+                    type="button"
+                    class="theme-option"
+                    :class="{ active: themePreference === opt.value }"
+                    :aria-pressed="themePreference === opt.value"
+                    :data-testid="`theme-${opt.value}`"
+                    @click="setThemePreference(opt.value)"
+                  >
+                    <span class="theme-icon" aria-hidden="true">{{ opt.icon }}</span>
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div class="panel-footer">
@@ -286,16 +341,23 @@ async function onChainPicked(event: Event) {
         </div>
       </template>
       <template v-else>
-        <button
-          type="button"
-          class="btn ghost theme-btn"
-          data-testid="theme-toggle"
-          :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-          :title="theme === 'dark' ? 'Light mode' : 'Dark mode'"
-          @click="toggleTheme"
-        >
-          {{ theme === 'dark' ? '☀' : '☾' }}
-        </button>
+        <div class="theme-options theme-options-compact" role="group" data-testid="theme-toggle" :aria-label="themeLabel">
+          <button
+            v-for="opt in THEME_OPTIONS"
+            :key="opt.value"
+            type="button"
+            class="btn ghost theme-btn"
+            :class="{ active: themePreference === opt.value }"
+            :aria-pressed="themePreference === opt.value"
+            :aria-label="opt.label"
+            :title="opt.label"
+            :data-testid="`theme-${opt.value}`"
+            @click="setThemePreference(opt.value)"
+          >
+            <span aria-hidden="true">{{ opt.icon }}</span>
+            <span class="theme-btn-label">{{ opt.label }}</span>
+          </button>
+        </div>
         <span v-if="authPending" class="auth-skeleton" aria-hidden="true" />
         <button
           v-else
@@ -318,426 +380,4 @@ async function onChainPicked(event: Event) {
   </header>
 </template>
 
-<style scoped>
-.bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in oklab, var(--surface) 88%, transparent);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-/* Elevate the sticky bar stacking context so .account-panel clears app drawers/dialogs. */
-.bar.menu-open {
-  z-index: 100;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  min-width: 0;
-}
-
-.brand-mark {
-  display: flex;
-  align-items: center;
-  gap: 0.1rem;
-  flex-shrink: 0;
-}
-
-.mark:hover {
-  transform: rotate(-8deg) scale(1.12);
-}
-
-.mark {
-  transition: transform 0.35s var(--ease-spring);
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.4rem;
-  object-fit: contain;
-  display: block;
-  flex-shrink: 0;
-}
-
-.name {
-  margin: 0;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.05rem;
-  letter-spacing: -0.02em;
-}
-
-.theme-btn {
-  padding: 0.45rem 0.65rem;
-  line-height: 1;
-}
-
-.auth-skeleton {
-  display: inline-block;
-  width: 8rem;
-  height: 2.35rem;
-  border-radius: 999px;
-  background: linear-gradient(
-    100deg,
-    color-mix(in oklab, var(--surface-2) 92%, var(--border)) 30%,
-    color-mix(in oklab, var(--surface-2) 60%, var(--border)) 50%,
-    color-mix(in oklab, var(--surface-2) 92%, var(--border)) 70%
-  );
-  background-size: 220% 100%;
-  animation: auth-skeleton 1.4s ease-in-out infinite;
-}
-
-@keyframes auth-skeleton {
-  from {
-    background-position: 180% 0;
-  }
-  to {
-    background-position: -80% 0;
-  }
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.account-menu {
-  position: relative;
-}
-
-.account-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  height: 2.35rem;
-  padding: 0 0.7rem 0 0.35rem;
-  border-radius: 999px;
-}
-
-.account-btn[aria-expanded='true'] {
-  background: var(--surface-2);
-  border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
-}
-
-.person-wrap {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--accent) 14%, var(--surface-2));
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
-.person-icon {
-  width: 1rem;
-  height: 1rem;
-  display: block;
-}
-
-.addr {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.84rem;
-  color: var(--ink);
-  letter-spacing: -0.01em;
-}
-
-.addr::before {
-  content: '';
-  display: inline-block;
-  width: 0.4rem;
-  height: 0.4rem;
-  margin-right: 0.4rem;
-  border-radius: 50%;
-  background: #3ddc97;
-  box-shadow: 0 0 0 0 #3ddc9788;
-  animation: online 2.2s ease-out infinite;
-}
-
-@keyframes online {
-  70% { box-shadow: 0 0 0 6px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
-}
-
-.chevron {
-  width: 0.85rem;
-  height: 0.85rem;
-  color: var(--muted);
-  transition: transform 0.2s var(--ease-out);
-  flex-shrink: 0;
-}
-
-.chevron.open {
-  transform: rotate(180deg);
-  color: var(--accent);
-}
-
-.account-panel {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  right: 0;
-  width: min(17.5rem, calc(100vw - 1.5rem));
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) + 0.15rem);
-  background: var(--surface);
-  box-shadow:
-    0 18px 40px -18px rgb(var(--shadow-rgb) / 0.45),
-    0 0 0 1px color-mix(in oklab, var(--accent) 8%, transparent);
-  animation: menu-in 0.22s var(--ease-out);
-  transform-origin: top right;
-}
-
-@keyframes menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(-0.4rem) scale(0.98);
-  }
-}
-
-.panel-hero {
-  padding: 0.95rem 1rem 0.85rem;
-  background:
-    radial-gradient(120% 90% at 100% 0%, color-mix(in oklab, var(--accent) 16%, transparent), transparent 55%),
-    linear-gradient(180deg, color-mix(in oklab, var(--surface-2) 70%, transparent), transparent);
-  border-bottom: 1px solid var(--border);
-}
-
-.panel-kicker {
-  margin: 0 0 0.2rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.panel-balance {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 500;
-  color: var(--ink);
-  letter-spacing: -0.02em;
-}
-
-.panel-network {
-  margin: 0.35rem 0 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.panel-network.warn {
-  color: var(--warn);
-}
-
-.panel-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.85rem 1rem;
-}
-
-.menu-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.menu-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.chip {
-  font: inherit;
-  font-size: 0.84rem;
-  width: 100%;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.45rem;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.chip:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.chip.warn {
-  border-color: color-mix(in oklab, var(--warn) 50%, var(--border));
-  color: var(--warn);
-}
-
-.faucet-link {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 0.65rem;
-  width: 100%;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--surface-2);
-  color: var(--ink);
-  text-decoration: none;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.faucet-link:hover {
-  border-color: color-mix(in oklab, var(--accent) 40%, var(--border));
-  background: color-mix(in oklab, var(--accent) 6%, var(--surface-2));
-}
-
-.faucet-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  border-radius: 0.4rem;
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
-  color: var(--accent);
-  font-size: 0.85rem;
-  line-height: 1;
-}
-
-.faucet-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  min-width: 0;
-}
-
-.faucet-title {
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-
-.faucet-sub {
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.theme-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 0.65rem;
-  width: 100%;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--surface-2);
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.theme-row:hover {
-  border-color: color-mix(in oklab, var(--accent) 40%, var(--border));
-  background: color-mix(in oklab, var(--accent) 6%, var(--surface-2));
-}
-
-.theme-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.7rem;
-  height: 1.7rem;
-  border-radius: 0.4rem;
-  background: color-mix(in oklab, var(--accent) 12%, transparent);
-  line-height: 1;
-}
-
-.theme-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  min-width: 0;
-}
-
-.theme-title {
-  font-size: 0.84rem;
-  font-weight: 600;
-}
-
-.theme-sub {
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.theme-switch {
-  position: relative;
-  width: 2.1rem;
-  height: 1.2rem;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--muted) 35%, var(--border));
-  flex-shrink: 0;
-  transition: background 0.2s ease;
-}
-
-.theme-switch[data-mode='dark'] {
-  background: color-mix(in oklab, var(--accent) 55%, var(--border));
-}
-
-.theme-knob {
-  position: absolute;
-  top: 0.15rem;
-  left: 0.15rem;
-  width: 0.9rem;
-  height: 0.9rem;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
-  transition: transform 0.2s var(--ease-out);
-}
-
-.theme-switch[data-mode='dark'] .theme-knob {
-  transform: translateX(0.9rem);
-}
-
-.panel-footer {
-  padding: 0 1rem 1rem;
-}
-
-.sign-out {
-  width: 100%;
-  justify-content: center;
-}
-
-.auth-error {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--danger, #c0392b);
-  max-width: 16rem;
-}
-
-@media (max-width: 640px) {
-  .bar {
-    padding: 0.85rem 1rem;
-  }
-}
-</style>
+<style scoped src="./wallet-bar.css"></style>

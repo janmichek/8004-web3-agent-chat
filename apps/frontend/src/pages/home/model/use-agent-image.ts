@@ -1,7 +1,7 @@
-import { ref, useTemplateRef } from "vue";
+import { ref } from "vue";
 import { uploadImage } from "@/shared/api";
 
-// Optional agent image (step 1): chosen via file picker or drag & drop,
+// Optional agent image (step 1): chosen via the agent card (file picker or drag & drop),
 // kept locally for preview and uploaded to IPFS at creation time,
 // just before the agent metadata is pinned.
 export function useAgentImage() {
@@ -10,9 +10,6 @@ export function useAgentImage() {
   const imageUri = ref("");
   const imageStatus = ref<"idle" | "uploading" | "done" | "error">("idle");
   const imageError = ref("");
-  const dragging = ref(false);
-  // Bound to the `ref="fileInput"` input in the consuming component's template.
-  const fileInput = useTemplateRef<HTMLInputElement>("fileInput");
 
   const ACCEPTED_IMAGE_TYPES = [
     "image/png",
@@ -21,23 +18,6 @@ export function useAgentImage() {
     "image/webp",
     "image/svg+xml",
   ];
-
-  function pickImage() {
-    fileInput.value?.click();
-  }
-
-  function onFileChosen(event: Event) {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
-    if (file) selectImage(file);
-  }
-
-  function onDrop(event: DragEvent) {
-    dragging.value = false;
-    const file = event.dataTransfer?.files?.[0];
-    if (file) selectImage(file);
-  }
 
   function selectImage(file: File) {
     imageError.value = "";
@@ -91,10 +71,7 @@ export function useAgentImage() {
     imagePreviewUrl,
     imageStatus,
     imageError,
-    dragging,
-    pickImage,
-    onFileChosen,
-    onDrop,
+    selectImage,
     removeImage,
     uploadSelectedImage,
   };

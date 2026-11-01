@@ -4,7 +4,6 @@ import {
   DEMO_AGENT,
   SECOND_AGENT,
   gotoWithAgent,
-  openAgentPanel,
   openConversations,
   selectAgent,
   setupOffline,
@@ -98,12 +97,10 @@ test.describe("agent memory extras", () => {
     const cards = page.locator('[data-testid="agent-memory"] .session-card');
     await cards.nth(0).click();
     await expect(page.getByTestId("chat-bubble-user").first()).toContainText("newest question");
-    await expect(page.getByTestId("agent-memory")).toBeHidden();
     await openConversations(page);
     await expect(cards.nth(0)).toHaveAttribute("aria-selected", "true");
     await cards.nth(1).click();
     await expect(page.getByTestId("chat-bubble-user").last()).toContainText("older question");
-    await expect(page.getByTestId("agent-memory")).toBeHidden();
     await openConversations(page);
     await expect(cards.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(cards.nth(0)).toHaveAttribute("aria-selected", "false");
@@ -114,7 +111,7 @@ test.describe("agent memory extras", () => {
     await setupOffline(page, {
       memory: () => {
         loads++;
-        // AgentStats + AgentMemory both fetch on load, so allow 2 initial empty loads.
+        // The providers remount the page once after first paint, so AgentMemory loads twice.
         const empty = loads <= 2;
         return {
           agent: "demo",
@@ -237,7 +234,6 @@ test.describe("agent memory extras", () => {
     });
     await gotoWithAgent(page);
     await openConversations(page);
-    await openAgentPanel(page);
     await selectAgent(page, "bravo");
     await expect(page.locator('[data-testid="agent-memory"]')).toContainText("no", {
       ignoreCase: true,

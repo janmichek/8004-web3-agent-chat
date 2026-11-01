@@ -34,9 +34,9 @@ caller who reaches the agent over A2A gets a real answer from it.
 | `src/core/registry.ts` | Uses the above when registering and when pinning the enriched registration file |
 | `src/server/api.ts` | HTTP routes, per-agent server cache, agent executor, facilitator selection, rate limit, `POST /api/agents` inputs |
 | `src/cli/create-agent.ts` | `--a2a-endpoint`, `--x402`, prompts |
-| `frontend/src/components/CreateAgent.vue` | A2A endpoint field, x402 checkbox, service links |
-| `frontend/src/components/AgentPicker.vue` | Services and x402 rows in Agent Info |
-| `vercel.json`, `frontend/vite.config.ts` | Route `/a2a` and `/.well-known/agent-card.json` to the API |
+| `apps/frontend/src/pages/home/ui/create-agent/CreateAgent.vue` | A2A endpoint field, x402 checkbox, service links |
+| `apps/frontend/src/pages/home/ui/agent-picker/AgentPicker.vue` | Services and x402 rows in Agent Info |
+| `vercel.json`, `apps/frontend/vite.config.ts` | Route `/a2a` and `/.well-known/agent-card.json` to the API |
 
 ## 3. HTTP surface
 

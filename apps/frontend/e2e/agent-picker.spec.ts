@@ -4,9 +4,8 @@ import {
   DEMO_AGENT,
   SECOND_AGENT,
   gotoWithAgent,
-  openAgentInfo,
-  openAgentPanel,
-  openFundAgent,
+  openAgentDetails,
+  closeDialog,
   selectAgent,
   setupOffline,
 } from "./helpers";
@@ -17,7 +16,6 @@ test.describe("agent picker", () => {
     await gotoWithAgent(page);
     const select = page.getByTestId("agent-select");
     await expect(select).toHaveAttribute("data-value", "demo");
-    await openAgentPanel(page);
     await select.click();
     const options = page.getByTestId("agent-menu").getByRole("option");
     await expect(options).toHaveCount(2);
@@ -43,7 +41,6 @@ test.describe("agent picker", () => {
     // API returns never-used / older first; UI should reorder latest → oldest → never.
     await setupOffline(page, { agents: [never, older, newer] });
     await page.goto("/");
-    await openAgentPanel(page);
     await expect(page.getByTestId("agent-select")).toHaveAttribute("data-value", "bravo");
     await page.getByTestId("agent-select").click();
     const names = await page
@@ -56,7 +53,6 @@ test.describe("agent picker", () => {
   test("search filters agents by name and capability", async ({ page }) => {
     await setupOffline(page, { agents: [DEMO_AGENT, SECOND_AGENT] });
     await gotoWithAgent(page);
-    await openAgentPanel(page);
     await page.getByTestId("agent-select").click();
     await page.getByTestId("agent-search").fill("send_eth");
     await expect(page.getByTestId("agent-option-demo")).toBeVisible();
@@ -72,34 +68,29 @@ test.describe("agent picker", () => {
       agentsError: "API unavailable — run npm run serve",
     });
     await page.goto("/");
-    await openAgentPanel(page);
     await expect(page.getByTestId("agent-select")).toBeVisible();
-    await openAgentInfo(page);
     await expect(page.getByTestId("picker-error")).toContainText("API unavailable");
   });
 
   test("shows empty state when no agents exist", async ({ page }) => {
     await setupOffline(page, { agents: [] });
     await page.goto("/");
-    await openAgentPanel(page);
     await expect(page.getByTestId("agent-select")).toBeVisible();
     await expect(page.getByTestId("agent-select")).toContainText("Create your first agent");
-    await openAgentInfo(page);
     await expect(page.getByText("No agents yet")).toBeVisible();
   });
 
-  test("Agent Info section collapses and expands", async ({ page }) => {
+  test("details button opens a modal with info + fund cards and closes on Escape", async ({
+    page,
+  }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openAgentPanel(page);
-    const toggle = page.getByRole("button", { name: /Agent Info/ });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("agent-rating")).toHaveCount(0);
+    await openAgentDetails(page);
     await expect(page.getByTestId("agent-rating")).toBeVisible();
-    await expect(page.getByTestId("fund-amount")).toBeHidden();
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("fund-amount")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   test("reloads the agent list automatically when the select opens", async ({ page }) => {
@@ -126,13 +117,12 @@ test.describe("agent picker", () => {
       });
     });
     await gotoWithAgent(page);
-    await openAgentPanel(page);
     await page.getByTestId("agent-select").click();
     await expect.poll(() => calls).toBeGreaterThanOrEqual(2);
     // refresh keeps the selection and shows no error
     await expect(page.getByTestId("agent-select")).toHaveAttribute("data-value", "demo");
     await page.keyboard.press("Escape");
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await expect(page.getByTestId("picker-error")).toHaveCount(0);
   });
 
@@ -142,7 +132,7 @@ test.describe("agent picker", () => {
       reputation: { agentId: "421614:42", count: 0, averageValue: 0 },
     });
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await expect(page.getByTestId("agent-rating")).toContainText("No ratings yet");
 
     // 1 rating
@@ -151,7 +141,7 @@ test.describe("agent picker", () => {
     });
     await page.goto("/");
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await expect(page.getByTestId("agent-rating")).toContainText("1 rating");
     await expect(page.getByTestId("agent-rating")).not.toContainText("ratings");
 
@@ -161,7 +151,7 @@ test.describe("agent picker", () => {
     });
     await page.goto("/");
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await expect(page.getByTestId("agent-rating")).toContainText("92.3/100");
     await expect(page.getByTestId("agent-rating")).toContainText("12 ratings");
   });
@@ -169,31 +159,16 @@ test.describe("agent picker", () => {
   test("rating line stays blank when reputation lookup fails", async ({ page }) => {
     await setupOffline(page, { reputation: null });
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await expect(page.getByTestId("agent-rating")).toContainText("—");
   });
 });
 
 test.describe("fund agent", () => {
-  test("Fund Agent section collapses and expands", async ({ page }) => {
-    await setupOffline(page, {});
-    await gotoWithAgent(page);
-    await openAgentPanel(page);
-    const toggle = page.getByRole("button", { name: /Fund Agent/ });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByTestId("fund-amount")).toBeHidden();
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByTestId("fund-amount")).toBeVisible();
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByTestId("fund-amount")).toBeHidden();
-  });
-
   test("validates amount: only (0, 1] enables Send", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openFundAgent(page);
+    await openAgentDetails(page);
     const amount = page.getByTestId("fund-amount");
     const submit = page.getByTestId("fund-submit");
     await expect(submit).toBeEnabled(); // default 0.001
@@ -213,7 +188,7 @@ test.describe("fund agent", () => {
   test("successful fund shows tx prefix status", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openFundAgent(page);
+    await openAgentDetails(page);
     await expect(page.getByText("Connected wallet")).toBeVisible();
     await page.getByTestId("fund-amount").fill("0.001");
     await page.getByTestId("fund-submit").click();
@@ -224,7 +199,7 @@ test.describe("fund agent", () => {
   test("fund error surfaces not-enough-funds mapping", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openFundAgent(page);
+    await openAgentDetails(page);
     await page.evaluate(() => {
       (window as unknown as { __E2E_SEND_TX?: () => never }).__E2E_SEND_TX = () => {
         throw new Error(
@@ -240,7 +215,7 @@ test.describe("fund agent", () => {
   test("maps RPC rate-limit errors to a friendly retry hint", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openFundAgent(page);
+    await openAgentDetails(page);
     await page.evaluate(() => {
       (window as unknown as { __E2E_SEND_TX?: () => never }).__E2E_SEND_TX = () => {
         throw new Error("exceeds defined limit -32005 rate limited");
@@ -256,7 +231,7 @@ test.describe("delete agent", () => {
   test("first click asks for confirmation, second deletes", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await page.getByTestId("picker-delete").click();
     await expect(page.getByTestId("delete-status")).toContainText("Click Delete again to confirm");
     await expect(page.getByTestId("picker-delete")).toContainText("Confirm delete");
@@ -269,7 +244,7 @@ test.describe("delete agent", () => {
   test("delete error keeps the agent and shows the message", async ({ page }) => {
     await setupOffline(page, { deleteStatus: 500 });
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await page.getByTestId("picker-delete").click();
     await page.getByTestId("picker-delete").click();
     await expect(page.getByTestId("delete-status")).toContainText("delete failed");
@@ -279,10 +254,12 @@ test.describe("delete agent", () => {
   test("switching selection resets a stale delete confirmation", async ({ page }) => {
     await setupOffline(page, { agents: [DEMO_AGENT, SECOND_AGENT] });
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await page.getByTestId("picker-delete").click();
     await expect(page.getByTestId("delete-status")).toContainText("Click Delete again");
+    await closeDialog(page);
     await selectAgent(page, "bravo");
+    await openAgentDetails(page);
     await expect(page.getByTestId("picker-delete")).toContainText("Delete");
     await expect(page.getByTestId("delete-status")).toHaveCount(0);
   });

@@ -55,11 +55,13 @@ export function validateImage(fileName: string, mimeType: string, size: number):
  * @returns Gateway URL in the form `https://<gateway>/ipfs/<cid>`.
  */
 export async function uploadImage(image: IpfsImage): Promise<string> {
-  const pinataJwt = process.env.PINATA_JWT?.trim();
-  if (pinataJwt) return uploadToPinata(image, pinataJwt);
-  const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
-  if (ipfsNodeUrl) return uploadToIpfsNode(image, ipfsNodeUrl);
-  throw new Error("No IPFS backend configured (set PINATA_JWT or IPFS_NODE_URL)");
+  const form = imageForm(image);
+  const backend = resolveBackend();
+  const cid =
+    backend.kind === "pinata"
+      ? await uploadToPinata(form, backend.jwt, "Pinata upload")
+      : await uploadToIpfsNode(form, backend.nodeUrl, "IPFS node upload");
+  return `${getGatewayBase()}/${cid}`;
 }
 
 /**
@@ -70,90 +72,70 @@ export async function uploadJson(
   data: unknown,
   fileName = "agent-registration.json",
 ): Promise<string> {
+  const form = jsonForm(data, fileName);
+  const backend = resolveBackend();
+  return backend.kind === "pinata"
+    ? uploadToPinata(form, backend.jwt, "Pinata JSON upload")
+    : uploadToIpfsNode(form, backend.nodeUrl, "IPFS node JSON upload");
+}
+
+type IpfsBackend = { kind: "pinata"; jwt: string } | { kind: "node"; nodeUrl: string };
+
+function resolveBackend(): IpfsBackend {
   const pinataJwt = process.env.PINATA_JWT?.trim();
-  if (pinataJwt) return uploadJsonToPinata(data, fileName, pinataJwt);
+  if (pinataJwt) return { kind: "pinata", jwt: pinataJwt };
   const ipfsNodeUrl = process.env.IPFS_NODE_URL?.trim();
-  if (ipfsNodeUrl) return uploadJsonToIpfsNode(data, fileName, ipfsNodeUrl);
+  if (ipfsNodeUrl) return { kind: "node", nodeUrl: ipfsNodeUrl };
   throw new Error("No IPFS backend configured (set PINATA_JWT or IPFS_NODE_URL)");
 }
 
-async function uploadJsonToPinata(data: unknown, fileName: string, jwt: string): Promise<string> {
+function jsonForm(data: unknown, fileName: string): FormData {
   const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2));
   const form = new FormData();
   form.append("file", new Blob([bytes], { type: "application/json" }), fileName);
-  // Public so the CID is servable via gateways (and 8004scan).
+  return form;
+}
+
+function imageForm(image: IpfsImage): FormData {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([new Uint8Array(image.data)], { type: image.mimeType }),
+    image.fileName,
+  );
+  return form;
+}
+
+async function uploadToPinata(form: FormData, jwt: string, label: string): Promise<string> {
+  // Pinata v3 defaults to `private` — private CIDs are NOT servable via
+  // public/dedicated gateways (ERR_ID:00006). Agent assets must be public.
   form.append("network", "public");
   const res = await fetch(PINATA_UPLOAD_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${jwt}` },
     body: form,
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Pinata JSON upload failed (${res.status}): ${text.slice(0, 200)}`);
-  }
+  await assertOk(res, label);
   const json = (await res.json()) as { data?: { cid?: string }; cid?: string };
   const cid = json.data?.cid ?? json.cid;
   if (!cid) throw new Error("Pinata upload response did not contain a CID");
   return cid;
 }
 
-async function uploadJsonToIpfsNode(
-  data: unknown,
-  fileName: string,
-  nodeUrl: string,
-): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(data, null, 2));
-  const form = new FormData();
-  form.append("file", new Blob([bytes], { type: "application/json" }), fileName);
+async function uploadToIpfsNode(form: FormData, nodeUrl: string, label: string): Promise<string> {
   const url = `${nodeUrl.replace(/\/$/, "")}/api/v0/add?pin=true`;
   const res = await fetch(url, { method: "POST", body: form });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`IPFS node JSON upload failed (${res.status}): ${text.slice(0, 200)}`);
-  }
+  await assertOk(res, label);
+  // Kubo returns a single JSON object (Last-Chunk mode off) or NDJSON lines.
   const text = await res.text();
   const json = JSON.parse(text.split("\n")[0]) as { Hash?: string };
   if (!json.Hash) throw new Error("IPFS node upload response did not contain a Hash");
   return json.Hash;
 }
 
-async function uploadToPinata(image: IpfsImage, jwt: string): Promise<string> {
-  const form = new FormData();
-  const bytes = new Uint8Array(image.data);
-  form.append("file", new Blob([bytes], { type: image.mimeType }), image.fileName);
-  // Pinata v3 defaults to `private` — private CIDs are NOT servable via
-  // public/dedicated gateways (ERR_ID:00006). Agent images must be public.
-  form.append("network", "public");
-  const res = await fetch(PINATA_UPLOAD_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${jwt}` },
-    body: form,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Pinata upload failed (${res.status}): ${text.slice(0, 200)}`);
-  }
-  const json = (await res.json()) as { data?: { cid?: string }; cid?: string };
-  const cid = json.data?.cid ?? json.cid;
-  if (!cid) throw new Error("Pinata upload response did not contain a CID");
-  return `${getGatewayBase()}/${cid}`;
-}
-
-async function uploadToIpfsNode(image: IpfsImage, nodeUrl: string): Promise<string> {
-  const form = new FormData();
-  const bytes = new Uint8Array(image.data);
-  form.append("file", new Blob([bytes], { type: image.mimeType }), image.fileName);
-  const url = `${nodeUrl.replace(/\/$/, "")}/api/v0/add?pin=true`;
-  const res = await fetch(url, { method: "POST", body: form });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`IPFS node upload failed (${res.status}): ${text.slice(0, 200)}`);
-  }
-  // Kubo returns a single JSON object (Last-Chunk mode off) or NDJSON lines.
-  const text = await res.text();
-  const firstLine = text.split("\n")[0];
-  const json = JSON.parse(firstLine) as { Hash?: string };
-  if (!json.Hash) throw new Error("IPFS node upload response did not contain a Hash");
-  return `${getGatewayBase()}/${json.Hash}`;
+/** Throws the backend-specific upload error for a non-2xx response. */
+async function assertOk(res: Response, label: string): Promise<void> {
+  if (res.ok) return;
+  const text = await res.text().catch(() => "");
+  throw new Error(`${label} failed (${res.status}): ${text.slice(0, 200)}`);
 }

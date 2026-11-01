@@ -6,13 +6,7 @@
     "apps/frontend/src/app/main.ts",
     "config/steiger.config.ts"
   ],
-  "ignoreDependencies": [
-    "@lhci/cli",
-    "@stryker-mutator/vitest-runner",
-    "danger",
-    "dependency-cruiser",
-    "graphql"
-  ],
+  "ignoreDependencies": ["dependency-cruiser", "graphql"],
   "duplicates": {
     "minOccurrences": 2,
     "threshold": 7

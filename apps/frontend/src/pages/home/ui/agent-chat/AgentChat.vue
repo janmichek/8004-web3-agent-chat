@@ -4,6 +4,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { chatWithAgent, extractSuccessfulTxHash, type AgentSummary, type ChatEvent, type MemorySession } from '@/shared/api'
 import RateAgent from './RateAgent.vue'
+import ChatComposer from './ChatComposer.vue'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -27,6 +28,10 @@ const props = defineProps<{
   recalledSession?: MemorySession | null
   /** Increment to remount bubbles and replay pop-in without reloading the session. */
   replayKey?: number
+  /** Increment to clear the thread (live or recalled) for a new chat. */
+  newChatKey?: number
+  /** Until true, the no-agent hint is hidden so it can't flash before the list loads. */
+  agentsLoaded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -49,6 +54,16 @@ watch(
   () => props.replayKey,
   (key, prev) => {
     if (key == null || key === prev) return
+    animEpoch.value += 1
+  },
+)
+
+watch(
+  () => props.newChatKey,
+  (key, prev) => {
+    if (key == null || key === prev) return
+    bubbles.value = []
+    input.value = ''
     animEpoch.value += 1
   },
 )
@@ -178,7 +193,7 @@ function tagForTools(toolNames: string[]): string {
 function endpointForTools(agentName: string, toolNames: string[]): string {
   // Full service URL the rating applies to — origin-aware so localhost
   // and Vercel deployments record their own address.
-  // e.g. http://localhost:5173/api/agents/demo/chat#get_token_balance
+  // e.g. http://localhost:5174/api/agents/demo/chat#get_token_balance
   const pick = toolNames.find((n) => n !== 'give_feedback' && n !== 'get_reputation') ?? ''
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const base = `${origin}/api/agents/${encodeURIComponent(agentName)}/chat`
@@ -196,42 +211,23 @@ async function scrollBottom() {
   }
 }
 
-function onKey(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    void send()
-  }
-}
 </script>
 
 <template>
   <section class="chat">
     <div ref="scroller" class="thread" role="log" aria-live="polite" data-testid="chat-thread">
-      <p v-if="!resolvedName()" class="empty" data-testid="chat-empty-no-agent">
+      <p v-if="!resolvedName() && agentsLoaded" class="empty" data-testid="chat-empty-no-agent">
         Select an agent on the left to start — or create a new one.
       </p>
-      <section v-else-if="!bubbles.length" class="welcome" data-testid="chat-empty">
-        <p class="welcome-sub">Discover agents, check balances, resolve ENS names, and call contracts on-chain.</p>
-        <div class="welcome-composer">
-          <textarea
-            v-model="input"
-            rows="3"
-            class="welcome-input"
-            placeholder="Ask about agents, wallets, or on-chain actions…"
-            data-testid="chat-input"
-            :disabled="!resolvedName()"
-            @keydown="onKey"
-          />
-          <button
-            type="submit"
-            class="btn primary welcome-send"
-            data-testid="chat-send"
-            :disabled="!input.trim() || !resolvedName()"
-            @click="send"
-          >
-            ↑
-          </button>
-        </div>
+      <section v-else-if="resolvedName() && !bubbles.length" class="welcome" data-testid="chat-empty">
+        <p class="welcome-sub">Check balances, resolve ENS names, and call contracts on-chain.</p>
+        <ChatComposer
+          v-model="input"
+          variant="hero"
+          placeholder="Ask about agents, wallets, or on-chain actions…"
+          :no-agent="!resolvedName()"
+          @submit="send"
+        />
         <div class="welcome-chips">
           <button type="button" class="chip" @click="input = 'What is the ETH balance of 0x0000000000000000000000000000000000000000?'; send()">
             What is the ETH balance of an address?
@@ -276,24 +272,15 @@ function onKey(e: KeyboardEvent) {
       </div>
     </div>
 
-    <form v-if="bubbles.length" class="composer" @submit.prevent="send">
-      <textarea
+    <div v-if="bubbles.length" class="dock">
+      <ChatComposer
         v-model="input"
-        rows="2"
         :placeholder="resolvedName() ? 'Message the agent…' : 'Select an agent first…'"
-        data-testid="chat-input"
-        :disabled="busy || !resolvedName()"
-        @keydown="onKey"
+        :no-agent="!resolvedName()"
+        :busy="busy"
+        @submit="send"
       />
-      <button
-        class="btn primary"
-        type="submit"
-        data-testid="chat-send"
-        :disabled="busy || !input.trim() || !resolvedName()"
-      >
-        Send
-      </button>
-    </form>
+    </div>
   </section>
 </template>
 
@@ -348,49 +335,6 @@ function onKey(e: KeyboardEvent) {
   color: var(--muted);
   font-size: 0.86rem;
   line-height: 1.5;
-}
-
-.welcome-composer {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-end;
-  justify-content: center;
-  margin-top: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.55rem;
-  background: var(--surface);
-  padding: 0.1rem;
-  width: min(48rem, 94%);
-}
-
-.welcome-input {
-  flex: 1;
-  font: inherit;
-  font-size: 1rem;
-  color: var(--ink);
-  background: transparent;
-  border: none;
-  border-radius: 0.45rem;
-  padding: 0.75rem 0.85rem;
-  resize: none;
-  min-height: 4.5rem;
-  outline: none;
-}
-
-.welcome-input::placeholder {
-  color: var(--muted);
-}
-
-.welcome-send {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 0.55rem;
-  border-radius: 0.45rem;
-  min-width: 2.6rem;
-  height: 2.6rem;
-  font-size: 1rem;
-  line-height: 1;
 }
 
 .welcome-chips {
@@ -452,15 +396,9 @@ function onKey(e: KeyboardEvent) {
   50% { transform: translateY(-6px) rotate(8deg); }
 }
 
-.welcome-composer {
-  transition: border-color 0.2s ease, box-shadow 0.25s ease;
-}
-.welcome-composer:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 16%, transparent), 0 12px 32px -12px var(--glow);
-}
-.welcome-input:focus {
-  box-shadow: none;
+.dock {
+  flex: none;
+  padding-top: 0.15rem;
 }
 
 .bubble {
@@ -585,39 +523,8 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
-.composer {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.65rem;
-  padding: 0.85rem;
-  border-top: none;
-  background: var(--surface);
-}
-
-.composer textarea {
-  font: inherit;
-  resize: none;
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.4rem;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--ink);
-  min-height: 2.75rem;
-}
-
-.composer textarea:focus {
-  outline: 2px solid color-mix(in oklab, var(--accent) 45%, transparent);
-  outline-offset: 1px;
-}
-
 .btn.small {
   padding: 0.35rem 0.65rem;
   font-size: 0.75rem;
-}
-
-@media (max-width: 640px) {
-  .composer {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

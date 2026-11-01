@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AgentSummary } from '@/shared/api'
 import { NetworkIcon } from '@/shared/ui'
 import { chainIdOfAgentId } from '@/shared/config'
+import { timeAgo } from '@/shared/lib'
 
 const props = defineProps<{
   agents: AgentSummary[]
@@ -157,15 +158,7 @@ function hideBrokenImage(e: Event) {
 }
 
 function relativeTime(iso?: string | null): string {
-  if (!iso) return 'never'
-  const then = new Date(iso).getTime()
-  if (!Number.isFinite(then)) return 'never'
-  const diff = Date.now() - then
-  if (diff < 60_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
-  return new Date(iso).toLocaleDateString()
+  return timeAgo(iso, 'never')
 }
 
 function usageLabel(agent: AgentSummary): string {
@@ -183,7 +176,10 @@ function registryChainId(agent: AgentSummary): number {
 }
 
 function triggerSubtitle(agent: AgentSummary | null): string {
-  if (!agent) return props.agents.length ? 'Choose an agent' : 'Create your first agent'
+  if (!agent) {
+    if (props.loading) return ''
+    return props.agents.length ? 'Choose an agent' : 'Create your first agent'
+  }
   return usageLabel(agent)
 }
 </script>
@@ -215,7 +211,7 @@ function triggerSubtitle(agent: AgentSummary | null): string {
         </span>
       </span>
       <span class="trigger-copy">
-        <span class="trigger-name">{{ selected?.name ?? 'No agent selected' }}</span>
+        <span class="trigger-name">{{ selected?.name ?? (loading ? 'Loading agents…' : 'No agent selected') }}</span>
         <span class="trigger-meta">{{ triggerSubtitle(selected) }}</span>
       </span>
       <span v-if="selected?.active" class="live-dot" title="Agent is active" aria-label="Active" />
@@ -243,7 +239,6 @@ function triggerSubtitle(agent: AgentSummary | null): string {
             @keydown="onSearchKeydown"
           />
           <span v-if="loading" class="spinner" aria-label="Refreshing" />
-          <kbd v-else class="esc">esc</kbd>
         </div>
 
         <ul id="agent-listbox" class="list" role="listbox" aria-label="Agents">
@@ -486,13 +481,6 @@ function triggerSubtitle(agent: AgentSummary | null): string {
 }
 .search::placeholder {
   color: var(--muted);
-}
-.esc {
-  font-size: 0.62rem;
-  color: var(--muted);
-  padding: 0.12rem 0.3rem;
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
 }
 .spinner {
   width: 0.75rem;

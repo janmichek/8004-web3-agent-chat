@@ -7,13 +7,13 @@ Vue 3 + wagmi console. Overview and API in the [root README](../README.md).
 From the repo root:
 
 ```bash
-npm run dev        # API :8787, MCP :8788, UI :5173
+npm run dev        # API :8787, MCP :8788, UI :5174
 # or
 npm run serve      # API only
 npm run frontend   # UI only
 ```
 
-Open http://localhost:5173. Vite proxies `/api`, `/mcp`, `/a2a` and
+Open http://localhost:5174. Vite proxies `/api`, `/mcp`, `/a2a` and
 `/.well-known/agent-card.json` to the API (`API_PORT`, default 8787).
 Set `VITE_WEB3AUTH_CLIENT_ID` in `frontend/.env` for Web3Auth sign-in.
 

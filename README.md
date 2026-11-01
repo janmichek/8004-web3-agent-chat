@@ -27,7 +27,7 @@ npm run setup          # generates the master wallet, writes MASTER_PRIVATE_KEY 
 
 npm run create-agent   # CLI: pick actions/tools, create wallet, fund, register, chat
 # or
-npm run dev            # API :8787 + MCP :8788 + web console :5173
+npm run dev            # API :8787 + MCP :8788 + web console :5174
 ```
 
 ## What an agent is
@@ -79,7 +79,7 @@ LLM providers: OpenRouter (default), Anthropic, OpenAI.
 npm run dev            # everything
 # or separately
 npm run serve          # API on :8787
-npm run frontend       # Vite on :5173, proxies /api, /mcp, /a2a and /.well-known/agent-card.json
+npm run frontend       # Vite on :5174, proxies /api, /mcp, /a2a and /.well-known/agent-card.json
 ```
 
 - Sign in with Web3Auth or an injected wallet; see your and the agent's balance.
@@ -205,7 +205,7 @@ Copy `.env.example` to `.env`.
 | `CORS_ORIGIN`                                                 | no                 | Comma-separated allowed origins                                                                                                                         |
 | `ALLOW_AGENT_DELETE`                                          | no                 | Allow `DELETE /api/agents/:name` on Vercel                                                                                                              |
 | `AGENT_<NAME>_PRIVATE_KEY`, `AGENT_<NAME>_CONFIG`             | no                 | Provide an agent through env vars instead of files (Vercel)                                                                                             |
-| `VITE_WEB3AUTH_CLIENT_ID`                                     | frontend           | Web3Auth client id (`frontend/.env`)                                                                                                                    |
+| `VITE_WEB3AUTH_CLIENT_ID`                                     | frontend           | Web3Auth client id (`apps/frontend/.env`)                                                                                                               |
 
 ## Networks
 
@@ -248,7 +248,7 @@ src/
   actions/            tools and skills
   cli/                setup, create-agent, chat, delete-agent, deploy
   index.ts            package exports
-frontend/             Vue 3 + wagmi console, Playwright e2e in frontend/e2e
+apps/frontend/        Vue 3 + wagmi console, Playwright e2e in apps/frontend/e2e
 docs/                 specs
 ```
 

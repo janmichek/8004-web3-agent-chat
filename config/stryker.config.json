@@ -7,8 +7,8 @@
     "src/core/oasf.ts",
     "src/core/typesafe.ts",
     "src/core/memory-store.ts",
-    "frontend/src/shared/config/networks.ts",
-    "frontend/src/shared/lib/rpc-errors.ts"
+    "apps/frontend/src/shared/config/networks.ts",
+    "apps/frontend/src/shared/lib/rpc-errors.ts"
   ],
   "coverageAnalysis": "perTest",
   "reporters": ["clear-text", "html", "json"],
@@ -20,7 +20,7 @@
   "ignorePatterns": [
     "coverage",
     "dist",
-    "frontend/dist",
+    "apps/frontend/dist",
     "playwright-report",
     "test-results",
     "agents"

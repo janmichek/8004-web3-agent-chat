@@ -8,14 +8,9 @@
 import dotenv from "dotenv";
 import * as p from "@clack/prompts";
 import { deleteAgentConfig, loadAgentConfig } from "../core/agent-config.js";
+import { getFlag, hasFlag } from "./flags.js";
 
 dotenv.config();
-
-const args = process.argv.slice(2);
-function getFlag(name: string): string | undefined {
-  const idx = args.indexOf(`--${name}`);
-  return idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith("--") ? args[idx + 1] : undefined;
-}
 
 async function main(): Promise<void> {
   p.intro("Delete Agent");
@@ -37,7 +32,7 @@ async function main(): Promise<void> {
     p.cancel(`Agent "${name}" not found.`);
     process.exit(1);
   }
-  if (!args.includes("--yes")) {
+  if (!hasFlag("yes")) {
     const confirm = await p.confirm({
       message: `Delete agent "${name}" (config, wallet, memory)? This cannot be undone.`,
     });

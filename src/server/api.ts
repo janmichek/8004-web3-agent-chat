@@ -8,508 +8,69 @@
 import { AGENT_NAME_RE } from "../core/agent-path.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import dotenv from "dotenv";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
-import { getLLM } from "../core/llm.js";
 import {
   AGENTS_DIR,
   fundAgentWallet,
-  getAgentWalletEnvVars,
   getMasterWalletBalance,
   getMasterWallet,
-  getOrCreateAgentWallet,
 } from "../core/wallet.js";
-import { resolveAgentSkills } from "../core/agent-skills.js";
-import { createPersistentCheckpointer } from "../core/file-checkpoint.js";
-import {
-  loadAgentConfig,
-  resolveToolsFromConfig,
-  buildCapabilitySummary,
-  deleteAgentConfig,
-} from "../core/agent-config.js";
+import { loadAgentConfig, deleteAgentConfig } from "../core/agent-config.js";
 import { ethers } from "ethers";
 import {
-  findNetworkByChainId,
   getAgentScanUrl,
   getChainId,
   getDefaultNetwork,
-  getNetworkNameByChainId,
   getNetworkConfig,
   getRpcUrl,
   getActiveNetwork,
-  getProvider,
   getSupportedNetworkByChainId,
   getSupportedNetworks,
   runWithNetwork,
 } from "../core/config.js";
 import type { NetworkName } from "../core/types.js";
-import { ACTION_REGISTRY, TOOL_REGISTRY, getActionByName } from "../core/action-registry.js";
+import { ACTION_REGISTRY, TOOL_REGISTRY } from "../core/action-registry.js";
 import { parseAgentConfig, saveAgentConfig, type AgentConfig } from "../core/agent-config.js";
-import { registerAgent } from "../core/registry.js";
-import { serializeTurn, withSigningKey } from "./signing-key.js";
-import { hasIpfsBackend, toGatewayUrl, uploadImage, validateImage } from "../core/ipfs.js";
+import { hasIpfsBackend, uploadImage, validateImage } from "../core/ipfs.js";
 import { readAgentMemoryAsync } from "../core/memory-reader.js";
-import type { Skill } from "../actions/types.js";
 import { A2AServer, type A2AExecutor } from "../a2a/server.js";
 import { HttpFacilitatorClient } from "../a2a/http-facilitator.js";
 import { MockFacilitatorClient } from "../a2a/mock-facilitator.js";
 import { DEFAULT_PRICE_ATOMIC, MOCK_PAYMENT_NETWORK } from "../a2a/x402.js";
-import { canonicalizeEndpoint, isAdvertisableUrl } from "../core/registration-services.js";
+import {
+  a2aToolNames,
+  agentExists,
+  agentNetwork,
+  listExistingAgents,
+  publicAgentSummary,
+  x402Mode,
+} from "./agent-catalog.js";
+import { runChat } from "./chat-runtime.js";
+import {
+  checkRateLimit,
+  errMsg,
+  getClientIp,
+  overSpendBudget,
+  RATE_LIMITED,
+  readJsonBody,
+} from "./http-utils.js";
+import { handleMcp } from "./mcp-proxy.js";
+import { createAgentHandler } from "./routes/create-agent.js";
 
 dotenv.config();
 
 const PORT = Number(process.env.API_PORT || 8787);
 
-// --- MCP (stateless, Bearer-authenticated) -------------------------------------
-// Served at /api/mcp and /mcp so `${origin}/api/mcp` (prefilled in wizard) is verifiable on 8004scan.
-// Uses WebStandard transport so it works on Vercel (Web Fetch) and local Hono (Node) alike.
-// Security: GET returns a minimal public descriptor (no tool list) for the
-// 8004scan health check. Every POST (initialize / tools/list / tools/call)
-// requires `Authorization: Bearer $MCP_AUTH_TOKEN`. Fails closed when the
-// token is not configured. Optional `?agent=<name>` scopes the server to that
-// agent's `metadata.tools` allowlist.
-const RATE_WINDOW_MS = Number(process.env.MCP_RATE_WINDOW_MS || 60_000);
-const MCP_RATE_MAX = Number(process.env.MCP_RATE_MAX || 60);
-/** Per-IP budget for routes that spend master funds or call the LLM. */
-const SPEND_RATE_MAX = Number(process.env.SPEND_RATE_MAX || 20);
+/** Anonymous A2A callers can make the agent's LLM work, so cap them per IP. */
+const A2A_RATE_MAX = Number(process.env.MCP_RATE_MAX || 60);
+
 /** Per-IP budget for the JSON-RPC proxy (in-page viem + connected wallets are chatty). */
 const RPC_RATE_MAX = Number(process.env.RPC_RATE_MAX || 300);
 /** Upper bound for a proxied JSON-RPC body; real calls are a few KB. */
 const RPC_MAX_BODY_BYTES = 64 * 1024;
-const rateHits = new Map<string, number[]>();
-
-function getClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
-  return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip")?.trim() ||
-    "unknown"
-  );
-}
-
-/** First line of an error's message, falling back to a stringified throw. */
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-const RATE_LIMITED = "rate limited, try again later";
-
-/** Anonymous routes that move master funds or run the LLM: per-IP budget, checked before any work. */
-function overSpendBudget(c: Context, route: string): boolean {
-  return !checkRateLimit(`${route}:${getClientIp(c)}`, SPEND_RATE_MAX);
-}
-
-/** Sliding-window counter per key (e.g. `mcp:<ip>`, `fund:<ip>`). */
-function checkRateLimit(key: string, max: number): boolean {
-  const now = Date.now();
-  const hits = (rateHits.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  hits.push(now);
-  rateHits.set(key, hits);
-  // Prevent unbounded growth across many IPs (serverless instance memory).
-  if (rateHits.size > 1000) {
-    const oldest = [...rateHits.keys()].slice(0, rateHits.size - 1000);
-    for (const k of oldest) rateHits.delete(k);
-  }
-  return hits.length <= max;
-}
-
-function mcpAuthOk(c: { req: { header: (name: string) => string | undefined } }): boolean {
-  const expected = process.env.MCP_AUTH_TOKEN?.trim();
-  if (!expected) return false; // fail closed — set MCP_AUTH_TOKEN
-  const got =
-    c.req
-      .header("authorization")
-      ?.replace(/^Bearer\s+/i, "")
-      .trim() ?? "";
-  if (!got) return false;
-  const a = Buffer.from(got);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-/** JSON-RPC methods that only discover capabilities — safe without auth. */
-const MCP_OPEN_METHODS = new Set([
-  "initialize",
-  "ping",
-  "tools/list",
-  "resources/list",
-  "resources/templates/list",
-  "prompts/list",
-]);
-
-/**
- * Decide whether a POST to /api/mcp executes something (→ Bearer required)
- * or is pure discovery (→ open so 8004scan / MCP clients can handshake).
- * Unknown / unparsable bodies fail closed (auth required).
- */
-async function mcpPostNeedsAuth(c: McpContext): Promise<boolean> {
-  if (c.req.method !== "POST") return true;
-  let body: unknown;
-  try {
-    body = await c.req.raw.clone().json();
-  } catch {
-    return true; // unparsable → fail closed
-  }
-  const messages = Array.isArray(body) ? body : [body];
-  if (messages.length === 0) return true;
-  for (const m of messages) {
-    if (typeof m !== "object" || m === null) return true;
-    const method = (m as { method?: unknown }).method;
-    if (typeof method !== "string") return true; // response/error → not a discovery call
-    if (method.startsWith("notifications/")) continue;
-    if (MCP_OPEN_METHODS.has(method)) continue;
-    return true; // tools/call and everything else → auth
-  }
-  return false;
-}
-
-let mcpHandlerCache: ((req: Request) => Promise<Response>) | null = null;
-async function getMcpHandler(
-  allowedTools?: string[],
-): Promise<(req: Request) => Promise<Response>> {
-  // Unscoped handler is cached; per-agent scoped handlers are built per request.
-  if (!allowedTools && mcpHandlerCache) return mcpHandlerCache;
-  const { WebStandardStreamableHTTPServerTransport } =
-    await import("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js");
-  const { getMcpServer } = await import("../mcp/server.js");
-  const handler = async (req: Request) => {
-    const server = getMcpServer(allowedTools);
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // stateless — fresh per request
-    });
-    await server.connect(transport);
-    // Stateless: new transport per request; do not close here — the
-    // Response's SSE stream stays open until the client disconnects.
-    // The transport will be GC'd after the stream ends.
-    return transport.handleRequest(req);
-  };
-  if (!allowedTools) mcpHandlerCache = handler;
-  return handler;
-}
-
-type ChatEvent =
-  | { type: "tool_call"; name: string; args: unknown }
-  | { type: "tool_result"; content: string }
-  | { type: "message"; content: string };
-
-function agentEnvSuffix(name: string): string {
-  return name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-}
-
-function listEnvAgents(): string[] {
-  const agents = new Set<string>();
-  for (const key of Object.keys(process.env)) {
-    // AGENT_<SUFFIX>_CONFIG or AGENT_<SUFFIX>_PRIVATE_KEY
-    const m = key.match(/^AGENT_(.+)_CONFIG$/) || key.match(/^AGENT_(.+)_PRIVATE_KEY$/);
-    if (m) {
-      const suffix = m[1];
-      // reverse to original name is ambiguous, so we store mapping via config name field
-      // Instead, derive from config JSON's name or brute-force by checking all env suffixes against known pattern
-      // For now, extract name from config JSON if available
-      const raw = process.env[key];
-      if (raw && key.endsWith("_CONFIG")) {
-        try {
-          const parsed = JSON.parse(raw) as { name?: string };
-          if (parsed.name) agents.add(parsed.name);
-          else agents.add(suffix.toLowerCase().replace(/_/g, "-"));
-        } catch {
-          agents.add(suffix.toLowerCase().replace(/_/g, "-"));
-        }
-      } else if (raw) {
-        // private key only — try to find matching config env, otherwise use suffix as name
-        const configKey = `AGENT_${suffix}_CONFIG`;
-        const configRaw = process.env[configKey];
-        if (configRaw) {
-          try {
-            const parsed = JSON.parse(configRaw) as { name?: string };
-            if (parsed.name) agents.add(parsed.name);
-          } catch {
-            /* ignore */
-          }
-        }
-        // fallback: if we haven't added yet, use suffix lowercased
-        if (!agents.has(suffix.toLowerCase().replace(/_/g, "-"))) {
-          // Only add if not already covered by config
-          const hasConfig = [...agents].some((a) => agentEnvSuffix(a) === suffix);
-          if (!hasConfig) agents.add(suffix.toLowerCase().replace(/_/g, "-"));
-        }
-      }
-    }
-  }
-  return [...agents];
-}
-
-function listExistingAgents(): string[] {
-  const fromFs = new Set<string>();
-  const dirsToScan = [AGENTS_DIR];
-  if (process.env.VERCEL) dirsToScan.push(path.resolve(process.cwd(), "agents"));
-  for (const dir of dirsToScan) {
-    if (!fs.existsSync(dir)) continue;
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (!e.isDirectory()) continue;
-      // On Vercel, existence of wallet via env is enough; on FS check wallet.json
-      // Also include config-only agents (agent-config.json without wallet yet)
-      // so newly created agents always appear in the picker.
-      const walletPath = path.join(dir, e.name, "wallet.json");
-      const configPath = path.join(dir, e.name, "agent-config.json");
-      const envPk = process.env[`AGENT_${agentEnvSuffix(e.name)}_PRIVATE_KEY`];
-      if (fs.existsSync(walletPath) || fs.existsSync(configPath) || envPk) fromFs.add(e.name);
-    }
-  }
-  // Merge env agents
-  for (const n of listEnvAgents()) fromFs.add(n);
-  return [...fromFs];
-}
-
-/**
- * Check the agent exists on this instance's filesystem or env vars.
- * Cold Vercel instances heal via POST /api/agents/:name/restore
- * (browser-held backup + retry in the frontend), not via shared storage.
- */
-function agentExists(name: string): boolean {
-  return listExistingAgents().includes(name);
-}
-
-async function publicAgentSummary(name: string, withUsage = false) {
-  const config = loadAgentConfig(name);
-  let walletAddress: string | undefined = config?.walletAddress;
-  // Try env private key first
-  if (!walletAddress) {
-    const envPk = process.env[`AGENT_${agentEnvSuffix(name)}_PRIVATE_KEY`];
-    if (envPk) {
-      try {
-        walletAddress = new ethers.Wallet(envPk).address;
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-  if (!walletAddress) {
-    const candidates = [path.join(AGENTS_DIR, name, "wallet.json")];
-    if (process.env.VERCEL)
-      candidates.push(path.join(path.resolve(process.cwd(), "agents"), name, "wallet.json"));
-    for (const walletPath of candidates) {
-      if (!fs.existsSync(walletPath)) continue;
-      try {
-        const raw = JSON.parse(fs.readFileSync(walletPath, "utf-8")) as { address?: string };
-        walletAddress = raw.address;
-        break;
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  const usage = withUsage ? await readAgentMemoryAsync(name).catch(() => null) : null;
-
-  return {
-    name,
-    description: config?.description ?? `Agent ${name}`,
-    image: config?.image ? toGatewayUrl(config.image) : undefined,
-    walletAddress,
-    walletChainId: config?.walletChainId ?? getNetworkConfig().chainId,
-    agentId: config?.agentId,
-    agentURI: config?.agentURI,
-    owners: config?.owners ?? [],
-    operators: config?.operators ?? [],
-    actions: config?.metadata?.actions ?? [],
-    tools: config?.metadata?.tools ?? [],
-    oasfDomains: (config?.metadata?.oasfDomains as string[] | undefined) ?? [],
-    oasfSkills: (config?.metadata?.oasfSkills as string[] | undefined) ?? [],
-    active: config?.active ?? true,
-    x402support: config?.x402support ?? false,
-    ...(config?.x402support ? { x402Mode: x402Mode() } : {}),
-    endpoints: config?.endpoints ?? [],
-    services: (config?.endpoints ?? []).map((e) => ({ name: e.type, endpoint: e.value })),
-    ...(usage
-      ? {
-          lastActive: usage.lastActive,
-          messageCount: usage.stats.totalMessages,
-          sessionCount: usage.sessions.length,
-        }
-      : {}),
-  };
-}
-
-/** Network an agent lives on: its `walletChainId`, else the NETWORK default (legacy configs). */
-function agentNetwork(config: AgentConfig | null | undefined): NetworkName {
-  const network = config?.walletChainId ? findNetworkByChainId(config.walletChainId) : undefined;
-  return network ?? getDefaultNetwork();
-}
-
-/** Tool names an anonymous A2A caller may trigger: read-only ones the agent was given. */
-function a2aToolNames(config: AgentConfig): string[] {
-  const readOnly = new Set(TOOL_REGISTRY.filter((t) => t.readOnly).map((t) => t.name));
-  return (config.metadata?.tools ?? []).filter((t) => readOnly.has(t));
-}
-
-/**
- * @param a2a Request from an anonymous agent over A2A: read-only tools only,
- *   no skill prompts, and no checkpointer, so the caller neither sees nor
- *   writes the owner's conversation history.
- */
-async function runChat(
-  agentName: string,
-  message: string,
-  a2a = false,
-): Promise<{
-  reply: string;
-  events: ChatEvent[];
-}> {
-  // The agent's tools read the active network, so run the whole turn on its chain,
-  // and sign with its key only for the duration of the turn.
-  return runWithNetwork(agentNetwork(loadAgentConfig(agentName)), () =>
-    withSigningKey(
-      () => getOrCreateAgentWallet({ agentName }).privateKey,
-      () => runChatOnActiveNetwork(agentName, message, a2a),
-    ),
-  );
-}
-
-async function runChatOnActiveNetwork(
-  agentName: string,
-  message: string,
-  a2a: boolean,
-): Promise<{
-  reply: string;
-  events: ChatEvent[];
-}> {
-  const wallet = getOrCreateAgentWallet({ agentName });
-  let agentConfig = loadAgentConfig(agentName);
-  let tools: Awaited<ReturnType<typeof resolveAgentSkills>>;
-  let skills: Skill[] = [];
-
-  if (agentConfig && a2a) {
-    const allowed = a2aToolNames(agentConfig);
-    agentConfig = {
-      ...agentConfig,
-      metadata: { ...agentConfig.metadata, actions: [], tools: allowed },
-    };
-    tools = resolveToolsFromConfig(agentConfig).tools;
-  } else if (agentConfig) {
-    const resolved = resolveToolsFromConfig(agentConfig);
-    tools = resolved.tools;
-    skills = resolved.skills;
-  } else {
-    tools = a2a ? [] : await resolveAgentSkills(agentName, wallet.privateKey);
-  }
-
-  const { saver, flush } = a2a
-    ? { saver: undefined, flush: async () => {} }
-    : await createPersistentCheckpointer(agentName);
-
-  const networkName = agentConfig?.walletChainId
-    ? getNetworkNameByChainId(agentConfig.walletChainId)
-    : getNetworkConfig().name;
-
-  const skillContext = skills.map((s) => `## Skill: ${s.name}\n\n${s.context}`).join("\n\n");
-  const capabilitySummary = agentConfig
-    ? buildCapabilitySummary(agentConfig)
-    : "No capabilities configured.";
-  const systemMessage = [
-    `You are "${agentName}", an onchain AI agent on ${networkName}.`,
-    `Your wallet address is: ${wallet.address}`,
-    agentConfig?.walletChainId ? `Chain ID: ${agentConfig.walletChainId}` : "",
-    agentConfig?.agentId ? `ERC-8004 Agent ID: ${agentConfig.agentId}` : "",
-    "",
-    `## Your Capabilities\n\n${capabilitySummary}`,
-    skillContext,
-    "## Rules",
-    "- Call each tool at most once per request unless its result is an error you can fix.",
-    "- As soon as a tool gives you the answer (balance, hash, ABI, ...), stop calling tools and reply to the user.",
-    "- After send_eth returns a transaction hash, the transfer is done: report it, do not verify or re-check.",
-    a2a
-      ? "- This request comes from another agent over A2A. You cannot send funds, sign or execute transactions here; say so if asked."
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const llm = getLLM();
-  const agent = createReactAgent({
-    llm,
-    tools,
-    ...(saver ? { checkpointSaver: saver } : {}),
-    prompt: systemMessage,
-  });
-
-  const events: ChatEvent[] = [];
-  let reply = "";
-
-  // A tool round-trip costs ~2 graph steps (agent + tool node), so a plain
-  // balance-check → send → answer flow already needs ~5. 8 blew up on any
-  // model hesitation with a raw "recursion limit" error.
-  const RECURSION_LIMIT = 25;
-
-  try {
-    const stream = await agent.stream(
-      { messages: [{ role: "user", content: message }] },
-      {
-        configurable: { thread_id: agentName },
-        recursionLimit: RECURSION_LIMIT,
-        streamMode: "updates",
-      },
-    );
-
-    for await (const update of stream) {
-      for (const output of Object.values(update)) {
-        const messages = (output as { messages?: unknown[] })?.messages ?? [];
-        for (const msg of messages) {
-          const m = msg as {
-            _getType?: () => string;
-            content?: unknown;
-            tool_calls?: { name: string; args: unknown }[];
-          };
-          const role = m._getType?.() ?? "unknown";
-          const content =
-            typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
-
-          if (role === "ai") {
-            const calls = m.tool_calls ?? [];
-            for (const tc of calls) {
-              events.push({ type: "tool_call", name: tc.name, args: tc.args });
-            }
-            if (content.trim()) {
-              events.push({ type: "message", content: content.trim() });
-              reply = content.trim();
-            }
-          } else if (role === "tool") {
-            events.push({ type: "tool_result", content: content.slice(0, 2000) });
-          }
-        }
-      }
-    }
-  } catch (err) {
-    const msg = errMsg(err);
-    if (!/recursion/i.test(msg)) throw err;
-    // Ran out of steps: salvage what happened instead of surfacing the
-    // raw graph error. A transfer may well have gone through — surface
-    // its hash so the user (and the frontend's tx-link detection) sees it.
-    const hash = lastTxHash(events);
-    reply = hash
-      ? `Sent! Transaction hash: ${hash}`
-      : "I ran out of steps before finishing — the network may be slow or the request needs breaking down. Please try again or simplify the request.";
-    events.push({ type: "message", content: reply });
-  }
-
-  await flush();
-  return { reply: reply || "(no response)", events };
-}
-
-/** Find a mined-tx-looking hash in tool results (not an Error: line). */
-function lastTxHash(events: ChatEvent[]): string | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const e = events[i];
-    if (e.type !== "tool_result") continue;
-    if (/^\s*Error:/i.test(e.content)) continue;
-    const m = e.content.match(/\b(0x[a-fA-F0-9]{64})\b/);
-    if (m?.[1]) return m[1];
-  }
-  return null;
-}
 
 export const app = new Hono();
 
@@ -541,72 +102,6 @@ app.use(
   }),
 );
 
-// --- MCP: expose tools over Streamable HTTP at /api/mcp (and /mcp for legacy) ---
-// 8004scan verifies `services[].endpoint` with a plain GET health check (no
-// `Accept: text/event-stream`), while real MCP clients use POST. The SDK's
-// transport returns 406 for that GET, which shows as "Unhealthy" on 8004scan.
-// So: answer GET with a minimal 200 JSON descriptor (no tool list — avoids
-// recon). Discovery POSTs (initialize / notifications / ping / */list) are
-// open so verifiers can handshake; anything that executes (tools/call and
-// everything else) requires Bearer auth + rate-limit.
-type McpContext = {
-  req: {
-    raw: Request;
-    method: string;
-    header: (name: string) => string | undefined;
-    query: (name: string) => string | undefined;
-  };
-  json: (data: unknown, status?: number) => Response;
-};
-async function handleMcp(c: McpContext) {
-  if (c.req.method === "GET") {
-    return Response.json(
-      {
-        name: "web3agent",
-        version: "0.1.0",
-        protocol: "mcp",
-        transport: "streamable-http",
-        endpoint: "/api/mcp",
-        auth: "bearer",
-        usage:
-          "Discovery (initialize, tools/list) is open; tools/call requires Authorization: Bearer $MCP_AUTH_TOKEN with Accept: application/json, text/event-stream",
-      },
-      { status: 200, headers: { "access-control-allow-origin": "*" } },
-    );
-  }
-  // Discovery methods anyone may call (handshake + capability listing).
-  // Everything else executes or reads data → gated behind Bearer auth.
-  const needsAuth = await mcpPostNeedsAuth(c);
-  if (needsAuth) {
-    if (!process.env.MCP_AUTH_TOKEN?.trim()) {
-      return c.json({ error: "MCP is not configured (missing MCP_AUTH_TOKEN)" }, 503);
-    }
-    if (!checkRateLimit(`mcp:${getClientIp(c)}`, MCP_RATE_MAX)) {
-      return c.json({ error: "rate limited, try again later" }, 429);
-    }
-    if (!mcpAuthOk(c)) {
-      return c.json({ error: "unauthorized" }, 401);
-    }
-  }
-  // Optional per-agent scope: POST /api/mcp?agent=my-agent serves only that
-  // agent's creation-time `metadata.tools` allowlist. Unknown agent → 404
-  // instead of falling back to all tools.
-  const agentName = c.req.query("agent")?.trim();
-  let allowedTools: string[] | undefined;
-  if (agentName) {
-    const { getAgentToolAllowlist } = await import("../mcp/server.js");
-    const allowlist = await getAgentToolAllowlist(agentName);
-    if (!allowlist) return c.json({ error: `Unknown agent: ${agentName}` }, 404);
-    allowedTools = allowlist;
-  }
-  const handler = await getMcpHandler(allowedTools);
-  if (!agentName) return handler(c.req.raw);
-  // Agent-scoped tool calls act on that agent's chain.
-  return runWithNetwork(agentNetwork(loadAgentConfig(agentName)), () => handler(c.req.raw));
-}
-app.all("/api/mcp", async (c) => handleMcp(c));
-app.all("/mcp", async (c) => handleMcp(c));
-
 // --- A2A + x402 --------------------------------------------------------------
 // Agent Card at /.well-known/agent-card.json; JSON-RPC at /api/a2a (and /a2a).
 // ?agent=<name> serves that agent: its LLM answers with its read-only tools,
@@ -620,10 +115,6 @@ const x402FacilitatorUrl = process.env.X402_FACILITATOR_URL?.trim();
 const x402Facilitator = x402FacilitatorUrl
   ? new HttpFacilitatorClient(x402FacilitatorUrl)
   : new MockFacilitatorClient();
-
-function x402Mode(): "mock" | "facilitator" {
-  return x402FacilitatorUrl ? "facilitator" : "mock";
-}
 
 function defaultA2AConfig(): AgentConfig {
   const payTo = process.env.A2A_PAY_TO?.trim();
@@ -716,7 +207,7 @@ async function handleA2A(c: Context) {
   }
 
   // Anonymous callers can make the agent's LLM work, so cap them per IP.
-  if (!checkRateLimit(`a2a:${getClientIp(c)}`, MCP_RATE_MAX)) {
+  if (!checkRateLimit(`a2a:${getClientIp(c)}`, A2A_RATE_MAX)) {
     return c.json(
       {
         jsonrpc: "2.0",
@@ -740,6 +231,11 @@ async function handleA2A(c: Context) {
 }
 app.all("/api/a2a", handleA2A);
 app.all("/a2a", handleA2A);
+
+// MCP over Streamable HTTP at /api/mcp (and /mcp for legacy). The handler
+// lives in mcp-proxy.ts; discovery is open, execution requires Bearer auth.
+app.all("/api/mcp", async (c) => handleMcp(c));
+app.all("/mcp", async (c) => handleMcp(c));
 
 // Return JSON (not Hono's default plain-text "404 Not Found") so the
 // frontend's res.json() never chokes on unknown routes with a cryptic
@@ -961,277 +457,7 @@ app.post("/api/upload/image", async (c) => {
   }
 });
 
-app.post("/api/agents", async (c) => {
-  let body: {
-    name?: string;
-    owner?: string;
-    description?: string;
-    imageUri?: string;
-    actions?: string[];
-    tools?: string[];
-    oasfDomains?: string[];
-    oasfSkills?: string[];
-    skipRegister?: boolean;
-    active?: boolean;
-    services?: { name?: string; endpoint?: string }[];
-    mcpEndpoint?: string;
-    a2aEndpoint?: string;
-    x402support?: boolean;
-  };
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  const name = body.name?.trim();
-  if (!name) {
-    return c.json({ error: "name is required" }, 400);
-  }
-  if (!AGENT_NAME_RE.test(name)) {
-    return c.json(
-      {
-        error: "name must be 1–63 chars: letters, numbers, . _ - (start with alphanumeric)",
-      },
-      400,
-    );
-  }
-  if (agentExists(name)) {
-    return c.json({ error: `Agent "${name}" already exists` }, 409);
-  }
-
-  const selectedActions = Array.isArray(body.actions) ? body.actions : [];
-  const selectedTools = Array.isArray(body.tools) ? body.tools : [];
-
-  for (const actionName of selectedActions) {
-    if (!getActionByName(actionName)) {
-      return c.json({ error: `Unknown action: ${actionName}` }, 400);
-    }
-  }
-
-  const actionToolNames = new Set<string>();
-  for (const actionName of selectedActions) {
-    const entry = getActionByName(actionName);
-    if (entry) {
-      for (const t of entry.toolNames) actionToolNames.add(t);
-    }
-  }
-
-  const knownTools = new Set(TOOL_REGISTRY.map((t) => t.name));
-  for (const toolName of selectedTools) {
-    if (!knownTools.has(toolName)) {
-      return c.json({ error: `Unknown tool: ${toolName}` }, 400);
-    }
-  }
-
-  const standaloneTools = selectedTools.filter((t) => !actionToolNames.has(t));
-  const allToolNames = [...new Set([...actionToolNames, ...standaloneTools])];
-
-  // OASF domains/skills (optional, stored in metadata + on-chain registration)
-  const oasfDomains = Array.isArray(body.oasfDomains) ? body.oasfDomains : [];
-  const oasfSkills = Array.isArray(body.oasfSkills) ? body.oasfSkills : [];
-  const oasfIdRe = /^[0-9]{1,6}$/;
-  for (const id of [...oasfDomains, ...oasfSkills]) {
-    if (typeof id !== "string" || !oasfIdRe.test(id)) {
-      return c.json({ error: `Invalid OASF id: ${String(id)}` }, 400);
-    }
-  }
-  if (oasfDomains.length > 18 || oasfSkills.length > 200) {
-    return c.json({ error: "Too many OASF domains/skills selected" }, 400);
-  }
-
-  // Creation never moves master funds: the done step calls POST /fund. Creating
-  // an agent is anonymous, so letting it fund would let anyone spend the master wallet.
-  const skipRegister = Boolean(body.skipRegister);
-  const active = body.active !== false;
-  const rawServices = body.services ?? [
-    { name: "web", endpoint: "https://example.com" },
-    { name: "email", endpoint: "e@mail.fun" },
-  ];
-  if (!Array.isArray(rawServices)) {
-    return c.json({ error: "services must be an array" }, 400);
-  }
-  // Shorthand: `mcpEndpoint` / `a2aEndpoint` append services unless already declared.
-  for (const [shorthandName, shorthandEndpoint] of [
-    ["mcp", body.mcpEndpoint],
-    ["A2A", body.a2aEndpoint],
-  ] as const) {
-    const endpoint = shorthandEndpoint?.trim();
-    const declared = rawServices.some(
-      (s) =>
-        typeof s?.name === "string" && s.name.trim().toLowerCase() === shorthandName.toLowerCase(),
-    );
-    if (endpoint && !declared) rawServices.push({ name: shorthandName, endpoint });
-  }
-  const x402support = body.x402support === true;
-  if (rawServices.length > 20) {
-    return c.json({ error: "services must have at most 20 entries" }, 400);
-  }
-  // Stored with canonical names (MCP/A2A/...) and the well-known Agent Card
-  // URL for A2A, i.e. exactly what registration later pins for 8004scan.
-  const endpoints: { type: string; value: string }[] = [];
-  const seenServiceNames = new Set<string>();
-  for (const entry of rawServices) {
-    const svcName = entry?.name?.trim();
-    const svcEndpoint = entry?.endpoint?.trim();
-    if (!svcName || !svcEndpoint) {
-      return c.json({ error: "each service needs a name and an endpoint" }, 400);
-    }
-    if (svcName.length > 64 || svcEndpoint.length > 500) {
-      return c.json({ error: "service name (max 64) or endpoint (max 500) too long" }, 400);
-    }
-    const { type, value } = canonicalizeEndpoint({ type: svcName, value: svcEndpoint });
-    const lower = type.toLowerCase();
-    if (seenServiceNames.has(lower)) {
-      return c.json({ error: `duplicate service: ${svcName}` }, 400);
-    }
-    seenServiceNames.add(lower);
-    // MCP/A2A/web endpoints must be https URLs so 8004scan can verify them.
-    // Email keeps its legacy free-form value (e@mail.fun). http is allowed for
-    // localhost/127.0.0.1 so local dev (`http://localhost:5173/api/mcp`) can be advertised.
-    if ((lower === "mcp" || lower === "a2a" || lower === "web") && !isAdvertisableUrl(value)) {
-      return c.json({ error: `${type} endpoint must be an https:// URL` }, 400);
-    }
-    endpoints.push({ type, value });
-  }
-  // x402 is the payment step of the A2A flow; without an A2A endpoint the
-  // on-chain x402Support flag would promise something nobody can call.
-  if (x402support && !seenServiceNames.has("a2a")) {
-    return c.json({ error: "x402support requires an A2A endpoint" }, 400);
-  }
-  const description = body.description?.trim() || `Agent ${name}`;
-  let imageUri = body.imageUri?.trim();
-  if (imageUri && !/^(https?:\/\/|ipfs:\/\/)/i.test(imageUri)) {
-    return c.json({ error: "imageUri must be an https:// or ipfs:// URI" }, 400);
-  }
-  // Normalize ipfs:// to https gateway so on-chain metadata `image` is resolvable.
-  if (imageUri) imageUri = toGatewayUrl(imageUri);
-
-  // Creation is authenticated by the signed-in wallet: its address becomes
-  // the identity NFT owner and is recorded in the pinned registration file.
-  const owner = body.owner?.trim();
-  if (!owner) {
-    return c.json({ error: "owner is required — connect and sign in with a wallet" }, 400);
-  }
-  if (!ethers.isAddress(owner)) {
-    return c.json({ error: "owner must be a valid wallet address" }, 400);
-  }
-
-  let masterWallet: ReturnType<typeof getMasterWallet>;
-  try {
-    masterWallet = getMasterWallet();
-  } catch (err) {
-    const msg = errMsg(err);
-    return c.json({ error: `Master wallet unavailable: ${msg}` }, 500);
-  }
-
-  // --- Create wallet ---
-  // Resolve inside the turn queue: `getOrCreateAgentWallet` falls back to the
-  // ambient AGENT_PRIVATE_KEY, which a concurrent chat turn may have set.
-  let agentWallet: ReturnType<typeof getOrCreateAgentWallet>;
-  try {
-    agentWallet = await serializeTurn(async () => getOrCreateAgentWallet({ agentName: name }));
-  } catch (err) {
-    const msg = errMsg(err);
-    return c.json({ error: `Wallet creation failed: ${msg}` }, 500);
-  }
-
-  // --- Persist config ---
-  const config: AgentConfig = {
-    name,
-    description,
-    image: imageUri || undefined,
-    walletAddress: agentWallet.address,
-    walletChainId: getChainId(),
-    endpoints: endpoints as AgentConfig["endpoints"],
-    trustModels: [],
-    owners: [owner],
-    operators: [agentWallet.address],
-    active,
-    x402support,
-    metadata: {
-      actions: selectedActions,
-      tools: allToolNames,
-      oasfDomains,
-      oasfSkills,
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: Math.floor(Date.now() / 1000),
-  };
-
-  try {
-    saveAgentConfig(name, config);
-  } catch (err) {
-    const msg = errMsg(err);
-    return c.json({ error: `Failed to save config: ${msg}` }, 500);
-  }
-
-  // --- Register ---
-  if (!skipRegister) {
-    try {
-      const reg = await registerAgent({
-        name: config.name,
-        description: config.description,
-        privateKey: masterWallet.privateKey,
-        owner,
-        walletAddress: agentWallet.address,
-        agentWalletPrivateKey: agentWallet.privateKey,
-        active,
-        endpoints,
-        x402support,
-        metadata: {
-          actions: selectedActions,
-          tools: allToolNames,
-          oasfDomains,
-          oasfSkills,
-        },
-        ...(imageUri ? { image: imageUri } : {}),
-      });
-      config.agentId = reg.agentId;
-      config.agentURI = reg.agentURI;
-      config.metadata.updatedAt = reg.updatedAt;
-      config.updatedAt = Math.floor(Date.now() / 1000);
-      saveAgentConfig(name, config);
-    } catch {
-      // Registration failure is non-fatal: the config is saved and the agent
-      // can be registered later.
-    }
-  }
-
-  let balanceEth = "0";
-  try {
-    const bal = await getProvider().getBalance(agentWallet.address);
-    balanceEth = ethers.formatEther(bal);
-  } catch {
-    /* ignore */
-  }
-
-  // Without an env var backing this agent, the wallet+config live only
-  // in /tmp (ephemeral). Return the private key ONCE so the browser can
-  // keep a local backup and heal cold instances via /restore.
-  const walletEnvVar = getAgentWalletEnvVars(name)[0]!;
-  const ephemeral = Boolean(process.env.VERCEL) && !process.env[walletEnvVar];
-
-  return c.json(
-    {
-      ok: true,
-      agent: await publicAgentSummary(name),
-      balanceEth,
-      ...(ephemeral
-        ? {
-            ephemeral: true,
-            privateKey: agentWallet.privateKey,
-            privateKeyEnvVar: walletEnvVar,
-            // Full config so the browser can keep a local backup and heal
-            // cold serverless instances via POST /api/agents/:name/restore.
-            config,
-            ephemeralWarning: `Save this private key as ${walletEnvVar} in Vercel env vars now — the /tmp wallet is lost on cold start/redeploy and the agent will stop working.`,
-          }
-        : {}),
-    },
-    201,
-  );
-});
+app.post("/api/agents", createAgentHandler);
 
 app.get("/api/agents/:name", async (c) => {
   const name = c.req.param("name");
@@ -1255,12 +481,8 @@ app.get("/api/agents/:name", async (c) => {
  */
 app.post("/api/agents/:name/restore", async (c) => {
   const name = c.req.param("name");
-  let body: { config?: AgentConfig; privateKey?: string };
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const body = await readJsonBody<{ config?: AgentConfig; privateKey?: string }>(c);
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
   const config = body.config;
   const privateKey = body.privateKey?.trim();
   if (!config || typeof config !== "object" || !privateKey) {
@@ -1345,12 +567,8 @@ app.post("/api/agents/:name/fund", async (c) => {
     return c.json({ error: "Agent has no wallet address" }, 400);
   }
 
-  let body: { amountEth?: string };
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const body = await readJsonBody<{ amountEth?: string }>(c);
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
 
   const amountEth = body.amountEth?.trim() || "0.001";
   const amount = Number(amountEth);
@@ -1397,12 +615,8 @@ app.post("/api/agents/:name/chat", async (c) => {
     return c.json({ error: "Agent not found" }, 404);
   }
 
-  let body: { message?: string };
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const body = await readJsonBody<{ message?: string }>(c);
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
 
   const message = body.message?.trim();
   if (!message) {
@@ -1424,19 +638,15 @@ app.post("/api/agents/:name/feedback/prepare", async (c) => {
   if (!agentExists(name)) {
     return c.json({ error: "Agent not found" }, 404);
   }
-  let body: {
+  const body = await readJsonBody<{
     agentId?: string;
     value?: unknown;
     tag?: string;
     endpoint?: string;
     comment?: string;
     clientAddress?: string;
-  };
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  }>(c);
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
   if (!body.clientAddress || !/^0x[0-9a-fA-F]{40}$/.test(body.clientAddress)) {
     return c.json({ error: "Connect a wallet to rate" }, 401);
   }

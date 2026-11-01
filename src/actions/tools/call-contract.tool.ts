@@ -2,11 +2,11 @@
 
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import { createPublicClient, createWalletClient, http, defineChain, formatUnits } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { formatUnits } from "viem";
 import type { AbiFunction } from "viem";
-import { getRpcUrl, getChainId } from "../../core/config.js";
 import { fetchAbi } from "./fetch-contract-abi.tool.js";
+import { getAgentPublicClient, getAgentWalletClient } from "./viem-clients.js";
+import { toolError } from "./errors.js";
 
 function coerceArgs(values: unknown[], inputs: AbiFunction["inputs"]): unknown[] {
   return values.map((val, i) => {
@@ -69,17 +69,10 @@ export const callContractTool: DynamicStructuredTool = new DynamicStructuredTool
       }
 
       const coerced = coerceArgs(rawArgs, fn.inputs);
-      const rpcUrl = getRpcUrl();
-      const chain = defineChain({
-        id: getChainId(),
-        name: "Arbitrum",
-        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-        rpcUrls: { default: { http: [rpcUrl] } },
-      });
+      const publicClient = getAgentPublicClient();
 
       // Read call (view / pure)
       if (fn.stateMutability === "view" || fn.stateMutability === "pure") {
-        const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
         const result = await publicClient.readContract({
           address: address as `0x${string}`,
           abi: [fn],
@@ -96,12 +89,7 @@ export const callContractTool: DynamicStructuredTool = new DynamicStructuredTool
         return "Error: AGENT_PRIVATE_KEY environment variable is not set, cannot execute write calls";
       }
 
-      const account = privateKeyToAccount(privateKey as `0x${string}`);
-      const walletClient = createWalletClient({
-        account,
-        chain,
-        transport: http(rpcUrl),
-      });
+      const { walletClient } = getAgentWalletClient(privateKey as `0x${string}`);
 
       const hash = await walletClient.writeContract({
         address: address as `0x${string}`,
@@ -112,9 +100,7 @@ export const callContractTool: DynamicStructuredTool = new DynamicStructuredTool
 
       return hash;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      const short = message.length > 300 ? message.slice(0, 300) + "..." : message;
-      return `Error: ${short}`;
+      return toolError(err);
     }
   },
 });

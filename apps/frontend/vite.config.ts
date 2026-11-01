@@ -18,7 +18,7 @@ export default defineConfig({
     include: ["buffer", "process", "@web3auth/modal"],
   },
   server: {
-    port: 5173,
+    port: 5174,
     host: "127.0.0.1",
     proxy: Object.fromEntries(
       ["/api", "/mcp", "/a2a", "/.well-known/agent-card.json"].map((path) => [

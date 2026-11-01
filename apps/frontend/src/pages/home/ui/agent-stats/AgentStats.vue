@@ -1,60 +1,19 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { fetchMemory, type MemorySummary, type AgentSummary } from '@/shared/api'
+import { computed } from 'vue'
+import type { AgentSummary } from '@/shared/api'
 import { networkInfo } from '@/shared/config'
-import { CollapsibleSection } from '@/shared/ui'
+import { shortAddr, shortTx, timeAgo } from '@/shared/lib'
+import MemoryEmptyState from '../memory/MemoryEmptyState.vue'
+import { useAgentMemory } from '../../model/use-agent-memory'
 
 const props = defineProps<{
   agent?: AgentSummary | null
   refreshKey?: number
 }>()
 
-const memory = ref<MemorySummary | null>(null)
-const loading = ref(false)
-const error = ref('')
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const diff = Date.now() - d.getTime()
-  if (diff < 60_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`
-  return d.toLocaleDateString()
-}
-
-function shortAddr(a: string): string {
-  return `${a.slice(0, 6)}…${a.slice(-4)}`
-}
-
-function shortTx(h: string): string {
-  return `${h.slice(0, 10)}…${h.slice(-6)}`
-}
+const { memory, loading, error } = useAgentMemory(() => props.agent, () => props.refreshKey)
 
 const explorerBase = computed(() => networkInfo(props.agent?.walletChainId).explorerUrl)
-
-async function load() {
-  const name = props.agent?.name
-  if (!name) {
-    memory.value = null
-    error.value = ''
-    return
-  }
-  loading.value = true
-  error.value = ''
-  try {
-    memory.value = await fetchMemory(name)
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-    memory.value = null
-  } finally {
-    loading.value = false
-  }
-}
-
-watch(() => props.agent?.name, load, { immediate: true })
-watch(() => props.refreshKey, () => { void load() })
 
 const stats = computed(() => memory.value?.stats ?? null)
 const topTools = computed(() => {
@@ -66,8 +25,7 @@ const topTools = computed(() => {
 </script>
 
 <template>
-  <section class="card stats" data-testid="agent-stats">
-    <CollapsibleSection title="Chat Stats">
+  <section class="stats" data-testid="agent-stats">
     <p v-if="!agent?.name" class="hint">Select an agent to see its stats.</p>
 
     <template v-else>
@@ -75,17 +33,7 @@ const topTools = computed(() => {
       <p v-else-if="error" class="banner">{{ error }}</p>
 
       <template v-else-if="memory">
-        <div v-if="memory.empty" class="empty">
-          <p class="empty-title">No history yet</p>
-          <p class="hint">
-            This agent has no <code>memory.json</code> history. Chat to create the first checkpoint — it persists to
-            <code>agents/{{ agent.name }}/memory.json</code>.
-          </p>
-          <ul class="empty-meta mono">
-            <li>threads: {{ memory.threads.length || 0 }}</li>
-            <li>checkpoints: {{ memory.checkpointCount }}</li>
-          </ul>
-        </div>
+        <MemoryEmptyState v-if="memory.empty" :agent-name="agent.name" :memory="memory" />
 
         <template v-else>
           <div class="grid">
@@ -154,20 +102,13 @@ const topTools = computed(() => {
         </template>
       </template>
     </template>
-    </CollapsibleSection>
   </section>
 </template>
 
+<style scoped src="../memory/memory-status.css"></style>
+
 <style scoped>
-.card { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.hint { margin: 0; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
-.hint code { font-family: var(--font-mono); font-size: 0.78em; background: color-mix(in oklab, var(--border) 60%, transparent); padding: 0.12em 0.3em; border-radius: 0.25em; }
-.banner { margin: 0; padding: 0.55rem 0.65rem; background: color-mix(in oklab, var(--warn) 12%, var(--surface)); color: var(--warn); font-size: 0.82rem; border: 1px solid var(--border); border-radius: 0.4rem; word-break: break-all; }
-.pulse { animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse { 0%,100%{opacity:.5}50%{opacity:1}}
-.empty { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.75rem; border: 1px dashed var(--border); border-radius: 0.45rem; background: color-mix(in oklab, var(--bg) 60%, var(--surface)); }
-.empty-title { margin: 0; font-size: 0.85rem; font-weight: 600; }
-.empty-meta { margin: 0; display: flex; gap: 0.8rem; font-size: 0.72rem; color: var(--muted); list-style: none; padding: 0; }
+.stats { display: flex; flex-direction: column; gap: 0.75rem; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
 .stat { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.65rem; border: 1px solid var(--border); border-radius: 0.45rem; background: var(--bg); min-width: 0; animation: row-in 0.4s var(--ease-out) both; }
 .stat:nth-child(2) { animation-delay: 0.04s; }

@@ -2,9 +2,8 @@ import { test, expect } from "@playwright/test";
 import type { Route } from "@playwright/test";
 import {
   EMPTY_MEMORY,
-  closeAgentPanel,
+  closeDialog,
   gotoWithAgent,
-  openAgentPanel,
   openChatStats,
   openConversations,
   sessionMemory,
@@ -32,7 +31,6 @@ test.describe("agent memory (conversations)", () => {
     await expect(page.getByTestId("chat-bubble-agent").first()).toContainText("hi there");
     await expect(page.getByTestId("chat-event").first()).toContainText("get_token_balance");
     await expect(card).toHaveClass(/selected/);
-    await expect(page.getByTestId("agent-memory")).toBeHidden();
   });
 
   test("+ New chat clears the recalled thread", async ({ page }) => {
@@ -41,7 +39,20 @@ test.describe("agent memory (conversations)", () => {
     await openConversations(page);
     await page.locator(".session-card").first().click();
     await expect(page.getByTestId("chat-bubble-user")).toHaveCount(1);
-    await expect(page.getByTestId("agent-memory")).toBeHidden();
+    await page.getByRole("button", { name: "+ New chat" }).click();
+    await expect(page.getByTestId("chat-bubble-user")).toHaveCount(0);
+    await expect(page.getByTestId("chat-empty")).toBeVisible();
+  });
+
+  test("+ New chat clears a live thread that was never recalled", async ({ page }) => {
+    await setupOffline(page, {
+      memory: sessionMemory(),
+      chat: { reply: "live reply", events: [{ type: "message", content: "live reply" }] },
+    });
+    await gotoWithAgent(page);
+    await page.getByTestId("chat-input").fill("live question");
+    await page.getByTestId("chat-input").press("Enter");
+    await expect(page.getByTestId("chat-bubble-user")).toHaveCount(1);
     await openConversations(page);
     await page.getByRole("button", { name: "+ New chat" }).click();
     await expect(page.getByTestId("chat-bubble-user")).toHaveCount(0);
@@ -89,17 +100,14 @@ test.describe("agent stats", () => {
     await expect(tx).toHaveAttribute("href", /sepolia\.arbiscan\.io\/tx\/0xaaa/);
   });
 
-  test("Chat Stats section collapses and expands", async ({ page }) => {
+  test("stats icon opens the stats modal and it closes again", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openAgentPanel(page);
-    const toggle = page.getByRole("button", { name: /Chat Stats/ });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByTestId("agent-stats")).toBeVisible();
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("agent-stats")).toHaveCount(0);
+    await openChatStats(page);
+    await expect(page.getByRole("dialog", { name: "Chat stats" })).toBeVisible();
+    await page.getByTestId("dialog-close").click();
+    await expect(page.getByTestId("agent-stats")).toHaveCount(0);
   });
 
   test("stats error shows a banner", async ({ page }) => {
@@ -118,7 +126,7 @@ test.describe("agent stats", () => {
     await gotoWithAgent(page);
     await openChatStats(page);
     await expect(page.getByTestId("agent-stats")).toContainText("No history yet");
-    await closeAgentPanel(page);
+    await closeDialog(page);
     // next memory fetch returns a session (simulates checkpoint written by chat)
     await page.route("**/api/agents/*/memory", async (route: Route) => {
       calls += 1;
@@ -131,8 +139,8 @@ test.describe("agent stats", () => {
     await page.getByTestId("chat-input").fill("make history");
     await page.getByTestId("chat-send").click();
     await expect(page.getByTestId("chat-bubble-agent").first()).toBeVisible();
-    // chat completion bumps refreshKey, which reloads stats automatically
-    await openAgentPanel(page);
+    // chat completion bumps refreshKey; opening the modal loads fresh stats
+    await openChatStats(page);
     await expect(page.getByTestId("agent-stats")).toContainText("Messages", { timeout: 15000 });
     expect(calls).toBeGreaterThan(0);
   });

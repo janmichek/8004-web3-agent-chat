@@ -109,12 +109,12 @@ body::after {
   background:
     radial-gradient(
       1200px 600px at 10% -10%,
-      color-mix(in oklab, var(--accent) 4%, transparent),
+      color-mix(in oklab, var(--accent) 1.5%, transparent),
       transparent 55%
     ),
     radial-gradient(
       900px 500px at 100% 0%,
-      color-mix(in oklab, #0b5cab 3%, transparent),
+      color-mix(in oklab, #0b5cab 1%, transparent),
       transparent 50%
     ),
     var(--bg);

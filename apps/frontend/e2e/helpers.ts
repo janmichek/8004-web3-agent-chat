@@ -477,19 +477,12 @@ export async function setupOffline(page: Page, opts: SetupOfflineOptions = {}) {
   });
 }
 
-/** Open the agent sidebar. On narrow screens it sits behind the Agent button. */
-export async function openAgentPanel(page: Page) {
-  const toggle = page.getByTestId("agent-panel-toggle");
-  if (!(await toggle.isVisible())) return;
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
-  await page.locator("#agent-panel").waitFor({ state: "visible" });
-}
-
-/** Close the agent drawer. No-op when the sidebar is docked beside the chat. */
-export async function closeAgentPanel(page: Page) {
-  const toggle = page.getByTestId("agent-panel-toggle");
-  if (!(await toggle.isVisible())) return;
-  if ((await toggle.getAttribute("aria-expanded")) === "true") await toggle.click();
+/** Dismiss an open modal (agent details, stats). No-op when none is open. */
+export async function closeDialog(page: Page) {
+  const dialog = page.getByRole("dialog");
+  if (!(await dialog.count())) return;
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
 }
 
 /** Wait for the app to finish initial agent load. */
@@ -508,6 +501,27 @@ export async function gotoWithAgent(page: Page, name = "demo") {
     name,
     { timeout: 15000 },
   );
+  // The Web3Auth/Wagmi providers remount the page shortly after first paint. Tag the
+  // current select and wait for its replacement so later clicks don't hit a dying tree.
+  await page.evaluate(() => {
+    (document.querySelector('[data-testid="agent-select"]') as
+      | (HTMLElement & { __seen?: boolean })
+      | null)!.__seen = true;
+  });
+  await page
+    .waitForFunction(
+      (expected) => {
+        const el = document.querySelector('[data-testid="agent-select"]') as
+          | (HTMLElement & { __seen?: boolean })
+          | null;
+        return (
+          !!el && !el.__seen && (expected === "" || (el.getAttribute("data-value") ?? "") !== "")
+        );
+      },
+      name,
+      { timeout: 2500 },
+    )
+    .catch(() => {});
   // The picker emits the selection to App on the next tick; wait for the chat
   // column to leave its no-agent state so later fills aren't wiped by the swap.
   if (name) await expect(page.getByTestId("chat-empty-no-agent")).toHaveCount(0);
@@ -515,7 +529,6 @@ export async function gotoWithAgent(page: Page, name = "demo") {
 
 /** Open the advanced agent select and pick an agent by name. */
 export async function selectAgent(page: Page, name: string) {
-  await openAgentPanel(page);
   const trigger = page.getByTestId("agent-select");
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
   await page.getByTestId("agent-search").fill(name);
@@ -524,41 +537,29 @@ export async function selectAgent(page: Page, name: string) {
   await expect(page.getByTestId("chat-empty-no-agent")).toHaveCount(0);
 }
 
-/** Expand the collapsed "Agent Info" section in the picker. */
-export async function openAgentInfo(page: Page) {
-  await openAgentPanel(page);
-  const toggle = page.getByRole("button", { name: /Agent Info/ });
-  await toggle.waitFor({ state: "visible" });
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+/** Open the agent details modal (info + fund cards) from the button next to the select. */
+export async function openAgentDetails(page: Page) {
+  await page.getByTestId("agent-details-btn").click();
+  await page.getByRole("dialog", { name: "Agent details" }).waitFor({ state: "visible" });
 }
 
-/** Expand the collapsed "Fund Agent" section in the picker. */
-export async function openFundAgent(page: Page) {
-  await openAgentPanel(page);
-  const toggle = page.getByRole("button", { name: /Fund Agent/ });
-  await toggle.waitFor({ state: "visible" });
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
-}
-
-/** Expand "Chat Stats" section. */
+/** Open the chat stats modal from the Conversations header. */
 export async function openChatStats(page: Page) {
-  await openAgentPanel(page);
-  const toggle = page.getByRole("button", { name: /Chat Stats/ });
-  await toggle.waitFor({ state: "visible" });
-  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await openConversations(page);
+  await page.getByTestId("chat-stats-btn").click();
+  await page.getByTestId("agent-stats").waitFor({ state: "visible" });
 }
 
-/** Open the Conversations drawer (AgentMemory lives inside v-show). */
+/** Make the conversations sidebar visible (docked on desktop, behind the burger when narrow). */
 export async function openConversations(page: Page) {
-  const btn = page.getByRole("button", { name: /Conversations/ });
-  const expanded = await btn.getAttribute("aria-expanded");
-  if (expanded !== "true") await btn.click();
+  const toggle = page.getByTestId("convos-toggle");
+  if ((await toggle.isVisible()) && (await toggle.getAttribute("aria-expanded")) !== "true")
+    await toggle.click();
   await page.getByTestId("agent-memory").waitFor({ state: "visible" });
 }
 
 /** Open the Create-agent dialog from the last option in the agent select. */
 export async function openCreateDialog(page: Page) {
-  await openAgentPanel(page);
   const trigger = page.getByTestId("agent-select");
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
   await page.getByTestId("agent-create-option").click();
@@ -567,7 +568,7 @@ export async function openCreateDialog(page: Page) {
 
 /** Send a chat message and wait for the first agent bubble. */
 export async function sendChat(page: Page, text: string) {
-  await closeAgentPanel(page);
+  await closeDialog(page);
   await page.getByTestId("chat-input").fill(text);
   await page.getByTestId("chat-send").click();
 }

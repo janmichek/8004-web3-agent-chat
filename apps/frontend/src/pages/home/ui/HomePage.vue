@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import WalletBar from './wallet-bar/WalletBar.vue'
 import AgentPicker from './agent-picker/AgentPicker.vue'
@@ -7,36 +7,26 @@ import AgentMemory from './agent-memory/AgentMemory.vue'
 import AgentStats from './agent-stats/AgentStats.vue'
 import AgentChat from './agent-chat/AgentChat.vue'
 import CreateAgent from './create-agent/CreateAgent.vue'
-import { scanUrlForAgent, type AgentSummary, type MemorySession } from '@/shared/api'
+import { ModalDialog } from '@/shared/ui'
+import { type AgentSummary, type MemorySession } from '@/shared/api'
 
 const selectedAgent = ref<AgentSummary | null>(null)
+/** False until the first agent list lands, so "no agent" copy never flashes on load. */
+const agentsLoaded = ref(false)
 const refreshKey = ref(0)
 const showCreate = ref(false)
-const showConvos = ref(false)
+const showStats = ref(false)
+/** Narrow screens only: the conversations sidebar becomes an off-canvas drawer. */
 const showSide = ref(false)
 const narrowQuery = window.matchMedia('(max-width: 860px)')
 const narrow = ref(narrowQuery.matches)
 const pendingSelect = ref<string | null>(null)
 const recalledSession = ref<MemorySession | null>(null)
-/** Bumped when the conversations drawer closes without a new recall, to replay chat pop-in. */
+/** Bumped when the narrow conversations drawer closes without a new recall, to replay chat pop-in. */
 const chatReplayKey = ref(0)
+/** Bumped by "+ New chat" so a live thread is cleared even when nothing was recalled. */
+const newChatKey = ref(0)
 const queryClient = useQueryClient()
-
-function extractNumericId(agentId: string): string {
-  const parts = agentId.split(':')
-  return parts[parts.length - 1] || agentId
-}
-
-const scanId = computed(() => {
-  if (!selectedAgent.value?.agentId) return null
-  return extractNumericId(selectedAgent.value.agentId)
-})
-
-const scanUrl = computed(() => {
-  const agent = selectedAgent.value
-  if (!agent?.agentId) return null
-  return scanUrlForAgent(agent.agentId, agent.walletChainId)
-})
 
 function onSelect(agent: AgentSummary | null) {
   selectedAgent.value = agent
@@ -66,7 +56,7 @@ function onMemoryChat() {
 function onRecall(session: MemorySession) {
   const same = recalledSession.value?.id === session.id
   recalledSession.value = session
-  showConvos.value = false
+  showSide.value = false
   // Same session: watcher won't rebuild bubbles, so replay pop-in explicitly.
   if (same) chatReplayKey.value += 1
 }
@@ -77,22 +67,14 @@ function syncNarrow() {
 }
 
 function toggleSide() {
+  if (showSide.value) chatReplayKey.value += 1
   showSide.value = !showSide.value
-  if (showSide.value) showConvos.value = false
-}
-
-function toggleConvos() {
-  if (showConvos.value) {
-    showConvos.value = false
-    chatReplayKey.value += 1
-    return
-  }
-  showConvos.value = true
-  showSide.value = false
 }
 
 function onNewChat() {
   recalledSession.value = null
+  newChatKey.value += 1
+  showSide.value = false
 }
 
 function onCreated(agent: AgentSummary) {
@@ -104,12 +86,7 @@ function onCreated(agent: AgentSummary) {
 }
 
 function onDialogKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  if (showCreate.value) {
-    showCreate.value = false
-    return
-  }
-  if (narrow.value && showSide.value) showSide.value = false
+  if (e.key === 'Escape' && narrow.value && showSide.value) showSide.value = false
 }
 
 onMounted(() => {
@@ -128,11 +105,11 @@ onBeforeUnmount(() => {
       <template #menu>
         <button
           type="button"
-          class="side-toggle"
-          data-testid="agent-panel-toggle"
-          aria-label="Agent"
+          class="icon-btn side-toggle"
+          data-testid="convos-toggle"
+          aria-label="Conversations"
           :aria-expanded="showSide ? 'true' : 'false'"
-          aria-controls="agent-panel"
+          aria-controls="convos-panel"
           @click="toggleSide"
         >
           <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -141,80 +118,73 @@ onBeforeUnmount(() => {
     </WalletBar>
 
     <main class="layout">
-      <div class="main-toolbar">
-        <button
-          type="button"
-          class="convo-btn"
-          :aria-expanded="showConvos ? 'true' : 'false'"
-          :aria-pressed="showConvos ? 'true' : 'false'"
-          @click="toggleConvos"
-        >
-          <span class="caret" :class="{ open: showConvos }" aria-hidden="true">▸</span>
-          Conversations
-        </button>
-      </div>
+      <button
+        v-if="narrow && showSide"
+        type="button"
+        class="side-backdrop"
+        aria-label="Close conversations"
+        @click="toggleSide"
+      />
 
-      <div class="stage">
-        <button
-          v-if="narrow && showSide"
-          type="button"
-          class="side-backdrop"
-          aria-label="Close agent panel"
-          @click="showSide = false"
+      <aside
+        id="convos-panel"
+        class="side"
+        :class="{ open: showSide }"
+        :aria-hidden="narrow && !showSide ? 'true' : undefined"
+        :inert="narrow && !showSide"
+      >
+        <AgentPicker
+          :select-name="pendingSelect"
+          :agent="selectedAgent"
+          :refresh-key="refreshKey"
+          @select="onSelect"
+          @create="showCreate = true"
+          @funded="onFunded"
+          @deleted="onDeleted"
+          @loaded="agentsLoaded = true"
         />
 
-        <aside
-          id="agent-panel"
-          class="side"
-          :class="{ open: showSide }"
-          :aria-hidden="narrow && !showSide ? 'true' : undefined"
-          :inert="narrow && !showSide"
-        >
-          <AgentPicker
-            :select-name="pendingSelect"
+        <header class="side-head side-head-convos">
+          <h2 class="side-title">Conversations</h2>
+          <button
+            type="button"
+            class="btn ghost small"
+            data-testid="new-chat-btn"
+            title="New chat"
+            :disabled="!selectedAgent?.name"
+            @click="onNewChat"
+          >
+            + New chat
+          </button>
+        </header>
+        <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" :new-chat-key="newChatKey" @recall="onRecall" @stats="showStats = true" />
+      </aside>
+
+      <section class="main">
+        <div class="chat-col">
+          <AgentChat
             :agent="selectedAgent"
-            :scan-id="scanId"
-            :scan-url="scanUrl"
-            :refresh-key="refreshKey"
-            @select="onSelect"
-            @create="showCreate = true"
-            @funded="onFunded"
-            @deleted="onDeleted"
+            :recalled-session="recalledSession"
+            :replay-key="chatReplayKey"
+            :new-chat-key="newChatKey"
+            :agents-loaded="agentsLoaded"
+            @chat="onMemoryChat"
           />
-
-          <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
-        </aside>
-
-        <div class="main-body">
-          <div class="convos" :class="{ open: showConvos }" :inert="!showConvos">
-            <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" @recall="onRecall" @new-chat="onNewChat" />
-          </div>
-
-          <div class="chat-col">
-            <AgentChat
-              :agent="selectedAgent"
-              :recalled-session="recalledSession"
-              :replay-key="chatReplayKey"
-              @chat="onMemoryChat"
-            />
-          </div>
         </div>
-      </div>
+      </section>
     </main>
 
-    <Teleport to="body">
-      <div
-        v-if="showCreate"
-        class="dialog-backdrop"
-        @click.self="showCreate = false"
-      >
-        <div class="dialog" role="dialog" aria-modal="true" aria-label="Create agent">
-          <CreateAgent @created="onCreated" @cancel="showCreate = false" />
-        </div>
-      </div>
-    </Teleport>
+    <ModalDialog v-if="showStats" title="Chat stats" @close="showStats = false">
+      <AgentStats :agent="selectedAgent" :refresh-key="refreshKey" />
+    </ModalDialog>
+
+    <ModalDialog v-if="showCreate" headless size="lg" label="Create agent" @close="showCreate = false">
+      <CreateAgent @created="onCreated" @cancel="showCreate = false" />
+    </ModalDialog>
   </div>
 </template>
+
+<style scoped src="@/shared/ui/icon-button.css"></style>
 
 <style scoped>
 .shell {
@@ -226,70 +196,58 @@ onBeforeUnmount(() => {
 }
 
 .layout {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(16rem, 21rem) 1fr;
-  grid-template-rows: auto minmax(0, 1fr);
-  max-width: none;
+  grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr);
   width: 100%;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
 }
 
-/* Stage is a pass-through on desktop so the sidebar spans both rows. */
-.stage {
-  display: contents;
-}
-
+/* Left: conversations */
 .side {
-  grid-column: 1;
-  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0.75rem;
   min-height: 0;
-  overflow-y: auto;
-  padding: 1.25rem 1.25rem 2rem;
+  overflow: visible;
+  padding: 1rem 1rem 1rem 1.25rem;
   border-right: 1px solid var(--border);
 }
-
-/* strip card chrome inside aside -> plain sections */
-.side :deep(.card),
-.side :deep(.panel) {
+.side :deep(.card) {
   border: none;
   border-radius: 0;
   background: transparent;
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
-.main-toolbar {
-  grid-column: 2;
-  grid-row: 1;
+.side-head {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.65rem 1rem;
-  border-bottom: none;
-  flex-shrink: 0;
-  background: transparent;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
-
+.side-head-convos {
+  margin-top: 0.5rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+/* Matches the uppercase section labels used across the app. */
+.side-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
 .side-toggle {
   display: none;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0.4rem;
-  background: transparent;
   color: var(--ink);
-  cursor: pointer;
 }
 .side-toggle:hover {
   background: var(--surface-2);
@@ -297,45 +255,6 @@ onBeforeUnmount(() => {
 .side-toggle[aria-expanded='true'] {
   color: var(--accent);
   background: color-mix(in oklab, var(--accent) 14%, transparent);
-}
-
-.convo-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin: 0;
-  padding: 0.15rem 0;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
-}
-.convo-btn {
-  padding: 0.3rem 0.6rem;
-  border-radius: 2rem;
-  transition: color 0.18s ease;
-}
-.convo-btn:hover {
-  background: none;
-  color: var(--ink);
-  text-decoration: none;
-}
-.caret {
-  display: inline-block;
-  font-size: 0.72rem;
-  line-height: 1;
-  text-decoration: none;
-  transition: transform 0.25s var(--ease-spring);
-}
-.convo-btn:hover .caret {
-  text-decoration: none;
-}
-.caret.open {
-  transform: rotate(90deg);
 }
 
 .burger {
@@ -354,66 +273,15 @@ onBeforeUnmount(() => {
 .side-toggle[aria-expanded='true'] .burger i:nth-child(1) { transform: translateY(5px) rotate(45deg); }
 .side-toggle[aria-expanded='true'] .burger i:nth-child(2) { opacity: 0; }
 .side-toggle[aria-expanded='true'] .burger i:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
-.stats-icon {
-  font-size: 0.9rem;
-  line-height: 1;
-}
-.convo-btn[aria-pressed='true'] {
-  color: var(--ink);
-}
 
-.main-body {
-  grid-column: 2;
-  grid-row: 2;
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  overflow: hidden;
-}
-
-.convos {
-  width: min(17rem, 30%);
-  min-width: 13rem;
-  flex-shrink: 0;
+/* Right: agent select + chat */
+.main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
-  align-self: stretch;
-  border-right: none;
   overflow: hidden;
-  padding: 1rem 1rem 1rem;
 }
-
-/* strip card chrome inside conversations drawer */
-.convos :deep(.card) {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-}
-
-/* Staggered fade/slide-in when the drawer opens (matches .stat row-in). */
-.convos.open :deep(.convos-top) {
-  animation: convo-row-in 0.4s var(--ease-out) both;
-}
-.convos.open :deep(.session-card) {
-  animation: convo-row-in 0.4s var(--ease-out) both;
-}
-.convos.open :deep(.session-card:nth-child(1)) { animation-delay: 0.04s; }
-.convos.open :deep(.session-card:nth-child(2)) { animation-delay: 0.08s; }
-.convos.open :deep(.session-card:nth-child(3)) { animation-delay: 0.12s; }
-.convos.open :deep(.session-card:nth-child(4)) { animation-delay: 0.16s; }
-.convos.open :deep(.session-card:nth-child(5)) { animation-delay: 0.2s; }
-.convos.open :deep(.session-card:nth-child(6)) { animation-delay: 0.24s; }
-.convos.open :deep(.session-card:nth-child(n + 7)) { animation-delay: 0.28s; }
-@keyframes convo-row-in {
-  from { opacity: 0; transform: translateX(-0.5rem); }
-}
-
 .chat-col {
   flex: 1;
   min-width: 0;
@@ -421,7 +289,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1rem 1.25rem 0.5rem;
+  padding: 0.5rem 1.25rem 0.5rem;
 }
 
 /* chat itself stays borderless full-height */
@@ -434,113 +302,23 @@ onBeforeUnmount(() => {
   background: transparent;
   padding: 1rem 0.25rem;
 }
-.chat-col :deep(.composer) {
-  background: transparent;
-  border-top: none;
-  padding-left: 0;
-  padding-right: 0;
-  padding-bottom: 0;
-}
-
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  background: var(--backdrop);
-  backdrop-filter: blur(4px);
-  animation: fade-bg 0.25s ease both;
-}
-@keyframes fade-bg {
-  from { opacity: 0; }
-}
-
-.dialog {
-  width: min(46rem, 100%);
-  max-height: min(46rem, 90vh);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 24px 64px rgb(var(--shadow-rgb) / 0.5), 0 0 0 1px color-mix(in oklab, var(--accent) 10%, transparent);
-  animation: dialog-in 0.45s var(--ease-spring) both;
-}
-@keyframes dialog-in {
-  from { opacity: 0; transform: translateY(1.5rem) scale(0.94); }
-}
-
-/* wizard fills the dialog instead of acting as its own card */
-.dialog :deep(.wizard) {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  min-height: 0;
-}
 
 .side-backdrop {
   position: absolute;
   inset: 0;
-  z-index: 25;
+  z-index: 41;
   border: 0;
   padding: 0;
   background: var(--backdrop);
   cursor: pointer;
 }
 
-/* Conversations drawer slides in over the chat; closed it parks off-canvas. */
-@media (min-width: 861px) {
-  .convos {
-    position: absolute;
-    z-index: 20;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    background: var(--bg);
-    transform: translateX(-105%);
-    visibility: hidden;
-    pointer-events: none;
-    transition: transform 0.22s ease, visibility 0s linear 0.22s;
-  }
-  .convos.open {
-    transform: none;
-    visibility: visible;
-    pointer-events: auto;
-    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.4);
-    transition: transform 0.22s ease, visibility 0s;
-  }
-}
-
 @media (max-width: 860px) {
   .layout {
-    position: relative;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-  .main-toolbar {
-    grid-column: 1;
-    grid-row: 1;
-    position: relative;
-    z-index: 40;
+    grid-template-columns: minmax(0, 1fr);
   }
   .side-toggle {
     display: inline-flex;
-  }
-  /* Static so the agent drawer positions against .layout and covers the toolbar. */
-  .stage {
-    display: block;
-    position: static;
-    grid-column: 1;
-    grid-row: 2;
-    min-height: 0;
-    overflow: visible;
-  }
-  .side-backdrop {
-    z-index: 41;
   }
   .side {
     position: absolute;
@@ -548,8 +326,7 @@ onBeforeUnmount(() => {
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(22rem, calc(100% - 2.75rem));
-    border-right: 1px solid var(--border);
+    width: min(20rem, calc(100% - 2.75rem));
     background: var(--bg);
     transform: translateX(-105%);
     visibility: hidden;
@@ -563,31 +340,8 @@ onBeforeUnmount(() => {
     box-shadow: 12px 0 32px rgb(var(--shadow-rgb) / 0.45);
     transition: transform 0.2s ease, visibility 0s;
   }
-  .main-body {
-    height: 100%;
-  }
   .chat-col {
-    padding: 0.75rem 0.85rem 0.35rem;
-  }
-  .convos {
-    position: absolute;
-    z-index: 20;
-    top: 0;
-    left: 0;
-    background: var(--bg);
-    height: 100%;
-    width: min(20rem, 85%);
-    transform: translateX(-105%);
-    visibility: hidden;
-    pointer-events: none;
-    transition: transform 0.22s ease, visibility 0s linear 0.22s;
-  }
-  .convos.open {
-    transform: none;
-    visibility: visible;
-    pointer-events: auto;
-    box-shadow: 8px 0 24px rgb(var(--shadow-rgb) / 0.4);
-    transition: transform 0.22s ease, visibility 0s;
+    padding: 0.5rem 0.85rem 0.35rem;
   }
 }
 </style>

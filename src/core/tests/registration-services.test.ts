@@ -83,7 +83,7 @@ describe('isAdvertisableUrl', () => {
   it('accepts https and local http only', () => {
     expect(isAdvertisableUrl('https://host.example/api/a2a')).toBe(true)
     expect(isAdvertisableUrl('http://localhost:8787')).toBe(true)
-    expect(isAdvertisableUrl('http://127.0.0.1:5173/api/mcp')).toBe(true)
+    expect(isAdvertisableUrl('http://127.0.0.1:5174/api/mcp')).toBe(true)
     expect(isAdvertisableUrl('http://host.example/api/a2a')).toBe(false)
     expect(isAdvertisableUrl('ftp://not-allowed/a2a')).toBe(false)
   })
@@ -96,7 +96,7 @@ describe('buildRegistrationServices (8004scan Services tab)', () => {
         { type: 'web', value: 'https://example.com' },
         { type: 'email', value: 'e@mail.fun' },
         { type: 'a2a', value: 'http://localhost:8787/api/a2a' },
-        { type: 'mcp', value: 'http://localhost:5173/api/mcp' },
+        { type: 'mcp', value: 'http://localhost:5174/api/mcp' },
       ],
       metadata: {
         oasfDomains: ['1'],
@@ -115,7 +115,7 @@ describe('buildRegistrationServices (8004scan Services tab)', () => {
     })
     expect(byName.MCP).toMatchObject({
       name: 'MCP',
-      endpoint: 'http://localhost:5173/api/mcp',
+      endpoint: 'http://localhost:5174/api/mcp',
       version: MCP_PROTOCOL_VERSION,
     })
     expect(byName.agentWallet).toMatchObject({
@@ -145,7 +145,7 @@ describe('buildRegistrationServices (8004scan Services tab)', () => {
   })
 
   it('adds agentWallet only when wallet + chainId are known', async () => {
-    const endpoints = [{ type: 'MCP', value: 'http://localhost:5173/api/mcp' }]
+    const endpoints = [{ type: 'MCP', value: 'http://localhost:5174/api/mcp' }]
     const without = await buildRegistrationServices({ endpoints })
     expect(without.map((s) => s.name)).toEqual(['MCP'])
 

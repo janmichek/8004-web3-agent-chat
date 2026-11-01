@@ -2,8 +2,9 @@
 
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
-import { createPublicClient, http, formatEther, formatUnits, defineChain } from "viem";
-import { getRpcUrl, getChainId } from "../../core/config.js";
+import { formatEther, formatUnits } from "viem";
+import { getAgentPublicClient } from "./viem-clients.js";
+import { toolError } from "./errors.js";
 
 const erc20Abi = [
   {
@@ -60,18 +61,7 @@ export const tokenBalanceTool: DynamicStructuredTool = new DynamicStructuredTool
       address = new ethers.Wallet(pk).address;
     }
     try {
-      const rpcUrl = getRpcUrl();
-      const chain = defineChain({
-        id: getChainId(),
-        name: "Arbitrum",
-        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-        rpcUrls: { default: { http: [rpcUrl] } },
-      });
-
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(rpcUrl),
-      });
+      const publicClient = getAgentPublicClient();
 
       if (!tokenAddress) {
         const balance = await publicClient.getBalance({
@@ -101,8 +91,7 @@ export const tokenBalanceTool: DynamicStructuredTool = new DynamicStructuredTool
 
       return `${formatUnits(rawBalance, decimals)} ${symbol}`;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return `Error: ${message}`;
+      return toolError(err);
     }
   },
 });

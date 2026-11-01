@@ -3,10 +3,9 @@ import type { Route } from "@playwright/test";
 import {
   DEMO_AGENT,
   SECOND_AGENT,
-  closeAgentPanel,
+  closeDialog,
   gotoWithAgent,
-  openAgentInfo,
-  openFundAgent,
+  openAgentDetails,
   selectAgent,
   setupOffline,
 } from "./helpers";
@@ -15,7 +14,7 @@ test.describe("agent picker extras", () => {
   test("Agent Info shows ERC-8004 id, wallet, balance and tool chips", async ({ page }) => {
     await setupOffline(page);
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     const info = page.locator(".details");
     await expect(info).toContainText("#42");
     await expect(info).toContainText("0x1111…1111");
@@ -29,7 +28,7 @@ test.describe("agent picker extras", () => {
   test('agent with no tools/actions shows "none" placeholders', async ({ page }) => {
     await setupOffline(page, { agents: [{ ...DEMO_AGENT, tools: [], actions: [] }] });
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     const info = page.locator(".details");
     await expect(info).toContainText("none");
   });
@@ -53,7 +52,7 @@ test.describe("agent picker extras", () => {
   test("fund input is locked while the request is in flight", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await openFundAgent(page);
+    await openAgentDetails(page);
     await page.evaluate(() => {
       (window as unknown as { __E2E_SEND_TX?: () => Promise<string> }).__E2E_SEND_TX = () =>
         new Promise((resolve) => {
@@ -83,7 +82,7 @@ test.describe("agent picker extras", () => {
       },
     });
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await page.getByTestId("picker-delete").click();
     await expect(page.getByTestId("picker-delete")).toContainText("Confirm delete");
     await page.getByTestId("picker-delete").click();
@@ -98,10 +97,10 @@ test.describe("agent picker extras", () => {
   test("selecting an agent with the keyboard drives the whole app", async ({ page }) => {
     await setupOffline(page, { agents: [DEMO_AGENT, SECOND_AGENT] });
     await gotoWithAgent(page, "demo");
-    await openAgentInfo(page);
     await selectAgent(page, "bravo");
+    await openAgentDetails(page);
     await expect(page.locator(".details")).toContainText("#77");
-    await closeAgentPanel(page);
+    await closeDialog(page);
     await page.getByTestId("chat-input").fill("hello bravo");
     await page.getByTestId("chat-send").click();
     await expect(page.getByTestId("chat-bubble-agent").first()).toContainText("mock reply");
@@ -110,7 +109,7 @@ test.describe("agent picker extras", () => {
   test("rating link for a rated agent points at the 8004 scan page", async ({ page }) => {
     await setupOffline(page, { reputation: { agentId: "421614:42", count: 4, averageValue: 80 } });
     await gotoWithAgent(page);
-    await openAgentInfo(page);
+    await openAgentDetails(page);
     await expect(page.getByTestId("agent-rating")).toContainText("4 ratings");
   });
 });

@@ -5,7 +5,7 @@
   "singleQuote": false,
   "ignorePatterns": [
     "dist/",
-    "frontend/dist/",
+    "apps/frontend/dist/",
     "coverage/",
     "agents/",
     "playwright-report/",
@@ -23,7 +23,7 @@
   ],
   "overrides": [
     {
-      "files": ["frontend/**", "**/tests/**", "**/*.test.ts", "config/vitest.config.ts"],
+      "files": ["**/tests/**", "**/*.test.ts", "config/vitest.config.ts"],
       "options": {
         "semi": false,
         "singleQuote": true

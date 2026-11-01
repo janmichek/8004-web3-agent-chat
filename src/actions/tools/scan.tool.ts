@@ -38,6 +38,14 @@ async function scanGet(path: string): Promise<string> {
   }
 }
 
+/** Shared by the LangChain tool and the MCP server registration. */
+export const searchAgentsSchema = z.object({
+  query: z.string().describe("Search query, e.g. 'defi yield'"),
+  chain_id: z.string().optional().describe("Filter by chain ID, e.g. '421614'"),
+  limit: z.number().optional().describe("Max results (default 10)"),
+  search_type: z.string().optional().describe("'keyword' or 'semantic' (default keyword)"),
+});
+
 /**
  * @notice Search ERC-8004 agents by keyword (or semantic similarity).
  * Use this before interacting with an unknown agent to discover candidates.
@@ -48,12 +56,7 @@ export const searchAgentsTool: DynamicStructuredTool = new DynamicStructuredTool
     "Search ERC-8004 agents on 8004scan by keyword. " +
     "Returns matching agents with IDs (e.g. '421614:204'). " +
     "Use get_agent for details and get_agent_feedbacks for reputation before transacting.",
-  schema: z.object({
-    query: z.string().describe("Search query, e.g. 'defi yield'"),
-    chain_id: z.string().optional().describe("Filter by chain ID, e.g. '421614'"),
-    limit: z.number().optional().describe("Max results (default 10)"),
-    search_type: z.string().optional().describe("'keyword' or 'semantic' (default keyword)"),
-  }),
+  schema: searchAgentsSchema,
   func: async ({ query, chain_id, limit, search_type }): Promise<string> => {
     const params = new URLSearchParams({ query });
     if (chain_id) params.set("chain_id", chain_id);

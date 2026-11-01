@@ -1,12 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
 
 const api = vi.hoisted(() => ({ uploadImage: vi.fn() }))
 vi.mock('@/shared/api', () => api)
-vi.mock('vue', async (orig) => ({
-  ...(await orig<typeof import('vue')>()),
-  useTemplateRef: () => ref(null),
-}))
 
 import { useAgentImage } from './use-agent-image'
 
@@ -23,19 +18,16 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 function choose(img: ReturnType<typeof useAgentImage>, file: File) {
-  const input = { files: [file], value: 'x' }
-  img.onFileChosen({ target: input } as unknown as Event)
-  return input
+  img.selectImage(file)
 }
 
 describe('image selection', () => {
-  it('accepts a supported file, previews it and resets the input', () => {
+  it('accepts a supported file and previews it', () => {
     const img = useAgentImage()
-    const input = choose(img, png())
+    choose(img, png())
     expect(img.imageFile.value?.name).toBe('a.png')
     expect(img.imagePreviewUrl.value).toBe('blob:preview')
     expect(img.imageStatus.value).toBe('idle')
-    expect(input.value).toBe('')
   })
 
   it('rejects unsupported types', () => {
@@ -50,14 +42,6 @@ describe('image selection', () => {
     const img = useAgentImage()
     choose(img, png(5 * 1024 * 1024 + 1))
     expect(img.imageError.value).toMatch(/max 5 MB/)
-  })
-
-  it('handles drag & drop and clears the dragging flag', () => {
-    const img = useAgentImage()
-    img.dragging.value = true
-    img.onDrop({ dataTransfer: { files: [png()] } } as unknown as DragEvent)
-    expect(img.dragging.value).toBe(false)
-    expect(img.imageFile.value).not.toBeNull()
   })
 
   it('revokes the previous preview when replacing or removing', () => {

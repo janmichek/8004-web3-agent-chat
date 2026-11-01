@@ -39,6 +39,7 @@ import {
 } from "../actions/tools/index.js";
 import { giveFeedbackTool, getReputationTool } from "../actions/tools/feedback.tool.js";
 import {
+  searchAgentsSchema,
   searchAgentsTool,
   getScanAgentTool,
   getScanAgentFeedbacksTool,
@@ -161,12 +162,7 @@ export function getMcpServer(allowedTools?: string[]): McpServer {
       {
         description:
           "Search ERC-8004 agents on 8004scan by keyword. Returns IDs like '421614:204'.",
-        inputSchema: {
-          query: z.string().describe("Search query, e.g. 'defi yield'"),
-          chain_id: z.string().optional().describe("Filter by chain ID, e.g. '421614'"),
-          limit: z.number().optional().describe("Max results (default 10)"),
-          search_type: z.string().optional().describe("'keyword' or 'semantic'"),
-        },
+        inputSchema: searchAgentsSchema.shape,
       },
       async ({ query, chain_id, limit, search_type }) =>
         textResult(await searchAgentsTool.invoke({ query, chain_id, limit, search_type })),

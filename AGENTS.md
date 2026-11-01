@@ -1,17 +1,17 @@
 # Agent guide
 
-ERC-8004 agent chat: Hono/LangChain backend in `src/`, Vue 3 + Vite frontend in `frontend/`.
+ERC-8004 agent chat: Hono/LangChain backend in `src/`, Vue 3 + Vite frontend in `apps/frontend/`.
 
 ## Before you say "done"
 
 ```bash
-npm run check   # typecheck, oxlint, oxfmt, steiger (FSD), fallow dead-code + dupes, vitest coverage gate
+npm run check   # typecheck, oxlint, oxfmt, steiger (FSD), fallow dead-code + dupes + health, vitest coverage gate
 ```
 
 Frontend changes also need `npm run frontend:build` and `npm run test:e2e:offline` (run vite on
 `--host 127.0.0.1` first if the Playwright web server times out).
 
-## Frontend layout (Feature-Sliced Design, `frontend/src`)
+## Frontend layout (Feature-Sliced Design, `apps/frontend/src`)
 
 | Layer     | Holds                                                               |
 | --------- | ------------------------------------------------------------------- |
@@ -25,7 +25,8 @@ Frontend changes also need `npm run frontend:build` and `npm run test:e2e:offlin
 - Add a `widgets/`, `features/` or `entities/` layer only when a slice is used from 2+ places
   (Steiger's `insignificant-slice` rule enforces this).
 - Keep `.vue` files under ~800 lines: pull logic into `model/use-*.ts` composables
-  (see `use-oasf-taxonomy.ts`, `use-agent-image.ts`). `CreateAgent.vue` is still oversized.
+  (see `use-oasf-taxonomy.ts`, `use-agent-memory.ts`) and move large style blocks into a
+  sibling `.css` file loaded with `<style scoped src="./x.css">` (see `CreateAgent.vue`).
 
 ## Rules
 
@@ -44,7 +45,7 @@ Frontend changes also need `npm run frontend:build` and `npm run test:e2e:offlin
 | oxlint        | `npm run lint` · `config/oxlintrc.json`                                  |
 | oxfmt         | `npm run format[:check]` · `.oxfmtrc.json`                         |
 | Steiger (FSD) | `npm run fsd` · `config/steiger.config.ts`                                |
-| fallow        | `npm run dead-code`, `npm run duplicates` · `config/.fallowrc.json`       |
+| fallow        | `npm run dead-code`, `npm run duplicates`, `npm run health` · `config/.fallowrc.json` |
 | Vitest        | `npm run test:unit`, `npm run test:coverage`                       |
 | Stryker       | `npm run test:mutate` (weekly CI) · `config/stryker.config.json`          |
 | Lighthouse    | `lhci autorun` in the Danger workflow · `config/lighthouserc.json`        |

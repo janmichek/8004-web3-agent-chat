@@ -5,7 +5,7 @@ import { sendTransaction, waitForTransactionReceipt } from '@wagmi/vue/actions'
 import { fetchReputation, prepareFeedback, scanUrlForAgent, txScanUrl } from '@/shared/api'
 import { ensureChain } from '@/shared/lib'
 import { DEFAULT_CHAIN_ID, chainIdOfAgentId } from '@/shared/config'
-import { friendlyFundError } from '@/shared/lib'
+import { e2eConnectedAddress, e2eSendTx, friendlyFundError } from '@/shared/lib'
 
 const props = defineProps<{
   /** Local agent name used for the feedback API route. */
@@ -29,13 +29,7 @@ const { address: wagmiAddress } = useAccount()
 const wagmiConfig = useConfig()
 
 /** Playwright can set window.__E2E_CONNECTED_ADDRESS to simulate a connected wallet. */
-const connected = computed(() => {
-  if (typeof window !== 'undefined') {
-    const forced = (window as unknown as { __E2E_CONNECTED_ADDRESS?: string }).__E2E_CONNECTED_ADDRESS
-    if (forced) return forced as `0x${string}`
-  }
-  return wagmiAddress.value
-})
+const connected = computed(() => e2eConnectedAddress() ?? wagmiAddress.value)
 
 const agentId = computed(() => props.defaultAgentId?.trim() ?? '')
 const stars = ref(5)
@@ -146,7 +140,7 @@ async function sendFeedbackTx(
   onSent: (hash: string) => void,
 ) {
   // Playwright has no real wallet: let tests stub the send.
-  const stub = (window as unknown as { __E2E_SEND_TX?: () => string | Promise<string> }).__E2E_SEND_TX
+  const stub = e2eSendTx()
   if (stub) {
     const stubbed = await stub()
     onSent(stubbed)

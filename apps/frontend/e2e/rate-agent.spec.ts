@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { DEMO_AGENT, gotoWithAgent, openAgentPanel, sendChat, setupOffline } from "./helpers";
+import { DEMO_AGENT, gotoWithAgent, sendChat, setupOffline } from "./helpers";
 
 const TX = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -80,13 +80,7 @@ test.describe("rate agent (mocked feedback)", () => {
     ] as const) {
       const seen: unknown[] = [];
       await setupOffline(page, { chat: chatWithTool(tool), capture: { feedback: seen } });
-      await page.goto("/");
-      await openAgentPanel(page);
-      await page.getByTestId("agent-select").waitFor({ state: "visible" });
-      await page.waitForFunction(() => {
-        const el = document.querySelector('[data-testid="agent-select"]') as HTMLElement | null;
-        return !!el && (el.getAttribute("data-value") ?? "") !== "";
-      });
+      await gotoWithAgent(page);
       await sendChat(page, `use ${tool}`);
       await expect(page.getByTestId("rate-agent")).toBeVisible({ timeout: 15000 });
       await page.getByTestId("rate-submit").click();

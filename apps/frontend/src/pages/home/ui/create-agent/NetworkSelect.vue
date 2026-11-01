@@ -17,6 +17,8 @@ const props = defineProps<{
   ariaLabel?: string
   /** Test id prefix; trigger is `${testId}`, options `${testId}-option-${chainId}`. */
   testId?: string
+  /** Single-line, smaller trigger for embedding in a card. */
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -123,7 +125,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="network-select" :class="{ open, disabled }">
+  <div ref="root" class="network-select" :class="{ open, disabled, compact }">
     <button
       ref="trigger"
       type="button"
@@ -138,7 +140,7 @@ onBeforeUnmount(() => {
       @click="toggleMenu"
       @keydown="onTriggerKeydown"
     >
-      <NetworkIcon v-if="selected" :chain-id="selected.chainId" :size="22" />
+      <NetworkIcon v-if="selected" :chain-id="selected.chainId" :size="compact ? 16 : 22" />
       <span class="trigger-copy">
         <span class="trigger-name">{{ selected?.name ?? 'Select network' }}</span>
         <span v-if="selected?.network" class="trigger-meta">{{ selected.network }}</span>
@@ -252,6 +254,26 @@ onBeforeUnmount(() => {
 .network-select.open .trigger {
   border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent);
+}
+
+.network-select.compact {
+  width: fit-content;
+  min-width: 11rem;
+}
+
+.compact .trigger {
+  gap: 0.45rem;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.78rem;
+  border-radius: 2rem;
+}
+
+.compact .trigger-meta {
+  display: none;
+}
+
+.compact .option {
+  padding: 0.4rem 0.5rem;
 }
 
 .trigger-copy {
