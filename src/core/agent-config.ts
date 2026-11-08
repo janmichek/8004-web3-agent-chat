@@ -59,6 +59,8 @@ export interface AgentConfig {
   // --- Trust & governance ---
   trustModels: string[];
   owners: string[];
+  /** Signer of the on-chain registration; usually the app's master wallet. */
+  creator?: string;
   operators: string[];
 
   // --- Status ---
@@ -103,6 +105,7 @@ const agentConfigSchema = z.object({
     .max(50),
   trustModels: nameList,
   owners: nameList,
+  creator: shortText.optional(),
   operators: nameList,
   active: z.boolean(),
   x402support: z.boolean(),

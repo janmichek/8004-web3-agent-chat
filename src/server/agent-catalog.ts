@@ -133,6 +133,9 @@ export async function publicAgentSummary(name: string, withUsage = false) {
     agentId: config?.agentId,
     agentURI: config?.agentURI,
     owners: config?.owners ?? [],
+    // Older configs predate the creator field; the owner is the closest
+    // available proxy and keeps the identity card consistent.
+    creator: config?.creator ?? config?.owners?.[0],
     operators: config?.operators ?? [],
     actions: config?.metadata?.actions ?? [],
     tools: config?.metadata?.tools ?? [],

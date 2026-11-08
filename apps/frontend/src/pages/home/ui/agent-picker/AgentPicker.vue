@@ -330,12 +330,7 @@ onMounted(() => {
 
   <ModalDialog v-if="showDetails && agent" hide-header label="Agent details" size="lg" @close="showDetails = false">
     <!-- The identity card is the modal's own header, so it sits directly in the dialog body. -->
-    <AgentCard
-      v-if="agent"
-      :agent="agent"
-      :status="agent.agentId ? 'live' : undefined"
-      frameless
-    />
+    <AgentCard v-if="agent" :agent="agent" :status="agent.agentId ? 'live' : undefined" />
 
     <section class="card" data-testid="agent-info-section">
     <div v-if="agent" class="details">
@@ -663,13 +658,25 @@ a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border
 .danger-zone > div { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 .danger-zone .status { margin: 0; font-size: 0.78rem; color: var(--muted); word-break: break-all; }
 .btn.danger { color: var(--danger-ink); border-color: color-mix(in oklab, var(--danger-ink) 40%, var(--border)); }
-.from-wallet dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
-.from-wallet dd { margin: 0.15rem 0 0; font-size: 0.85rem; word-break: break-all; }
+.from-wallet { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.5rem; }
+.from-wallet dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); white-space: nowrap; }
+.from-wallet dd { margin: 0; font-size: 0.85rem; white-space: nowrap; }
 .from-wallet dd a { color: var(--accent); text-decoration: none; }
 .from-wallet dd a:hover { text-decoration: underline; }
-.form { display: flex; flex-direction: column; gap: 0.6rem; }
-.field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.75rem; color: var(--muted); }
-.field input { font: inherit; font-family: var(--font-mono); font-size: 0.9rem; padding: 0.6rem 0.75rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--ink); }
+.form { display: flex; flex-direction: row; align-items: center; gap: 0.5rem; }
+.field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.field > span { flex: none; white-space: nowrap; }
+.field input { flex: 1; min-width: 0; width: 100%; font: inherit; font-family: var(--font-mono); font-size: 0.9rem; padding: 0.6rem 0.75rem; border-radius: 0.4rem; border: 1px solid var(--border); background: var(--bg); color: var(--ink); }
+.form > .btn { flex: none; }
 .status { margin: 0; font-size: 0.78rem; word-break: break-all; }
 .status.info { color: var(--muted); }
 .status.ok { color: var(--ok-ink); }

@@ -395,12 +395,14 @@ async function scrollBottom() {
 }
 
 .welcome-sub::before {
-  content: '⬡';
+  content: '';
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 2rem;
-  line-height: 1;
-  color: var(--accent);
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0 auto 0.55rem;
+  background-color: var(--accent);
+  -webkit-mask: url('/logo-mark.svg') center / contain no-repeat;
+  mask: url('/logo-mark.svg') center / contain no-repeat;
   filter: drop-shadow(0 0 12px var(--glow));
   animation: float 4s ease-in-out infinite;
 }

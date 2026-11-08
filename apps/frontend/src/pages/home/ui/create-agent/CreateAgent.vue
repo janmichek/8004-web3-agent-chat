@@ -11,7 +11,7 @@ import {
   type CatalogNetwork,
   type CatalogResponse,
 } from '@/shared/api'
-import { DEFAULT_CHAIN_ID } from '@/shared/config'
+import { DEFAULT_CHAIN_ID, SUPPORTED_NETWORKS } from '@/shared/config'
 import { e2eConnectedAddress } from '@/shared/lib'
 import NetworkSelect from './NetworkSelect.vue'
 import CreateAgentDone from './CreateAgentDone.vue'
@@ -21,7 +21,8 @@ import { useAgentImage } from '../../model/use-agent-image'
 import { useOasfTaxonomy } from '../../model/use-oasf-taxonomy'
 
 type Phase =
-  | 'env'
+  | 'identity'
+  | 'connections'
   | 'configure'
   | 'oasf'
   | 'creating'
@@ -40,7 +41,7 @@ const { address: wagmiAddress } = useAccount()
 const connectedAddress = computed<Address | undefined>(
   () => e2eConnectedAddress() ?? wagmiAddress.value ?? getAccount(wagmiConfig).address,
 )
-const phase = ref<Phase>('env')
+const phase = ref<Phase>('identity')
 const bodyRef = ref<HTMLElement | null>(null)
 
 watch(phase, async () => {
@@ -53,7 +54,16 @@ const loadError = ref('')
 const selectedChainId = ref(DEFAULT_CHAIN_ID)
 const networks = computed<CatalogNetwork[]>(() => {
   const c = catalog.value
-  if (!c) return []
+  if (!c) {
+    // Before the catalog lands (or if it fails), still offer the app's
+    // supported networks so the identity card shows a select, not a chip.
+    return SUPPORTED_NETWORKS.map((n) => ({
+      network: n.scanSlug,
+      name: n.name,
+      chainId: n.chainId,
+      explorerUrl: n.explorerUrl,
+    }))
+  }
   return (
     c.networks ?? [
       { network: c.network, name: c.networkName, chainId: c.chainId, masterBalanceEth: c.master.balanceEth },
@@ -64,7 +74,8 @@ const createError = ref('')
 const busy = ref(false)
 
 const STEPS = [
-  { key: 'env', label: 'Identity' },
+  { key: 'identity', label: 'Identity' },
+  { key: 'connections', label: 'Connections' },
   { key: 'configure', label: 'Abilities' },
   { key: 'oasf', label: 'Skills' },
 ] as const
@@ -75,8 +86,10 @@ const selectedNetworkName = computed(
 )
 const headTitle = computed(() => {
   switch (phase.value) {
-    case 'env':
+    case 'identity':
       return 'Name your agent'
+    case 'connections':
+      return 'Connect your agent'
     case 'configure':
       return 'Choose abilities'
     case 'oasf':
@@ -91,8 +104,10 @@ const headTitle = computed(() => {
 })
 const headSubtitle = computed(() => {
   switch (phase.value) {
-    case 'env':
+    case 'identity':
       return ''
+    case 'connections':
+      return 'Optional — you can change these later.'
     case 'configure':
       return 'Toggle what it can do. Anything here can be changed later.'
     case 'oasf':
@@ -172,6 +187,12 @@ const a2aEndpoint = computed({
   },
 })
 const hasA2a = computed(() => a2aEndpoint.value.trim().length > 0)
+const connectionCount = computed(
+  () =>
+    [webEndpoint, emailEndpoint, mcpEndpoint, a2aEndpoint].filter(
+      (endpoint) => endpoint.value.trim().length > 0,
+    ).length,
+)
 
 // x402: off by default while the server only simulates payments, on once a
 // real facilitator is configured. The user's own choice always wins.
@@ -253,13 +274,13 @@ function toggleTool(name: string) {
   else selectedTools.value.push(name)
 }
 
-function goConfigure() {
+function goConnections() {
   if (!nameValid.value) return
   if (!connectedAddress.value) {
     createError.value = 'Connect and sign in with a wallet to create an agent.'
     return
   }
-  phase.value = 'configure'
+  phase.value = 'connections'
 }
 
 async function submitCreate() {
@@ -374,147 +395,68 @@ function openChat() {
 
     <p v-if="loadError" class="banner" data-testid="create-load-error">{{ loadError }}</p>
 
-    <!-- Step 1 — identity, network, connections -->
-    <div v-else-if="phase === 'env'" ref="bodyRef" class="body">
+    <!-- Step 1 — identity -->
+    <div v-else-if="phase === 'identity'" ref="bodyRef" class="body">
       <div class="panel-head">
         <div>
           <p class="section-title">Identity <span class="optional">required</span></p>
-          <p class="hint">Name, image, and how people and other agents reach it.</p>
+          <p class="hint">Name, image, and the network its identity NFT lives on.</p>
         </div>
         <span v-if="catalog" class="count-pill" data-testid="create-network-pill">
           {{ selectedNetworkName }}
         </span>
       </div>
 
-      <div class="env-grid">
-        <section class="env-col">
-          <p class="group-label">Details</p>
+      <section class="env-col">
+        <AgentCard
+          editable
+          status="draft"
+          :agent="draftAgent"
+          :image-file-name="imageFile?.name"
+          :image-status="imageStatus"
+          :image-error="imageError"
+          @update:name="agentName = $event"
+          @update:description="agentDescription = $event"
+          @image-chosen="selectImage"
+          @image-removed="removeImage"
+          :owner="catalog ? connectedAddress : undefined"
+          :creator="catalog?.master.address"
+          @submit="goConnections"
+        >
+          <template #network>
+            <NetworkSelect
+              v-model="selectedChainId"
+              :networks="networks"
+              :disabled="networks.length < 2"
+              aria-label="Network"
+              test-id="create-network"
+              compact
+            />
+          </template>
+        </AgentCard>
+        <p
+          v-if="agentName.trim() && !nameValid"
+          class="hint error"
+          data-testid="create-name-error"
+        >
+          Use letters, numbers and . _ - (1–63 chars).
+        </p>
 
-          <AgentCard
-            editable
-            status="draft"
-            :agent="draftAgent"
-            :image-file-name="imageFile?.name"
-            :image-status="imageStatus"
-            :image-error="imageError"
-            @update:name="agentName = $event"
-            @update:description="agentDescription = $event"
-            @image-chosen="selectImage"
-            @image-removed="removeImage"
-            :owner="catalog ? connectedAddress : undefined"
-            :creator="catalog ? connectedAddress : undefined"
-            @submit="goConfigure"
-          >
-            <template v-if="catalog" #network>
-              <NetworkSelect
-                v-model="selectedChainId"
-                :networks="networks"
-                :disabled="networks.length < 2"
-                aria-label="Network"
-                test-id="create-network"
-                compact
-              />
-            </template>
-          </AgentCard>
-          <p
-            v-if="agentName.trim() && !nameValid"
-            class="hint error"
-            data-testid="create-name-error"
-          >
-            Use letters, numbers and . _ - (1–63 chars).
-          </p>
-
-          <p v-if="!catalog" class="hint network-loading">Loading environment…</p>
-          <p v-if="!connectedAddress" class="note warn" data-testid="create-owner-warning">
-            Connect a wallet first — it becomes the owner of the identity NFT.
-          </p>
-        </section>
-
-        <section class="env-col">
-          <p class="group-label">Connections <span>optional</span></p>
-
-          <label class="field row-card">
-            <span>Web</span>
-            <input
-              v-model="webEndpoint"
-              type="text"
-              placeholder="https://example.com"
-              spellcheck="false"
-              data-testid="create-web-endpoint"
-            />
-          </label>
-          <label class="field row-card">
-            <span>Email</span>
-            <input
-              v-model="emailEndpoint"
-              type="text"
-              placeholder="e@mail.fun"
-              spellcheck="false"
-              data-testid="create-email-endpoint"
-            />
-          </label>
-          <label class="field row-card">
-            <span>MCP <span class="optional">tool discovery</span></span>
-            <input
-              v-model="mcpEndpoint"
-              type="text"
-              placeholder="https://your-host/api/mcp"
-              spellcheck="false"
-              data-testid="create-mcp-endpoint"
-            />
-          </label>
-          <label class="field row-card">
-            <span>A2A <span class="optional">agent-to-agent</span></span>
-            <input
-              v-model="a2aEndpoint"
-              type="text"
-              placeholder="https://your-host/api/a2a"
-              spellcheck="false"
-              data-testid="create-a2a-endpoint"
-            />
-          </label>
-          <p v-if="mcpMissingWarning" class="note warn" data-testid="create-mcp-warning">
-            No MCP endpoint set — abilities will run in chat only and won't be advertised on
-            8004scan. Add an https://…/api/mcp URL to publish them.
-          </p>
-          <p class="hint subtle" data-testid="create-a2a-hint">
-            <template v-if="hasA2a">
-              A2A callers get read-only tools only — this agent never sends funds or signs
-              transactions for outside callers.
-            </template>
-            <template v-else>No A2A endpoint — other agents can't reach this one, and x402 is off.</template>
-          </p>
-          <label class="check row-card" :class="{ disabled: !hasA2a }">
-            <input
-              v-model="x402Enabled"
-              type="checkbox"
-              :disabled="!hasA2a"
-              data-testid="create-x402"
-            />
-            <span>
-              <strong>Charge for A2A requests (x402)</strong>
-              <em v-if="x402Live" data-testid="create-x402-hint">
-                Callers pay 0.01 USDC on Base Sepolia to the agent wallet per request. The agent
-                is only paid after it has answered.
-              </em>
-              <em v-else data-testid="create-x402-hint">
-                Test mode — payments are simulated and nobody is charged. It still shows as
-                x402-ready on 8004scan.
-              </em>
-            </span>
-          </label>
-        </section>
-      </div>
+        <p v-if="!catalog" class="hint network-loading">Loading environment…</p>
+        <p v-if="!connectedAddress" class="note warn" data-testid="create-owner-warning">
+          Connect a wallet first — it becomes the owner of the identity NFT.
+        </p>
+      </section>
 
       <div class="nav">
         <div class="nav-end">
-          <span class="nav-note">Step 1 of 3</span>
+          <span class="nav-note">Step 1 of 4</span>
           <button
             type="button"
             class="btn primary"
             data-testid="create-name-continue"
             :disabled="!catalog || !nameValid || !connectedAddress"
-            @click="goConfigure"
+            @click="goConnections"
           >
             Next →
           </button>
@@ -522,7 +464,106 @@ function openChat() {
       </div>
     </div>
 
-    <!-- Configure (step 2) — abilities -->
+    <!-- Step 2 — connections -->
+    <div v-else-if="phase === 'connections'" ref="bodyRef" class="body">
+      <div class="panel-head">
+        <div>
+          <p class="section-title">Connections <span class="optional">optional</span></p>
+          <p class="hint">Advertise how people and other agents reach yours.</p>
+        </div>
+        <span class="count-pill">{{ connectionCount }} connected</span>
+      </div>
+
+      <section class="env-col">
+        <label class="field row-card">
+          <span>Web</span>
+          <input
+            v-model="webEndpoint"
+            type="text"
+            placeholder="https://example.com"
+            spellcheck="false"
+            data-testid="create-web-endpoint"
+          />
+        </label>
+        <label class="field row-card">
+          <span>Email</span>
+          <input
+            v-model="emailEndpoint"
+            type="text"
+            placeholder="e@mail.fun"
+            spellcheck="false"
+            data-testid="create-email-endpoint"
+          />
+        </label>
+        <label class="field row-card">
+          <span>MCP <span class="optional">tool discovery</span></span>
+          <input
+            v-model="mcpEndpoint"
+            type="text"
+            placeholder="https://your-host/api/mcp"
+            spellcheck="false"
+            data-testid="create-mcp-endpoint"
+          />
+        </label>
+        <label class="field row-card">
+          <span>A2A <span class="optional">agent-to-agent</span></span>
+          <input
+            v-model="a2aEndpoint"
+            type="text"
+            placeholder="https://your-host/api/a2a"
+            spellcheck="false"
+            data-testid="create-a2a-endpoint"
+          />
+        </label>
+        <p v-if="mcpMissingWarning" class="note warn" data-testid="create-mcp-warning">
+          No MCP endpoint set — abilities will run in chat only and won't be advertised on
+          8004scan. Add an https://…/api/mcp URL to publish them.
+        </p>
+        <p class="hint subtle" data-testid="create-a2a-hint">
+          <template v-if="hasA2a">
+            A2A callers get read-only tools only — this agent never sends funds or signs
+            transactions for outside callers.
+          </template>
+          <template v-else>No A2A endpoint — other agents can't reach this one, and x402 is off.</template>
+        </p>
+        <label class="check row-card" :class="{ disabled: !hasA2a }">
+          <input
+            v-model="x402Enabled"
+            type="checkbox"
+            :disabled="!hasA2a"
+            data-testid="create-x402"
+          />
+          <span>
+            <strong>Charge for A2A requests (x402)</strong>
+            <em v-if="x402Live" data-testid="create-x402-hint">
+              Callers pay 0.01 USDC on Base Sepolia to the agent wallet per request. The agent
+              is only paid after it has answered.
+            </em>
+            <em v-else data-testid="create-x402-hint">
+              Test mode — payments are simulated and nobody is charged. It still shows as
+              x402-ready on 8004scan.
+            </em>
+          </span>
+        </label>
+      </section>
+
+      <div class="nav">
+        <button type="button" class="btn ghost" @click="phase = 'identity'">← Back</button>
+        <div class="nav-end">
+          <span class="nav-note">Step 2 of 4</span>
+          <button
+            type="button"
+            class="btn primary"
+            data-testid="create-connections-continue"
+            @click="phase = 'configure'"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configure (step 3) — abilities -->
     <div v-else-if="phase === 'configure'" ref="bodyRef" class="body">
       <div class="panel-head">
         <div>
@@ -532,8 +573,8 @@ function openChat() {
         <span class="count-pill">{{ selectedActions.length + selectedTools.length }} selected</span>
       </div>
       <p v-if="mcpMissingWarning" class="note warn" data-testid="create-mcp-warning-configure">
-        No MCP endpoint set — your selection won't appear on 8004scan. Go back to step 1
-        and add an https://…/api/mcp URL.
+        No MCP endpoint set — your selection won't appear on 8004scan. Go back to the
+        Connections step and add an https://…/api/mcp URL.
       </p>
 
       <section v-if="(catalog?.actions ?? []).length" class="ability-group">
@@ -602,9 +643,9 @@ function openChat() {
       </section>
 
       <div class="nav">
-        <button type="button" class="btn ghost" @click="phase = 'env'">← Back</button>
+        <button type="button" class="btn ghost" @click="phase = 'connections'">← Back</button>
         <div class="nav-end">
-          <span class="nav-note">Step 2 of 3</span>
+          <span class="nav-note">Step 3 of 4</span>
           <button
             type="button"
             class="btn primary"
@@ -617,7 +658,7 @@ function openChat() {
       </div>
     </div>
 
-    <!-- OASF domains & skills (step 3) -->
+    <!-- OASF domains & skills (step 4) -->
     <div v-else-if="phase === 'oasf'" ref="bodyRef" class="body">
       <div class="panel-head">
           <div>
@@ -693,7 +734,7 @@ function openChat() {
       <div class="nav">
         <button type="button" class="btn ghost" @click="phase = 'configure'">← Back</button>
         <div class="nav-end">
-          <span class="nav-note">Step 3 of 3</span>
+          <span class="nav-note">Step 4 of 4</span>
           <button
             type="button"
             class="btn primary"

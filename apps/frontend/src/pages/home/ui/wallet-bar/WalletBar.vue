@@ -3,13 +3,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, unref, watch } fro
 import { useAccount, useBalance, useConfig, useSwitchChain } from '@wagmi/vue'
 import { useWeb3Auth, useWeb3AuthConnect, useWeb3AuthDisconnect } from '@web3auth/modal/vue'
 import { formatEther } from 'viem'
-import { ensureChain, getInjectedChainId } from '@/shared/lib'
+import { ensureChain, getWalletChainId } from '@/shared/lib'
 import { setThemePreference, themePreference, type ThemePreference } from '@/shared/lib'
 import { SUPPORTED_NETWORKS, findNetwork, isSupportedChain } from '@/shared/config'
 import { UserIcon } from '@/shared/ui'
 
 const wagmiConfig = useConfig()
-const { address, chainId: accountChainId, status: accountStatus } = useAccount()
+const { address, chainId: accountChainId, connector, status: accountStatus } = useAccount()
 const { isInitialized, initError } = useWeb3Auth()
 const { connect, isConnected, loading: connectLoading } = useWeb3AuthConnect()
 const { disconnect, loading: disconnectLoading } = useWeb3AuthDisconnect()
@@ -38,6 +38,7 @@ const menuOpen = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
 const faucetCopied = ref(false)
 let faucetTimer: ReturnType<typeof setTimeout> | undefined
+let offChainChange: (() => void) | undefined
 
 async function refreshWalletChain() {
   if (!isConnected.value) {
@@ -45,7 +46,7 @@ async function refreshWalletChain() {
     return
   }
   try {
-    walletChainId.value = await getInjectedChainId()
+    walletChainId.value = await getWalletChainId(wagmiConfig)
   } catch {
     walletChainId.value = accountChainId.value
   }
@@ -59,6 +60,25 @@ watch(isConnected, (connected) => {
   if (!connected) menuOpen.value = false
 })
 
+function onChainChange() {
+  void refreshWalletChain()
+}
+
+/** Listen to the live `chainChanged` event; wagmi's cached id can stay stale. */
+function bindChainListener() {
+  offChainChange?.()
+  const active = connector.value
+  if (!active) {
+    offChainChange = undefined
+    return
+  }
+  active.emitter.on('change', onChainChange)
+  offChainChange = () => active.emitter.off('change', onChainChange)
+  void refreshWalletChain()
+}
+
+watch(connector, bindChainListener, { immediate: true })
+
 onMounted(() => {
   void refreshWalletChain()
   document.addEventListener('pointerdown', onDocPointerDown)
@@ -66,6 +86,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  offChainChange?.()
   document.removeEventListener('pointerdown', onDocPointerDown)
   document.removeEventListener('keydown', onDocKeydown)
   if (faucetTimer) clearTimeout(faucetTimer)
@@ -130,13 +151,19 @@ const themeLabel = computed(
 
 const wrongNetwork = computed(() => isConnected.value && !isSupportedChain(activeChainId.value))
 
-const eth = useBalance({ address: address })
+const eth = useBalance({
+  address,
+  chainId: activeChainId,
+  query: { enabled: computed(() => isSupportedChain(activeChainId.value) && !!address.value) },
+})
+const nativeSymbol = computed(() => activeNetwork.value?.nativeCurrency?.symbol ?? 'ETH')
 const ethDisplay = computed(() => {
   if (!isConnected.value || !address.value) return null
+  if (!isSupportedChain(activeChainId.value)) return null
   if (unref(eth.isFetching) && unref(eth.data) === undefined) return '…'
   const d = unref(eth.data)
   if (d?.value === undefined) return null
-  return `${Number(formatEther(d.value)).toPrecision(5)} ETH`
+  return `${Number(formatEther(d.value)).toPrecision(5)} ${nativeSymbol.value}`
 })
 
 async function onSignIn() {
@@ -243,7 +270,6 @@ async function onChainPicked(event: Event) {
             <div class="panel-hero">
               <p class="panel-kicker">Balance</p>
               <p class="panel-balance mono">{{ ethDisplay ?? '—' }}</p>
-              <p class="panel-network" :class="{ warn: wrongNetwork }">{{ chainLabel }}</p>
             </div>
 
             <div class="panel-body">

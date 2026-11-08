@@ -1,10 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
-import { DEMO_AGENT, gotoWithAgent, openCreateDialog, setupOffline } from "./helpers";
+import { DEMO_AGENT, MOCK_CATALOG, gotoWithAgent, openCreateDialog, setupOffline } from "./helpers";
 
 async function toConfigure(page: import("@playwright/test").Page) {
   await openCreateDialog(page);
   await page.getByTestId("create-name-input").fill("my-agent");
   await page.getByTestId("create-name-continue").click();
+  await page.getByTestId("create-connections-continue").click();
   await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
 }
 
@@ -19,6 +20,10 @@ test.describe("create agent wizard", () => {
     await expect(page.getByTestId("create-owner-address")).toHaveText(
       "0x9999999999999999999999999999999999999999",
     );
+    // the app's signer is the creator
+    await expect(page.getByTestId("create-creator-address")).toHaveText(
+      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
 
     const input = page.getByTestId("create-name-input");
     const next = page.getByTestId("create-name-continue");
@@ -29,9 +34,9 @@ test.describe("create agent wizard", () => {
     await expect(next).toBeDisabled();
     await input.fill("good-name_1.x");
     await expect(next).toBeEnabled();
-    // Enter key advances too
+    // Enter key advances to the connections step
     await input.press("Enter");
-    await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
+    await expect(page.getByTestId("create-web-endpoint")).toBeVisible();
   });
 
   test("shows a banner when catalog fails to load", async ({ page }) => {
@@ -39,6 +44,24 @@ test.describe("create agent wizard", () => {
     await gotoWithAgent(page);
     await openCreateDialog(page);
     await expect(page.getByTestId("create-load-error")).toContainText("catalog boom");
+  });
+
+  test("identity card shows the network as a select while the catalog loads", async ({ page }) => {
+    await setupOffline(page, {});
+    // Slow catalog: the card must still render the compact select, not a chip.
+    await page.route("**/api/catalog", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(MOCK_CATALOG),
+      });
+    });
+    await gotoWithAgent(page);
+    await openCreateDialog(page);
+    const select = page.getByTestId("create-network");
+    await expect(select).toBeVisible();
+    await expect(page.locator('[data-testid="agent-card-network"].issued-chip')).toHaveCount(0);
   });
 
   test("an action is mutually exclusive with the tools it bundles", async ({ page }) => {
@@ -147,6 +170,7 @@ test.describe("create agent wizard", () => {
 
     await page.getByTestId("create-name-input").fill("my-agent");
     await page.getByTestId("create-name-continue").click();
+    await page.getByTestId("create-connections-continue").click();
     await page.getByRole("button", { name: "Next →" }).last().click();
     await page.getByTestId("create-dialog").getByRole("button", { name: "Create agent" }).click();
     await expect(page.getByText("Agent created")).toBeVisible({ timeout: 15000 });
@@ -236,7 +260,9 @@ test.describe("create agent wizard", () => {
     await expect(page.getByTestId("create-oasf-domain-6")).toBeVisible();
   });
 
-  test("Back buttons navigate configure <-> oasf <-> env", async ({ page }) => {
+  test("Back buttons navigate configure <-> oasf <-> connections <-> identity", async ({
+    page,
+  }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
     await toConfigure(page);
@@ -245,23 +271,28 @@ test.describe("create agent wizard", () => {
     await page.getByRole("button", { name: "← Back" }).click();
     await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
     await page.getByRole("button", { name: "← Back" }).click();
+    await expect(page.getByTestId("create-web-endpoint")).toBeVisible();
+    await page.getByRole("button", { name: "← Back" }).click();
     await expect(page.getByTestId("create-name-input")).toBeVisible();
   });
 
-  test("step 1 sends prefilled web/email services with creation", async ({ page }) => {
+  test("connections step sends prefilled web/email services with creation", async ({ page }) => {
     const created: unknown[] = [];
     await setupOffline(page, { capture: { create: created } });
     await gotoWithAgent(page);
     await openCreateDialog(page);
+    await page.getByTestId("create-name-input").fill("my-agent");
+    await page.getByTestId("create-name-continue").click();
     await expect(page.getByTestId("create-web-endpoint")).toHaveValue("https://example.com");
     await expect(page.getByTestId("create-email-endpoint")).toHaveValue("e@mail.fun");
     // MCP/A2A are prefilled — clear them to test web/email-only payload
     await expect(page.getByTestId("create-mcp-endpoint")).toHaveValue(/\/api\/mcp$/);
-    await expect(page.getByTestId("create-a2a-endpoint")).toHaveValue(/\/api\/a2a$/);
+    await expect(page.getByTestId("create-a2a-endpoint")).toHaveValue(
+      /\/api\/a2a\?agent=my-agent$/,
+    );
     await page.getByTestId("create-mcp-endpoint").fill("");
     await page.getByTestId("create-a2a-endpoint").fill("");
-    await page.getByTestId("create-name-input").fill("my-agent");
-    await page.getByTestId("create-name-continue").click();
+    await page.getByTestId("create-connections-continue").click();
     await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
     await page.getByRole("button", { name: "Next →" }).last().click();
     await page.getByTestId("create-dialog").getByRole("button", { name: "Create agent" }).click();
@@ -279,13 +310,16 @@ test.describe("create agent wizard", () => {
     await setupOffline(page, { capture: { create: created } });
     await gotoWithAgent(page);
     await openCreateDialog(page);
-    // MCP/A2A are prefilled — verify then override with custom hosts
-    await expect(page.getByTestId("create-mcp-endpoint")).toHaveValue(/\/api\/mcp$/);
-    await expect(page.getByTestId("create-a2a-endpoint")).toHaveValue(/\/api\/a2a$/);
-    await page.getByTestId("create-mcp-endpoint").fill("https://my-host/mcp");
-    await page.getByTestId("create-a2a-endpoint").fill("https://my-host/api/a2a");
     await page.getByTestId("create-name-input").fill("my-agent");
     await page.getByTestId("create-name-continue").click();
+    // MCP/A2A are prefilled — verify then override with custom hosts
+    await expect(page.getByTestId("create-mcp-endpoint")).toHaveValue(/\/api\/mcp$/);
+    await expect(page.getByTestId("create-a2a-endpoint")).toHaveValue(
+      /\/api\/a2a\?agent=my-agent$/,
+    );
+    await page.getByTestId("create-mcp-endpoint").fill("https://my-host/mcp");
+    await page.getByTestId("create-a2a-endpoint").fill("https://my-host/api/a2a");
+    await page.getByTestId("create-connections-continue").click();
     await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
     await page.getByTestId("create-action-transfer-eth").check();
     await page.getByRole("button", { name: "Next →" }).last().click();
@@ -312,8 +346,11 @@ test.describe("create agent wizard", () => {
     const x402 = page.getByTestId("create-x402");
 
     await page.getByTestId("create-name-input").fill("my-agent");
+    await page.getByTestId("create-name-continue").click();
     await expect(a2a).toHaveValue(/\/api\/a2a\?agent=my-agent$/);
+    await page.getByRole("button", { name: "← Back" }).click();
     await page.getByTestId("create-name-input").fill("renamed");
+    await page.getByTestId("create-name-continue").click();
     await expect(a2a).toHaveValue(/\/api\/a2a\?agent=renamed$/);
 
     // No facilitator in the mocked catalog → off by default, with the reason shown.
@@ -326,7 +363,7 @@ test.describe("create agent wizard", () => {
     await a2a.fill("https://my-host/api/a2a");
     await x402.check();
 
-    await page.getByTestId("create-name-continue").click();
+    await page.getByTestId("create-connections-continue").click();
     await page.getByRole("button", { name: "Next →" }).last().click();
     await page.getByTestId("create-dialog").getByRole("button", { name: "Create agent" }).click();
     await expect(page.getByText("Agent created")).toBeVisible({ timeout: 15000 });
@@ -340,10 +377,11 @@ test.describe("create agent wizard", () => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
     await openCreateDialog(page);
-    // Clear prefilled MCP to trigger missing-endpoint warning
-    await page.getByTestId("create-mcp-endpoint").fill("");
     await page.getByTestId("create-name-input").fill("my-agent");
     await page.getByTestId("create-name-continue").click();
+    // Clear prefilled MCP to trigger missing-endpoint warning
+    await page.getByTestId("create-mcp-endpoint").fill("");
+    await page.getByTestId("create-connections-continue").click();
     await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
     await page.getByTestId("create-action-transfer-eth").check();
     await expect(page.getByTestId("create-mcp-warning-configure")).toContainText("No MCP endpoint");
@@ -388,10 +426,6 @@ test.describe("create agent — step 1 image & description", () => {
     await page.getByTestId("create-name-input").fill("e2e-agent");
     await page.getByTestId("create-description-input").fill("A helpful e2e agent");
 
-    // Services are prefilled in step 1
-    await expect(page.getByTestId("create-web-endpoint")).toHaveValue("https://example.com");
-    await expect(page.getByTestId("create-email-endpoint")).toHaveValue("e@mail.fun");
-
     await page.getByTestId("create-image-input").setInputFiles({
       name: "avatar.png",
       mimeType: "image/png",
@@ -410,6 +444,11 @@ test.describe("create agent — step 1 image & description", () => {
     const next = page.getByTestId("create-name-continue");
     await expect(next).toBeEnabled();
     await next.click();
+
+    // Services are prefilled on the connections step
+    await expect(page.getByTestId("create-web-endpoint")).toHaveValue("https://example.com");
+    await expect(page.getByTestId("create-email-endpoint")).toHaveValue("e@mail.fun");
+    await page.getByTestId("create-connections-continue").click();
     await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
 
     // Walk to the last step and submit
@@ -459,6 +498,32 @@ test.describe("create agent — step 1 image & description", () => {
     );
   });
 
+  test("avatar opens the OS file picker (empty and with a staged image)", async ({ page }) => {
+    await setupOffline(page, {});
+    await gotoWithAgent(page);
+    await openCreateDialog(page);
+
+    const [emptyChooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.getByTestId("create-image-dropzone").click(),
+    ]);
+    expect(emptyChooser.isMultiple()).toBe(false);
+
+    await page.getByTestId("create-image-input").setInputFiles({
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("89504e470d0a1a0a", "hex"),
+    });
+    await expect(page.getByTestId("create-image-preview")).toBeVisible();
+
+    // Replacing a staged image must hit the input, not the remove button.
+    await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.getByTestId("create-image-preview").click(),
+    ]);
+    await expect(page.getByTestId("create-image-preview")).toBeVisible();
+  });
+
   test("rejects unsupported file types without uploading", async ({ page }) => {
     const seen = { value: false };
     await setupOffline(page, {});
@@ -482,6 +547,7 @@ test.describe("create agent — step 1 image & description", () => {
 
     await page.getByTestId("create-name-input").fill("e2e-agent");
     await page.getByTestId("create-name-continue").click();
+    await page.getByTestId("create-connections-continue").click();
     const dialog = page.getByTestId("create-dialog");
     await dialog.getByRole("button", { name: "Next →" }).click();
     await dialog.getByRole("button", { name: "Create agent" }).click();

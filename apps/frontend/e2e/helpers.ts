@@ -9,6 +9,7 @@ export const DEMO_AGENT = {
   agentId: "421614:42",
   agentURI: "ipfs://QmTest123",
   owners: ["0x2222222222222222222222222222222222222222"],
+  creator: "0x4444444444444444444444444444444444444444",
   operators: ["0x1111111111111111111111111111111111111111"],
   actions: ["transfer-eth"],
   tools: ["send_eth", "get_token_balance"],

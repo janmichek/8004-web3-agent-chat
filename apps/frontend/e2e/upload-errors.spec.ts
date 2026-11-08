@@ -19,6 +19,7 @@ async function stageImageAndSubmit(page: import("@playwright/test").Page, name: 
   await expect(page.getByTestId("create-image-preview")).toBeVisible();
   await expect(page.getByTestId("create-image-ready")).toBeAttached();
   await page.getByTestId("create-name-continue").click();
+  await page.getByTestId("create-connections-continue").click();
   await expect(page.getByTestId("create-action-transfer-eth")).toBeVisible();
   const dialog = page.getByTestId("create-dialog");
   await dialog.getByRole("button", { name: "Next →" }).click();

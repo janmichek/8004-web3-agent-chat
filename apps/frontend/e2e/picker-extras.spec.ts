@@ -18,6 +18,8 @@ test.describe("agent picker extras", () => {
     const info = page.getByRole("dialog", { name: "Agent details" });
     await expect(info).toContainText("#42");
     await expect(info).toContainText("0x1111…1111");
+    await expect(info.getByTestId("create-owner-address")).toHaveText(DEMO_AGENT.owners[0]);
+    await expect(info.getByTestId("create-creator-address")).toHaveText(DEMO_AGENT.creator);
     await expect(info).toContainText("ETH");
     await expect(info.locator(".chip", { hasText: "send_eth" })).toBeVisible();
     await expect(info.locator(".chip", { hasText: "transfer-eth" })).toBeVisible();

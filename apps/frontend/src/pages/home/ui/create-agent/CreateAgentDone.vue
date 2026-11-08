@@ -84,11 +84,7 @@ async function copyPrivateKey() {
       <span>· live on {{ networkName }}</span>
     </p>
 
-    <AgentCard
-      :agent="cardAgent"
-      :balance="`${balance} ETH`"
-      status="live"
-    />
+    <AgentCard :agent="cardAgent" status="live" />
 
     <ol class="flow">
       <li
@@ -113,7 +109,7 @@ async function copyPrivateKey() {
         <div class="flow-body">
           <div class="flow-head">
             <div>
-              <p class="flow-title">Fund wallet</p>
+              <p class="flow-title">Fund agent's wallet</p>
               <p class="flow-sub">
                 {{
                   funded
