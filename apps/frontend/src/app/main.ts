@@ -9,18 +9,22 @@ import { initTheme } from "@/shared/lib";
 initTheme();
 
 /**
- * Keep the app shell exactly as tall as the visible viewport.
+ * Keep the app shell exactly on top of the visible viewport.
  *
- * `100dvh` is usually fine, but it can lag behind the real visible height
+ * `100dvh` is usually fine, but it can lag behind the real visible area
  * (mobile toolbars/keyboard, embedded browsers), leaving a strip of empty
  * background below the chat composer until the next reload. visualViewport is
- * the authoritative "what the user can actually see" size, so mirror it into
- * --app-height and use that for the shell height.
+ * the authoritative "what the user can actually see" rect, so mirror both its
+ * height and its offset into CSS: a panned visual viewport (offsetTop > 0)
+ * must shift the shell down, otherwise the shell ends above the visible bottom.
  */
 function syncAppHeight() {
   const viewport = window.visualViewport;
   const height = viewport?.height ?? window.innerHeight;
-  document.documentElement.style.setProperty("--app-height", `${height}px`);
+  const offsetTop = viewport?.offsetTop ?? 0;
+  const style = document.documentElement.style;
+  style.setProperty("--app-height", `${height}px`);
+  style.setProperty("--app-offset", `${offsetTop}px`);
 }
 
 syncAppHeight();

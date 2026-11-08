@@ -189,8 +189,17 @@ test.describe("fund agent", () => {
     await openAgentDetails(page);
     const signIn = page.getByTestId("fund-sign-in");
     await expect(signIn).toBeVisible();
-    await expect(signIn).toContainText("Sign in");
+    await expect(signIn).toBeEnabled();
+    // Exact label, so the "Sign in unavailable" fallback cannot satisfy this.
+    await expect(signIn).toHaveText("Sign in to fund this agent");
     await expect(page.getByTestId("fund-amount")).toHaveCount(0);
+
+    // Clicking must actually start the Web3Auth flow, not merely render a label.
+    // The container is `display: contents`, so assert a rendered modal option.
+    await signIn.click();
+    await expect(
+      page.locator("#w3a-parent-container").getByText("Continue with Email/Phone"),
+    ).toBeVisible();
   });
 
   test("validates amount: only (0, 1] enables Send", async ({ page }) => {

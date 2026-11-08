@@ -202,10 +202,14 @@ textarea:focus {
 }
 
 #app {
-  height: 100vh;
-  /* --app-height is kept in sync with visualViewport (see main.ts). It is more
-     reliable than 100dvh, which can stay stale after the viewport changes and
-     leave the shell shorter than the window (empty space under the composer). */
+  /* --app-height/--app-offset are kept in sync with visualViewport (see
+     main.ts). They are more reliable than 100dvh, which can stay stale after
+     the viewport changes, and they also follow a panned visual viewport so the
+     shell never ends above the visible bottom. */
+  position: fixed;
+  top: var(--app-offset, 0px);
+  right: 0;
+  left: 0;
   height: var(--app-height, 100dvh);
   overflow: hidden;
 }

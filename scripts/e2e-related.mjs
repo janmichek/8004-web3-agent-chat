@@ -6,7 +6,9 @@
 //   npm run test:e2e:related -- --all        # escape hatch: full offline suite
 //   E2E_BASE=origin/main npm run test:e2e:related
 //
-// Any extra flags after `--` are forwarded to Playwright.
+// Any unrecognised flag is forwarded to Playwright, so `-- --grep foo` works.
+// The `--` separator is optional: npm already strips the one used to reach the
+// script, and a leftover literal `--` is skipped.
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -91,18 +93,33 @@ const RULES = [
 ];
 
 const argv = process.argv.slice(2);
-const passthroughAt = argv.indexOf("--");
-const ownArgs = passthroughAt === -1 ? argv : argv.slice(0, passthroughAt);
-const playwrightArgs = passthroughAt === -1 ? [] : argv.slice(passthroughAt + 1);
+const playwrightArgs = [];
+let runAll = false;
+let listOnly = false;
+let base = process.env.E2E_BASE ?? "HEAD";
 
-const runAll = ownArgs.includes("--all");
-const listOnly = ownArgs.includes("--list");
-const baseIndex = ownArgs.indexOf("--base");
-if (baseIndex !== -1 && !ownArgs[baseIndex + 1]) {
-  console.error("--base needs a git ref, e.g. --base origin/main");
-  process.exit(1);
+for (let i = 0; i < argv.length; i += 1) {
+  const arg = argv[i];
+  // npm consumes its own `--`; keep skipping one if the script is nested.
+  if (arg === "--") continue;
+  if (arg === "--all") {
+    runAll = true;
+  } else if (arg === "--list") {
+    listOnly = true;
+  } else if (arg === "--base") {
+    const value = argv[i + 1];
+    if (!value || value === "--") {
+      console.error("--base needs a git ref, e.g. --base origin/main");
+      process.exit(1);
+    }
+    base = value;
+    i += 1;
+  } else if (arg.startsWith("--base=")) {
+    base = arg.slice("--base=".length);
+  } else {
+    playwrightArgs.push(arg);
+  }
 }
-const base = baseIndex !== -1 ? ownArgs[baseIndex + 1] : (process.env.E2E_BASE ?? "HEAD");
 
 function git(args) {
   return execFileSync("git", args, { encoding: "utf8" }).trim();
