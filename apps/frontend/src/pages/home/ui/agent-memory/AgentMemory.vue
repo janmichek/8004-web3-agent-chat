@@ -13,11 +13,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   recall: [session: MemorySession]
-  stats: []
 }>()
 
 const selectedId = ref<string | null>(null)
-const { memory, loading, error } = useAgentMemory(() => props.agent, () => props.refreshKey)
+const { memory, sessions, loading, error } = useAgentMemory(() => props.agent, () => props.refreshKey)
 
 watch(() => props.newChatKey, () => {
   selectedId.value = null
@@ -43,24 +42,6 @@ function onRecall(s: MemorySession) {
 
 <template>
   <section class="card memory" data-testid="agent-memory">
-    <div class="convos-top">
-      <button
-        type="button"
-        class="icon-btn"
-        data-testid="chat-stats-btn"
-        aria-label="Chat stats"
-        title="Chat stats"
-        @click="emit('stats')"
-      >
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 20V10" />
-          <path d="M10 20V4" />
-          <path d="M16 20v-7" />
-          <path d="M22 20H2" />
-        </svg>
-      </button>
-    </div>
-
     <p v-if="!agent?.name" class="hint">Select an agent to see its on-disk memory.</p>
 
     <template v-else>
@@ -72,11 +53,11 @@ function onRecall(s: MemorySession) {
         <MemoryEmptyState v-if="memory.empty" :agent-name="agent.name" :memory="memory" />
 
         <template v-else>
-          <div v-if="!memory.sessions.length" class="hint">No sessions detected.</div>
+          <div v-if="!sessions.length" class="hint">No sessions detected.</div>
 
           <div v-else class="session-list" role="list">
             <button
-              v-for="s in memory.sessions"
+              v-for="s in sessions"
               :key="s.id"
               role="listitem"
               type="button"
@@ -88,7 +69,13 @@ function onRecall(s: MemorySession) {
             >
               <div class="session-preview" :title="s.preview">“{{ s.preview }}”</div>
               <div class="session-head">
-                <span class="session-time mono">{{ timeAgo(s.startedAt) }}</span>
+                <span class="session-time mono">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v5l3 2" />
+                  </svg>
+                  {{ timeAgo(s.startedAt) }}
+                </span>
               </div>
             </button>
           </div>
@@ -97,8 +84,6 @@ function onRecall(s: MemorySession) {
     </template>
   </section>
 </template>
-
-<style scoped src="@/shared/ui/icon-button.css"></style>
 
 <style scoped src="../memory/memory-status.css"></style>
 
@@ -119,8 +104,6 @@ function onRecall(s: MemorySession) {
 .mono { font-family: var(--font-mono, ui-monospace, monospace); }
 
 /* 1px top room so the hover lift (translateY(-1px)) isn't clipped by overflow. */
-.convos-top { display: flex; flex-shrink: 0; padding-top: 1px; justify-content: flex-end; }
-
 .session-list {
   display: flex;
   flex-direction: column;
@@ -137,22 +120,23 @@ function onRecall(s: MemorySession) {
 .session-card {
   display: flex;
   flex-direction: column;
-  gap: 0.28rem;
-  padding: 0.7rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--bg);
+  gap: 0.4rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(var(--shadow-rgb) / 0.04);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
   width: 100%;
   font: inherit;
   color: inherit;
 }
 
 .session-card:hover {
-  border-color: color-mix(in oklab, var(--accent) 28%, var(--border));
-  background: color-mix(in oklab, var(--accent) 5%, var(--bg));
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
+  box-shadow: 0 4px 12px rgb(var(--shadow-rgb) / 0.09);
   transform: translateY(-1px);
 }
 
@@ -163,8 +147,9 @@ function onRecall(s: MemorySession) {
 
 .session-card.selected {
   border-color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 9%, var(--bg));
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--accent) 22%, transparent),
+    0 4px 12px rgb(var(--shadow-rgb) / 0.09);
 }
 
 .session-head {
@@ -174,20 +159,21 @@ function onRecall(s: MemorySession) {
 }
 
 .session-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.68rem;
   color: var(--muted);
 }
 
 .session-preview {
-  font-size: 0.78rem;
-  color: color-mix(in oklab, var(--muted) 90%, var(--ink));
-  line-height: 1.3;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.8rem;
+  color: color-mix(in oklab, var(--ink) 75%, var(--muted));
+  line-height: 1.4;
   overflow: hidden;
-  text-overflow: ellipsis;
-  background: color-mix(in oklab, var(--surface) 70%, var(--bg));
-  border: 1px dashed color-mix(in oklab, var(--border) 70%, transparent);
-  padding: 0.3rem 0.45rem;
-  border-radius: 0.35rem;
+  overflow-wrap: anywhere;
 }
 </style>

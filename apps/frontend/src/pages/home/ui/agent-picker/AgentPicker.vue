@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, unref, watch } from 'vue'
 import { useAccount, useBalance, useConfig } from '@wagmi/vue'
 import { getAccount, getBalance, sendTransaction, waitForTransactionReceipt } from '@wagmi/vue/actions'
+import { useWeb3Auth, useWeb3AuthConnect } from '@web3auth/modal/vue'
 import { formatEther, isAddress, parseEther, type Address } from 'viem'
 import { errorLine, friendlyFundError, shortAddr, e2eConnectedAddress, e2eSendTx } from '@/shared/lib'
 import { ensureChain, prepareNativeTransfer } from '@/shared/lib'
@@ -26,6 +27,16 @@ const props = defineProps<{
 
 const wagmiConfig = useConfig()
 const { address: wagmiAddress } = useAccount()
+const { isInitialized, initError } = useWeb3Auth()
+const { connect, loading: connectLoading } = useWeb3AuthConnect()
+
+const signInDisabled = computed(
+  () => connectLoading.value || !isInitialized.value || !!initError.value,
+)
+
+async function signIn() {
+  await connect()
+}
 
 /** Playwright can set window.__E2E_CONNECTED_ADDRESS to simulate a connected wallet. */
 const connectedAddress = computed<Address | undefined>(
@@ -302,10 +313,12 @@ onMounted(() => {
         :disabled="!agent"
         @click="showDetails = true"
       >
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 11v5" />
-          <circle cx="12" cy="8" r="0.6" fill="currentColor" />
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+          <circle cx="8" cy="11" r="2" />
+          <path d="M5 16.25c.45-1.6 1.55-2.4 3-2.4s2.55.8 3 2.4" />
+          <path d="M14 10.25h5" />
+          <path d="M14 13.75h5" />
         </svg>
       </button>
     </div>
@@ -315,19 +328,30 @@ onMounted(() => {
     </p>
   </div>
 
-  <ModalDialog v-if="showDetails && agent" :title="agent.name" label="Agent details" size="lg" @close="showDetails = false">
+  <ModalDialog v-if="showDetails && agent" hide-header label="Agent details" size="lg" @close="showDetails = false">
+    <!-- The identity card is the modal's own header, so it sits directly in the dialog body. -->
+    <AgentCard
+      v-if="agent"
+      :agent="agent"
+      :status="agent.agentId ? 'live' : undefined"
+      frameless
+    />
+
     <section class="card" data-testid="agent-info-section">
     <div v-if="agent" class="details">
-    <AgentCard
-      :agent="agent"
-      :balance="ethDisplay"
-      :status="agent.agentId ? 'live' : undefined"
-    />
     <div class="facts" data-testid="agent-facts">
       <div v-if="agent.agentId" class="fact rating">
         <svg class="fact-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9 6.8 19.7l1-5.9L3.5 9.7l5.9-.8z" fill="currentColor" /></svg>
         <span class="fact-k">Rating</span>
         <span class="fact-v mono" data-testid="agent-rating">{{ ratingLoading ? '…' : (ratingText || '—') }}</span>
+      </div>
+      <div v-if="addr" class="fact balance" data-testid="agent-balance-fact">
+        <svg class="fact-ico" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2.4l5.9 9.5-5.9 3.5-5.9-3.5z" fill="currentColor" opacity="0.85" />
+          <path d="M12 17.1l5.9-3.9L12 21.6 6.1 13.2z" fill="currentColor" />
+        </svg>
+        <span class="fact-k">Balance</span>
+        <span class="fact-v mono" data-testid="agent-balance">{{ ethDisplay }}</span>
       </div>
       <div v-if="agent.x402support" class="fact x402" data-testid="agent-x402" :title="x402Title(agent.x402Mode)">
         <svg class="fact-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z" fill="currentColor" /></svg>
@@ -362,7 +386,7 @@ onMounted(() => {
     </div>
 
     <div class="group">
-      <h4 class="group-title">Tools <span class="count">{{ agent.tools.length }}</span></h4>
+      <h4 class="group-title">Tools</h4>
       <div v-if="agent.tools.length" class="chips">
         <span v-for="t in agent.tools" :key="t" class="chip mono tool"><i aria-hidden="true" />{{ t }}</span>
       </div>
@@ -370,7 +394,7 @@ onMounted(() => {
     </div>
 
     <div class="group">
-      <h4 class="group-title">Actions <span class="count">{{ agent.actions.length }}</span></h4>
+      <h4 class="group-title">Actions</h4>
       <div v-if="agent.actions.length" class="chips">
         <span v-for="a in agent.actions" :key="a" class="chip mono action"><i aria-hidden="true" />{{ a }}</span>
       </div>
@@ -380,8 +404,9 @@ onMounted(() => {
 
     </section>
 
-    <section class="card" data-testid="fund-agent-section">
-      <h3 class="card-title">Fund Agent</h3>
+    <div class="card-row">
+      <section class="card" data-testid="fund-agent-section">
+        <h3 class="card-title">Fund Agent</h3>
         <p v-if="!agent" class="hint">Select an agent to fund it.</p>
         <template v-else>
           <div v-if="connectedAddress" class="from-wallet">
@@ -398,7 +423,22 @@ onMounted(() => {
               <span v-else :title="connectedAddress">{{ shortAddr(connectedAddress) }}</span>
             </dd>
           </div>
-          <p v-else class="hint">Connect a wallet to fund this agent.</p>
+          <button
+            v-else-if="addr"
+            type="button"
+            class="btn primary"
+            data-testid="fund-sign-in"
+            :disabled="signInDisabled"
+            @click="signIn"
+          >
+            {{
+              connectLoading
+                ? 'Signing in…'
+                : initError
+                  ? 'Sign in unavailable'
+                  : 'Sign in to fund this agent'
+            }}
+          </button>
           <p v-if="!addr" class="hint">Select an agent with a wallet address.</p>
           <template v-else-if="connectedAddress">
             <form class="form" @submit.prevent="fund">
@@ -411,24 +451,31 @@ onMounted(() => {
             <p v-if="fundStatusText" class="status" data-testid="fund-status" :class="fundStatusKind">{{ fundStatusText }}</p>
           </template>
         </template>
-    </section>
+      </section>
 
-    <section v-if="agent" class="card danger-zone" data-testid="danger-zone-section">
-      <h3 class="card-title">Danger Zone</h3>
-      <div data-testid="agent-danger-section">
-        <button
-          type="button"
-          class="btn ghost small danger"
-          data-testid="picker-delete"
-          :disabled="deleteBusy"
-          :title="deleteConfirm ? 'Click again to confirm' : `Delete agent ${agent.name}`"
-          @click="removeAgent"
-        >
-          {{ deleteBusy ? 'Deleting…' : deleteConfirm ? 'Confirm delete' : 'Delete' }}
-        </button>
-        <p v-if="deleteStatusText" class="status" data-testid="delete-status">{{ deleteStatusText }}</p>
-      </div>
-    </section>
+      <section v-if="agent" class="card danger-zone" data-testid="danger-zone-section">
+        <h3 class="card-title">Danger Zone</h3>
+        <div data-testid="agent-danger-section">
+          <button
+            type="button"
+            class="btn ghost small danger"
+            data-testid="picker-delete"
+            :disabled="deleteBusy"
+            :title="deleteConfirm ? 'Click again to confirm' : `Delete agent ${agent.name}`"
+            @click="removeAgent"
+          >
+            {{ deleteBusy ? 'Deleting…' : deleteConfirm ? 'Confirm delete' : 'Delete' }}
+          </button>
+          <p v-if="deleteStatusText" class="status" data-testid="delete-status">{{ deleteStatusText }}</p>
+        </div>
+      </section>
+    </div>
+
+    <template #footer>
+      <button type="button" class="btn ghost" data-testid="dialog-close" @click="showDetails = false">
+        Close
+      </button>
+    </template>
   </ModalDialog>
 </template>
 
@@ -436,29 +483,36 @@ onMounted(() => {
 
 <style scoped>
 .picker { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
-.picker-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.picker-row { display: flex; align-items: stretch; gap: 0.5rem; min-width: 0; }
 .picker-row > :first-child { flex: 1; min-width: 0; }
+/* Borderless: the icon itself is the affordance, tinted on hover/active. */
 .details-btn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   width: 2.4rem;
   height: 2.4rem;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 0.5rem;
-  background: var(--surface);
+  background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.details-btn:hover:not(:disabled) {
+.details-btn:hover:not(:disabled),
+.details-btn:focus-visible {
   color: var(--accent);
-  border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
-  background: color-mix(in oklab, var(--accent) 8%, var(--surface));
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
+.details-btn:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+.details-btn:active:not(:disabled) { color: var(--accent); }
 .details-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .card-title { margin: 0; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
 
@@ -541,6 +595,7 @@ onMounted(() => {
 }
 .fact:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -18px var(--tone, var(--accent)); }
 .fact.rating { --tone: #f5b301; }
+.fact.balance { --tone: #4f8cff; }
 .fact.x402 { --tone: var(--ok-ink); }
 .fact-ico {
   position: absolute;
@@ -602,7 +657,10 @@ a.fact-v:hover { text-decoration: underline; }
 a.chip { text-decoration: none; color: var(--accent); }
 a.chip:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--border)); }
 
-.danger-zone { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; padding-bottom: 0.1rem; }
+.card-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; align-items: start; }
+.card-row > .card { min-width: 0; }
+.danger-zone { display: flex; flex-direction: column; align-items: flex-start; }
+.danger-zone > div { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
 .danger-zone .status { margin: 0; font-size: 0.78rem; color: var(--muted); word-break: break-all; }
 .btn.danger { color: var(--danger-ink); border-color: color-mix(in oklab, var(--danger-ink) 40%, var(--border)); }
 .from-wallet dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }

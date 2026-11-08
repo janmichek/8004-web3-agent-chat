@@ -40,6 +40,21 @@ describe('useAgentMemory', () => {
     expect(loading.value).toBe(false)
   })
 
+  it('exposes sessions newest first', async () => {
+    api.fetchMemory.mockResolvedValue(
+      memoryFixture({
+        sessions: [
+          { id: 'old', startedAt: '2026-01-01T10:00:00.000Z' },
+          { id: 'new', startedAt: '2026-01-02T10:00:00.000Z' },
+          { id: 'mid', startedAt: '2026-01-01T18:00:00.000Z' },
+        ],
+      }),
+    )
+    const agent = ref<AgentSummary | null>(agentFixture('alice'))
+    const { sessions } = useAgentMemory(() => agent.value)
+    await vi.waitFor(() => expect(sessions.value.map((s) => s.id)).toEqual(['new', 'mid', 'old']))
+  })
+
   it('reloads when the refresh key changes', async () => {
     api.fetchMemory.mockResolvedValue(memoryFixture())
     const agent = ref<AgentSummary | null>(agentFixture('alice'))

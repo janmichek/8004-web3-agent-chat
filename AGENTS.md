@@ -8,8 +8,22 @@ ERC-8004 agent chat: Hono/LangChain backend in `src/`, Vue 3 + Vite frontend in 
 npm run check   # typecheck, oxlint, oxfmt, steiger (FSD), fallow dead-code + dupes + health, vitest coverage gate
 ```
 
-Frontend changes also need `npm run frontend:build` and `npm run test:e2e:offline` (run vite on
-`--host 127.0.0.1` first if the Playwright web server times out).
+`npm run check` is the pre-PR gate. While iterating, typecheck/lint the touched files and run only
+the unit tests that cover the change (`npx vitest run <path>`), then run the full gate once before
+handing off.
+
+For frontend changes:
+
+```bash
+npm run frontend:build        # template + type errors
+npm run test:e2e:related      # specs mapped from the current git diff (fast)
+```
+
+`test:e2e:related` falls back to the full offline suite when you touch a global file (`app/`,
+`shared/`, `HomePage.vue`, `index.html`, `e2e/helpers.ts`) or a file it has no mapping for. Use
+`E2E_BASE=origin/main` to cover a whole branch and `-- --list` to see the selection. Run the full
+`npm run test:e2e:offline` before opening a PR. If the Playwright web server times out, start Vite
+on `--host 127.0.0.1` first.
 
 ## Frontend layout (Feature-Sliced Design, `apps/frontend/src`)
 
@@ -47,6 +61,7 @@ Frontend changes also need `npm run frontend:build` and `npm run test:e2e:offlin
 | Steiger (FSD) | `npm run fsd` · `config/steiger.config.ts`                                |
 | fallow        | `npm run dead-code`, `npm run duplicates`, `npm run health` · `config/.fallowrc.json` |
 | Vitest        | `npm run test:unit`, `npm run test:coverage`                       |
+| Playwright    | `npm run test:e2e:related`, `npm run test:e2e:offline` · `config/playwright.config.ts` |
 | Stryker       | `npm run test:mutate` (weekly CI) · `config/stryker.config.json`          |
 | Lighthouse    | `lhci autorun` in the Danger workflow · `config/lighthouserc.json`        |
 | CodeQL        | `.github/workflows/codeql.yml`                                     |

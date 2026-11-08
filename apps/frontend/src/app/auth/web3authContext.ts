@@ -79,7 +79,7 @@ const web3AuthOptions: Web3AuthOptions = {
   chains: [arbitrumSepolia, ethereumSepolia, arbitrumOne, mantleMainnet, mantleSepolia],
   defaultChainId: "0x66eee",
   uiConfig: {
-    appName: "Web3 Agent Chat",
+    appName: "W3AC",
     logoLight: assetUrl("/logo-light.svg"),
     logoDark: assetUrl("/favicon.svg"),
     mode: "auto",

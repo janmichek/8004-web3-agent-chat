@@ -27,9 +27,9 @@ defineProps<{
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.6rem 0.75rem;
-  border: 1px dashed var(--border);
-  border-radius: 0.45rem;
-  background: color-mix(in oklab, var(--bg) 60%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: 0.6rem;
+  background: var(--surface);
 }
 .empty-title { margin: 0; font-size: 0.85rem; font-weight: 600; }
 .hint {

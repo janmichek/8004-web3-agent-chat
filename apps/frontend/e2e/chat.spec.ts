@@ -60,6 +60,48 @@ test.describe("chat composer + thread", () => {
     await expect(page.getByTestId("chat-bubble-agent").first()).toContainText("done");
   });
 
+  test("keeps the composer pinned to the bottom after a reply", async ({ page }) => {
+    await setupOffline(page, {
+      chat: {
+        reply: "done",
+        events: [
+          { type: "tool_call", name: "get_token_balance", args: {} },
+          { type: "tool_result", content: "0.003710247927204 ETH" },
+          { type: "message", content: "done" },
+        ],
+      },
+    });
+    await gotoWithAgent(page);
+    await sendChat(page, "what is my balance?");
+    // The rate card makes the thread tall enough that a content-sized box
+    // would leave a gap under the dock.
+    await expect(page.getByTestId("rate-agent")).toBeVisible();
+
+    const thread = await page.getByTestId("chat-thread").boundingBox();
+    const composer = await page.getByTestId("chat-composer").boundingBox();
+    const viewport = page.viewportSize();
+    expect(thread).not.toBeNull();
+    expect(composer).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    // The thread scrolls above the composer, never below it.
+    expect(composer!.y).toBeGreaterThanOrEqual(thread!.y + thread!.height);
+    // The dock hugs the bottom of the viewport (minus the column padding).
+    expect(viewport!.height - (composer!.y + composer!.height)).toBeLessThan(40);
+
+    // The document itself must never scroll (that slides the header away and
+    // leaves the page background visible under the composer).
+    const pageState = await page.evaluate(() => {
+      const shell = document.querySelector(".shell") as HTMLElement;
+      return {
+        scrollY: window.scrollY,
+        shellHeight: shell.getBoundingClientRect().height,
+        viewportHeight: window.innerHeight,
+      };
+    });
+    expect(pageState.scrollY).toBe(0);
+    expect(pageState.shellHeight).toBeGreaterThanOrEqual(pageState.viewportHeight - 1);
+  });
+
   test("shows rate UI after a successful tool result", async ({ page }) => {
     const tx = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     await setupOffline(page, {

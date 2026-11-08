@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap");
 
 :root {
   --bg: #0b1218;
@@ -23,6 +23,7 @@
   --glow: color-mix(in oklab, var(--accent) 35%, transparent);
   --font-body: "Source Sans 3", "Segoe UI", sans-serif;
   --font-display: "Outfit", "Source Sans 3", sans-serif;
+  --font-brand: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   color-scheme: dark;
 }
@@ -56,6 +57,9 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  /* `clip` (where supported) also blocks programmatic scrolling, so a stray
+     focus()/scrollIntoView can never nudge the app off-screen. */
+  overflow: clip;
 }
 
 body {
@@ -199,7 +203,10 @@ textarea:focus {
 
 #app {
   height: 100vh;
-  height: 100dvh;
+  /* --app-height is kept in sync with visualViewport (see main.ts). It is more
+     reliable than 100dvh, which can stay stale after the viewport changes and
+     leave the shell shorter than the window (empty space under the composer). */
+  height: var(--app-height, 100dvh);
   overflow: hidden;
 }
 

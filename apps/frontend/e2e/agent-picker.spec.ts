@@ -93,6 +93,18 @@ test.describe("agent picker", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
+  test("details modal has no header and closes from its footer", async ({ page }) => {
+    await setupOffline(page, {});
+    await gotoWithAgent(page);
+    await openAgentDetails(page);
+    const dialog = page.getByRole("dialog", { name: "Agent details" });
+    await expect(dialog.locator(".dialog-head")).toHaveCount(0);
+    const close = dialog.getByRole("button", { name: "Close" });
+    await expect(close).toBeVisible();
+    await close.click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
   test("reloads the agent list automatically when the select opens", async ({ page }) => {
     let calls = 0;
     await setupOffline(page, { agents: [DEMO_AGENT] });
@@ -165,6 +177,22 @@ test.describe("agent picker", () => {
 });
 
 test.describe("fund agent", () => {
+  test("offers a sign-in button instead of the funding form when disconnected", async ({
+    page,
+  }) => {
+    // setupOffline defaults to a connected test wallet; blank it out for this case.
+    await page.addInitScript(() => {
+      (window as unknown as { __E2E_CONNECTED_ADDRESS?: string }).__E2E_CONNECTED_ADDRESS = "";
+    });
+    await setupOffline(page, {});
+    await gotoWithAgent(page);
+    await openAgentDetails(page);
+    const signIn = page.getByTestId("fund-sign-in");
+    await expect(signIn).toBeVisible();
+    await expect(signIn).toContainText("Sign in");
+    await expect(page.getByTestId("fund-amount")).toHaveCount(0);
+  });
+
   test("validates amount: only (0, 1] enables Send", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);

@@ -15,7 +15,7 @@ test.describe("agent picker extras", () => {
     await setupOffline(page);
     await gotoWithAgent(page);
     await openAgentDetails(page);
-    const info = page.locator(".details");
+    const info = page.getByRole("dialog", { name: "Agent details" });
     await expect(info).toContainText("#42");
     await expect(info).toContainText("0x1111…1111");
     await expect(info).toContainText("ETH");
@@ -99,7 +99,7 @@ test.describe("agent picker extras", () => {
     await gotoWithAgent(page, "demo");
     await selectAgent(page, "bravo");
     await openAgentDetails(page);
-    await expect(page.locator(".details")).toContainText("#77");
+    await expect(page.getByRole("dialog", { name: "Agent details" })).toContainText("#77");
     await closeDialog(page);
     await page.getByTestId("chat-input").fill("hello bravo");
     await page.getByTestId("chat-send").click();

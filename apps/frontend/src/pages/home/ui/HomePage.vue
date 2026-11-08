@@ -24,7 +24,7 @@ const pendingSelect = ref<string | null>(null)
 const recalledSession = ref<MemorySession | null>(null)
 /** Bumped when the narrow conversations drawer closes without a new recall, to replay chat pop-in. */
 const chatReplayKey = ref(0)
-/** Bumped by "+ New chat" so a live thread is cleared even when nothing was recalled. */
+/** Bumped by the New chat button so a live thread is cleared even when nothing was recalled. */
 const newChatKey = ref(0)
 const queryClient = useQueryClient()
 
@@ -146,18 +146,39 @@ onBeforeUnmount(() => {
 
         <header class="side-head side-head-convos">
           <h2 class="side-title">Conversations</h2>
-          <button
-            type="button"
-            class="btn ghost small"
-            data-testid="new-chat-btn"
-            title="New chat"
-            :disabled="!selectedAgent?.name"
-            @click="onNewChat"
-          >
-            + New chat
-          </button>
+          <div class="side-actions">
+            <button
+              type="button"
+              class="icon-btn"
+              data-testid="chat-stats-btn"
+              aria-label="Chat stats"
+              title="Chat stats"
+              @click="showStats = true"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 20V10" />
+                <path d="M10 20V4" />
+                <path d="M16 20v-7" />
+                <path d="M22 20H2" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="icon-btn"
+              data-testid="new-chat-btn"
+              aria-label="New chat"
+              title="New chat"
+              :disabled="!selectedAgent?.name"
+              @click="onNewChat"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 5v14" />
+                <path d="M5 12h14" />
+              </svg>
+            </button>
+          </div>
         </header>
-        <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" :new-chat-key="newChatKey" @recall="onRecall" @stats="showStats = true" />
+        <AgentMemory :agent="selectedAgent" :refresh-key="refreshKey" :new-chat-key="newChatKey" @recall="onRecall" />
       </aside>
 
       <section class="main">
@@ -189,7 +210,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .shell {
   height: 100vh;
-  height: 100dvh;
+  height: var(--app-height, 100dvh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -201,7 +222,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr);
+  grid-template-columns: minmax(17rem, 22rem) minmax(0, 1fr);
   width: 100%;
 }
 
@@ -231,19 +252,35 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 0.5rem;
 }
-.side-head-convos {
-  margin-top: 0.5rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border);
+.side-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
 }
-/* Matches the uppercase section labels used across the app. */
+.side-actions .icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  color: var(--muted);
+  background: transparent;
+}
 .side-title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.side-head-convos {
+  margin-top: 0.25rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
 }
 .side-toggle {
   display: none;
@@ -280,12 +317,14 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 .chat-col {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -326,7 +365,7 @@ onBeforeUnmount(() => {
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(20rem, calc(100% - 2.75rem));
+    width: min(22rem, calc(100% - 2.75rem));
     background: var(--bg);
     transform: translateX(-105%);
     visibility: hidden;

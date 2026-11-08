@@ -8,5 +8,68 @@
         "X-Access-Token": "{env:SCAN_API_KEY}"
       }
     }
+  },
+  "providers": {
+    "litellm": {
+      "name": "LiteLLM",
+      "env": ["LITELLM_API_KEY"],
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://gtwo.fly.dev/v1",
+        "apiKey": "{file:~/.config/opencode/litellm-opencode-key}"
+      },
+      "models": {
+        "openrouter-auto": {
+          "name": "OpenRouter Auto",
+          "modelID": "openrouter/auto"
+        },
+        "openrouter-capped": {
+          "name": "OpenRouter Auto (max 2048 tokens)",
+          "modelID": "openrouter/capped"
+        },
+        "openrouter-free-north-code": {
+          "name": "Free: Cohere North Mini Code",
+          "modelID": "openrouter/free-north-code"
+        },
+        "openrouter-free-nemotron-lightning": {
+          "name": "Free: NVIDIA Nemotron 3.5 Lightning",
+          "modelID": "openrouter/free-nemotron-lightning"
+        },
+        "openrouter-free-nemotron-super-vl": {
+          "name": "Free: NVIDIA Nemotron 3.5 Super VL",
+          "modelID": "openrouter/free-nemotron-super-vl"
+        },
+        "go-deepseek-v4.1-flash": {
+          "name": "DeepSeek V4.1 Flash",
+          "modelID": "opencode-go/deepseek-v4.1-flash",
+          "limit": { "context": 1000000, "output": 384000 }
+        },
+        "go-glm-5.3-flash": {
+          "name": "GLM-5.3-Flash",
+          "modelID": "opencode-go/glm-5.3-flash",
+          "limit": { "context": 1000000, "output": 131072 }
+        },
+        "go-claude-haiku-5-5": {
+          "name": "Claude Haiku 5.5",
+          "modelID": "opencode-go/claude-haiku-5-5",
+          "limit": { "context": 1000000, "output": 128000 }
+        },
+        "go-beam-free": {
+          "name": "Beam Free",
+          "modelID": "opencode-go/beam-free",
+          "limit": { "context": 1048576, "output": 131072 }
+        },
+        "go-iceman-contributor-free": {
+          "name": "Iceman Contributor Free",
+          "modelID": "opencode-go/iceman-contributor-free",
+          "limit": { "context": 262144, "output": 131072 }
+        },
+        "opencode-deepseek-v4.1-flash-free": {
+          "name": "DeepSeek V4.1 Flash Free",
+          "modelID": "opencode/deepseek-v4.1-flash-free",
+          "limit": { "context": 200000, "output": 32000 }
+        }
+      }
+    }
   }
 }

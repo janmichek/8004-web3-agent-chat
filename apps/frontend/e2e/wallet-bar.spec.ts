@@ -8,6 +8,7 @@ test.describe("wallet bar (Web3Auth sign-in)", () => {
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
     await expect(page.locator("header .addr")).toHaveCount(0);
     await expect(page.locator("header .balance")).toHaveCount(0);
+    await expect(page.getByTestId("theme-toggle")).toHaveCount(0);
   });
 
   test("sign-in CTA is enabled and clickable when disconnected", async ({ page }) => {

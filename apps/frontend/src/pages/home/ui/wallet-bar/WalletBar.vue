@@ -6,23 +6,18 @@ import { formatEther } from 'viem'
 import { ensureChain, getInjectedChainId } from '@/shared/lib'
 import { setThemePreference, themePreference, type ThemePreference } from '@/shared/lib'
 import { SUPPORTED_NETWORKS, findNetwork, isSupportedChain } from '@/shared/config'
+import { UserIcon } from '@/shared/ui'
 
 const wagmiConfig = useConfig()
 const { address, chainId: accountChainId, status: accountStatus } = useAccount()
 const { isInitialized, initError } = useWeb3Auth()
-const {
-  connect,
-  isConnected,
-  loading: connectLoading,
-  error: connectError,
-} = useWeb3AuthConnect()
+const { connect, isConnected, loading: connectLoading } = useWeb3AuthConnect()
 const { disconnect, loading: disconnectLoading } = useWeb3AuthDisconnect()
 const { switchChain } = useSwitchChain()
 
 const signInDisabled = computed(
   () => connectLoading.value || !isInitialized.value || !!initError.value,
 )
-const authError = computed(() => initError.value ?? connectError.value)
 
 const showAccount = computed(() => isConnected.value && !!address.value)
 
@@ -205,10 +200,24 @@ async function onChainPicked(event: Event) {
     <div class="brand">
       <div class="brand-mark">
         <slot name="menu" />
-        <img class="mark" src="/logo-light.svg" alt="Web3 Agent Chat logo" width="32" height="32" />
+        <svg
+          class="mark"
+          viewBox="0 0 32 32"
+          role="img"
+          aria-label="W3AC logo"
+          fill="none"
+        >
+          <path
+            d="M6.5 9.5 12 22.5 16 13.5 20 22.5 25.5 9.5"
+            stroke="currentColor"
+            stroke-width="1.3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
       </div>
       <div>
-        <p class="name">Web3 Agent Chat</p>
+        <p class="name">W3AC</p>
       </div>
     </div>
 
@@ -226,16 +235,7 @@ async function onChainPicked(event: Event) {
             @click="toggleMenu"
           >
             <span class="person-wrap" aria-hidden="true">
-              <svg class="person-icon" viewBox="0 0 24 24" focusable="false">
-                <circle cx="12" cy="8" r="3.25" fill="none" stroke="currentColor" stroke-width="1.75" />
-                <path
-                  d="M5.5 19.25c.9-3.2 3.1-4.75 6.5-4.75s5.6 1.55 6.5 4.75"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.75"
-                  stroke-linecap="round"
-                />
-              </svg>
+              <UserIcon class="person-icon" />
             </span>
             <span class="addr mono">{{ shortAddress }}</span>
             <svg class="chevron" :class="{ open: menuOpen }" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -341,40 +341,27 @@ async function onChainPicked(event: Event) {
         </div>
       </template>
       <template v-else>
-        <div class="theme-options theme-options-compact" role="group" data-testid="theme-toggle" :aria-label="themeLabel">
-          <button
-            v-for="opt in THEME_OPTIONS"
-            :key="opt.value"
-            type="button"
-            class="btn ghost theme-btn"
-            :class="{ active: themePreference === opt.value }"
-            :aria-pressed="themePreference === opt.value"
-            :aria-label="opt.label"
-            :title="opt.label"
-            :data-testid="`theme-${opt.value}`"
-            @click="setThemePreference(opt.value)"
-          >
-            <span aria-hidden="true">{{ opt.icon }}</span>
-            <span class="theme-btn-label">{{ opt.label }}</span>
-          </button>
-        </div>
         <span v-if="authPending" class="auth-skeleton" aria-hidden="true" />
         <button
           v-else
           type="button"
-          class="btn primary"
+          class="btn ghost account-btn sign-in-btn"
           :disabled="signInDisabled"
           @click="onSignIn"
         >
-          {{
-            connectLoading
-              ? 'Signing in…'
-              : initError
-                ? 'Sign in unavailable'
-                : 'Sign in'
-          }}
+          <span class="person-wrap" aria-hidden="true">
+            <UserIcon class="person-icon" />
+          </span>
+          <span class="sign-in-label">
+            {{
+              connectLoading
+                ? 'Signing in…'
+                : initError
+                  ? 'Sign in unavailable'
+                  : 'Sign in'
+            }}
+          </span>
         </button>
-        <p v-if="authError" class="auth-error">{{ authError.message }}</p>
       </template>
     </div>
   </header>

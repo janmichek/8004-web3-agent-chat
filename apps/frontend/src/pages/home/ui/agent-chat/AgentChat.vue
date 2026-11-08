@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { chatWithAgent, extractSuccessfulTxHash, type AgentSummary, type ChatEvent, type MemorySession } from '@/shared/api'
@@ -49,6 +49,15 @@ const busy = ref(false)
 const bubbles = ref<Bubble[]>([])
 const scroller = ref<HTMLElement | null>(null)
 const animEpoch = ref(0)
+
+/**
+ * The dock holds the composer once the hero is gone: after the first bubble,
+ * or when there is no agent yet (disabled, with the "select an agent" hint).
+ * Keeping it mounted means the input never disappears from the bottom.
+ */
+const showDock = computed(
+  () => bubbles.value.length > 0 || (!!props.agentsLoaded && !resolvedName()),
+)
 
 watch(
   () => props.replayKey,
@@ -272,7 +281,7 @@ async function scrollBottom() {
       </div>
     </div>
 
-    <div v-if="bubbles.length" class="dock">
+    <div v-if="showDock" class="dock">
       <ChatComposer
         v-model="input"
         :placeholder="resolvedName() ? 'Message the agent…' : 'Select an agent first…'"
@@ -286,8 +295,11 @@ async function scrollBottom() {
 
 <style scoped>
 .chat {
-  display: flex;
-  flex-direction: column;
+  /* Grid instead of flex: the thread row absorbs all leftover height and the
+     dock row is always the last thing in the box, so the composer can never
+     float above empty space (or get pushed off-screen) as bubbles arrive. */
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   flex: 1;
   min-height: 0;
   border: 1px solid var(--border);
@@ -297,7 +309,7 @@ async function scrollBottom() {
 }
 
 .thread {
-  flex: 1;
+  grid-row: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
@@ -397,6 +409,7 @@ async function scrollBottom() {
 }
 
 .dock {
+  grid-row: 2;
   flex: none;
   padding-top: 0.15rem;
 }

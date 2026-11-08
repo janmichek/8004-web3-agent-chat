@@ -1,6 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- Lightning bolt in a light disc : fast agent actions : dark surface variant for tab / dark UI -->
-  <rect width="32" height="32" rx="8" fill="#0F1720"/>
-  <circle cx="16" cy="16" r="10.5" fill="#EEF3F8"/>
-  <path d="M17.6 6.8L10.6 17.2H15.2L14.2 25.2L21.4 14.8H16.8Z" fill="#10B981" stroke="#10B981" stroke-width="0.8" stroke-linejoin="round"/>
+  <!-- Thin single-line W mark : dark surfaces -->
+  <path
+    d="M6.5 9.5 12 22.5 16 13.5 20 22.5 25.5 9.5"
+    stroke="#28A0F0"
+    stroke-width="1.3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
 </svg>

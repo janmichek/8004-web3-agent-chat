@@ -33,7 +33,9 @@ watch(value, () => void nextTick(resize))
 watch(
   () => props.busy,
   (busy, wasBusy) => {
-    if (wasBusy && !busy) void nextTick(() => field.value?.focus())
+    // preventScroll: focusing the composer must never scroll the document,
+    // which would slide the app (and its header) off the top of the viewport.
+    if (wasBusy && !busy) void nextTick(() => field.value?.focus({ preventScroll: true }))
   },
 )
 
