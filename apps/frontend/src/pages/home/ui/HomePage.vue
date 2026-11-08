@@ -144,7 +144,7 @@ onBeforeUnmount(() => {
           @loaded="agentsLoaded = true"
         />
 
-        <header class="side-head side-head-convos">
+        <header class="side-head">
           <h2 class="side-title">Conversations</h2>
           <div class="side-actions">
             <button
@@ -276,11 +276,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.side-head-convos {
-  margin-top: 0.25rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--border);
 }
 .side-toggle {
   display: none;
