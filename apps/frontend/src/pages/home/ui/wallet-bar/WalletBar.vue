@@ -200,25 +200,9 @@ async function onChainPicked(event: Event) {
     <div class="brand">
       <div class="brand-mark">
         <slot name="menu" />
-        <svg
-          class="mark"
-          viewBox="0 0 32 32"
-          role="img"
-          aria-label="W3AC logo"
-          fill="none"
-        >
-          <path
-            d="M6.5 9.5 12 22.5 16 13.5 20 22.5 25.5 9.5"
-            stroke="currentColor"
-            stroke-width="1.3"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <span class="mark" role="img" aria-label="W3AC logo"></span>
       </div>
-      <div>
-        <p class="name">W3AC</p>
-      </div>
+      <span class="wordmark" aria-hidden="true" />
     </div>
 
     <div class="actions">

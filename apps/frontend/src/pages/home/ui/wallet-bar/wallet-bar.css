@@ -39,22 +39,21 @@
   transition: transform 0.35s var(--ease-spring);
   width: 2rem;
   height: 2rem;
-  color: var(--accent);
+  background-color: var(--accent);
+  -webkit-mask: url("/logo-mark.svg") center / contain no-repeat;
+  mask: url("/logo-mark.svg") center / contain no-repeat;
   display: block;
   flex-shrink: 0;
-  overflow: visible;
 }
 
-.name {
-  margin: 0;
-  color: var(--accent);
-  font-family: var(--font-brand);
-  font-weight: 300;
-  font-size: 1.65rem;
-  line-height: 1;
-  letter-spacing: 0.01em;
-  font-variant-numeric: lining-nums;
-  font-feature-settings: "lnum" 1;
+.wordmark {
+  display: block;
+  height: 2rem;
+  aspect-ratio: 80.07 / 32;
+  flex-shrink: 0;
+  background-color: var(--accent);
+  -webkit-mask: url("/logo-wordmark.svg") center / contain no-repeat;
+  mask: url("/logo-wordmark.svg") center / contain no-repeat;
 }
 
 .auth-skeleton {

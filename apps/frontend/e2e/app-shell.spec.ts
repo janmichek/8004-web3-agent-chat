@@ -6,7 +6,7 @@ test.describe("app shell", () => {
   test("brand header + sign-in CTA render when disconnected", async ({ page }) => {
     await setupOffline(page, {});
     await gotoWithAgent(page);
-    await expect(page.getByText("W3AC")).toBeVisible();
+    await expect(page.getByRole("img", { name: "W3AC logo" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Sign in/ })).toBeVisible();
   });
 
