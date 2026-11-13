@@ -56,6 +56,9 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  /* `clip` (where supported) also blocks programmatic scrolling, so a stray
+     focus()/scrollIntoView can never nudge the app off-screen. */
+  overflow: clip;
 }
 
 body {
@@ -198,8 +201,15 @@ textarea:focus {
 }
 
 #app {
-  height: 100vh;
-  height: 100dvh;
+  /* --app-height/--app-offset are kept in sync with visualViewport (see
+     main.ts). They are more reliable than 100dvh, which can stay stale after
+     the viewport changes, and they also follow a panned visual viewport so the
+     shell never ends above the visible bottom. */
+  position: fixed;
+  top: var(--app-offset, 0px);
+  right: 0;
+  left: 0;
+  height: var(--app-height, 100dvh);
   overflow: hidden;
 }
 

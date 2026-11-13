@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, useId } from 'vue'
 import { scanUrlForAgent, type AgentSummary } from '@/shared/api'
 import { addressExplorerUrl, networkInfo } from '@/shared/config'
 
 type CardAgent = Pick<
   AgentSummary,
-  'name' | 'description' | 'image' | 'agentId' | 'walletAddress' | 'walletChainId'
+  | 'name'
+  | 'description'
+  | 'image'
+  | 'agentId'
+  | 'walletAddress'
+  | 'walletChainId'
+  | 'owners'
+  | 'creator'
 >
 
 const props = defineProps<{
   agent: CardAgent
-  /** Pre-formatted wallet balance, e.g. "0.002 ETH". Hidden when omitted. */
-  balance?: string
   /** Badge in the header; the green seal on the avatar only shows for "live". */
   status?: 'live' | 'draft'
   /** Turns name, description and image into inputs (create flow, step 1). */
@@ -35,6 +40,7 @@ const emit = defineEmits<{
 }>()
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const imageInputId = useId()
 const dragging = ref(false)
 
 const avatarUrl = computed(() => props.agent.image || '')
@@ -49,9 +55,8 @@ const initials = computed(() => {
 
 const networkName = computed(() => networkInfo(props.agent.walletChainId).name)
 
-function shorten(address?: string) {
-  return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : ''
-}
+const ownerAddress = computed(() => props.owner ?? props.agent.owners?.[0])
+const creatorAddress = computed(() => props.creator ?? props.agent.creator)
 
 const walletAddress = computed(() => props.agent.walletAddress ?? '')
 const shortWallet = computed(() => {
@@ -77,7 +82,15 @@ const scanUrl = computed(() =>
 )
 
 function pickImage() {
-  fileInput.value?.click()
+  const input = fileInput.value
+  if (!input) return
+  // showPicker() is the spec'd way to open the OS dialog from a user gesture;
+  // fall back to click() where it is missing or blocked.
+  try {
+    input.showPicker()
+  } catch {
+    input.click()
+  }
 }
 
 function onFileChosen(event: Event) {
@@ -113,9 +126,10 @@ function onDescriptionInput(event: Event) {
     </header>
 
     <div class="issued-body">
-      <div
+      <label
         class="issued-avatar"
         :class="{ photo: !!avatarUrl, pick: editable, dragging }"
+        :for="editable ? imageInputId : undefined"
         :data-testid="
           editable ? (avatarUrl ? 'create-image-preview' : 'create-image-dropzone') : undefined
         "
@@ -123,8 +137,8 @@ function onDescriptionInput(event: Event) {
         :tabindex="editable ? 0 : undefined"
         :aria-label="editable ? (avatarUrl ? 'Change agent image' : 'Add agent image') : undefined"
         :aria-busy="editable && imageStatus === 'uploading' ? 'true' : undefined"
-        @click="editable && pickImage()"
         @keydown.enter.prevent="editable && pickImage()"
+        @keydown.space.prevent="editable && pickImage()"
         @dragover.prevent="editable && (dragging = true)"
         @dragleave.prevent="dragging = false"
         @drop.prevent="editable && onDrop($event)"
@@ -162,12 +176,13 @@ function onDescriptionInput(event: Event) {
           aria-label="Remove image"
           title="Remove image"
           data-testid="create-image-remove"
-          @click.stop="emit('image-removed')"
+          @click.stop.prevent="emit('image-removed')"
         >
           ✕
         </button>
         <input
           v-if="editable"
+          :id="imageInputId"
           ref="fileInput"
           type="file"
           accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
@@ -176,7 +191,7 @@ function onDescriptionInput(event: Event) {
           @click.stop
           @change="onFileChosen"
         />
-      </div>
+      </label>
 
       <div class="issued-info">
         <template v-if="editable">
@@ -244,16 +259,30 @@ function onDescriptionInput(event: Event) {
       </div>
     </div>
 
-    <dl v-if="owner || creator" class="issued-people">
-      <div v-if="owner">
+    <dl class="issued-people">
+      <div>
         <dt class="mini-label">Owner</dt>
-        <dd class="mono" :title="owner" data-testid="create-owner-address">{{ owner }}</dd>
-      </div>
-      <div v-if="creator">
-        <dt class="mini-label">Creator</dt>
-        <dd class="mono" :title="creator" data-testid="create-creator-address">
-          {{ shorten(creator) }}
+        <dd
+          v-if="ownerAddress"
+          class="mono"
+          :title="ownerAddress"
+          data-testid="create-owner-address"
+        >
+          {{ ownerAddress }}
         </dd>
+        <dd v-else class="mono empty">—</dd>
+      </div>
+      <div>
+        <dt class="mini-label">Creator</dt>
+        <dd
+          v-if="creatorAddress"
+          class="mono"
+          :title="creatorAddress"
+          data-testid="create-creator-address"
+        >
+          {{ creatorAddress }}
+        </dd>
+        <dd v-else class="mono empty">—</dd>
       </div>
     </dl>
 
@@ -283,10 +312,6 @@ function onDescriptionInput(event: Event) {
       </a>
     </footer>
   </article>
-  <div v-if="balance" class="issued-balance mono" data-testid="agent-card-balance">
-    {{ balance }}
-  </div>
-  <span v-if="balance" class="visually-hidden" data-testid="agent-balance">{{ balance }}</span>
   </div>
 </template>
 
@@ -480,11 +505,6 @@ function onDescriptionInput(event: Event) {
   color: var(--muted);
 }
 
-.issued-balance {
-  font-size: 0.78rem;
-  color: var(--ink);
-}
-
 .issued-desc {
   display: -webkit-box;
   margin: 0.2rem 0 0;
@@ -648,18 +668,20 @@ function onDescriptionInput(event: Event) {
 .issued-name-input,
 .issued-desc-input {
   display: block;
-  width: 100%;
-  margin: 0;
-  border: 0;
-  border-bottom: 1px solid color-mix(in oklab, var(--accent) 45%, var(--border));
-  border-radius: 0;
+  width: calc(100% + 0.9rem);
+  margin: 0 0 0 -0.45rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
   background: transparent;
   color: var(--ink);
-  transition: border-color 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .issued-name-input {
-  padding: 0 0 0.1rem;
   font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 700;
@@ -668,24 +690,30 @@ function onDescriptionInput(event: Event) {
 }
 
 .issued-desc-input {
-  margin-top: 0.2rem;
-  padding: 0;
+  min-height: 2.3rem;
+  margin-top: 0.15rem;
   resize: none;
   font: inherit;
   font-size: 0.79rem;
   line-height: 1.45;
 }
 
+.issued-name-input::placeholder,
+.issued-desc-input::placeholder {
+  color: color-mix(in oklab, var(--muted) 78%, transparent);
+}
+
 .issued-name-input:hover,
 .issued-desc-input:hover {
-  border-bottom-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 7%, transparent);
 }
 
 .issued-name-input:focus,
 .issued-desc-input:focus {
   outline: none;
-  border-bottom-color: var(--accent);
-  box-shadow: none;
+  background: var(--bg);
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 .issued-name-input::placeholder,
@@ -724,6 +752,10 @@ function onDescriptionInput(event: Event) {
   color: var(--ink);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.issued-people dd.empty {
+  color: var(--muted);
 }
 
 .image-status {

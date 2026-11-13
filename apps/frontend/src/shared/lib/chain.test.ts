@@ -18,7 +18,7 @@ vi.mock('viem', async (orig) => ({
   http: (url: string) => url,
 }))
 
-import { ensureChain, getInjectedChainId, prepareNativeTransfer } from './chain'
+import { ensureChain, getInjectedChainId, getWalletChainId, prepareNativeTransfer } from './chain'
 
 const config = {} as Config
 const ARB_SEPOLIA = 421614
@@ -39,6 +39,31 @@ describe('getInjectedChainId', () => {
     vi.stubGlobal('window', { ethereum: { request } })
     expect(await getInjectedChainId()).toBe(ARB_SEPOLIA)
     expect(request).toHaveBeenCalledWith({ method: 'eth_chainId' })
+  })
+})
+
+describe('getWalletChainId', () => {
+  it('reads the live chain from the connected connector', async () => {
+    const getChainId = vi.fn().mockResolvedValue(1)
+    wagmi.getAccount.mockReturnValue({ chainId: ARB_SEPOLIA, connector: { getChainId } })
+    vi.stubGlobal('window', { ethereum: { request: vi.fn().mockResolvedValue('0x1') } })
+    expect(await getWalletChainId(config)).toBe(1)
+    expect(getChainId).toHaveBeenCalled()
+  })
+
+  it('falls back to the injected provider without a connector', async () => {
+    wagmi.getAccount.mockReturnValue({ chainId: ARB_SEPOLIA })
+    vi.stubGlobal('window', { ethereum: { request: vi.fn().mockResolvedValue('0x1') } })
+    expect(await getWalletChainId(config)).toBe(1)
+  })
+
+  it('falls back to the injected chain when the connector refuses', async () => {
+    wagmi.getAccount.mockReturnValue({
+      chainId: ARB_SEPOLIA,
+      connector: { getChainId: vi.fn().mockRejectedValue(new Error('nope')) },
+    })
+    vi.stubGlobal('window', { ethereum: { request: vi.fn().mockResolvedValue('0x66eee') } })
+    expect(await getWalletChainId(config)).toBe(ARB_SEPOLIA)
   })
 })
 
@@ -101,6 +126,17 @@ describe('ensureChain', () => {
     )
   })
 
+  it('switches when wagmi reports the target but the wallet is elsewhere', async () => {
+    // Web3Auth pins an unsupported provider chain to `chains[0]`; the provider
+    // still reports mainnet, so ensureChain must not trust the cached id.
+    const getChainId = vi.fn().mockResolvedValueOnce(1).mockResolvedValue(ARB_SEPOLIA)
+    wagmi.getAccount.mockReturnValue({ chainId: ARB_SEPOLIA, connector: { getChainId } })
+    wagmi.switchChain.mockResolvedValue(undefined)
+    await ensureChain(config, ARB_SEPOLIA)
+    expect(wagmi.switchChain).toHaveBeenCalledWith(config, { chainId: ARB_SEPOLIA })
+    expect(getChainId).toHaveBeenCalledTimes(2)
+  })
+
   it('throws a readable error when the wallet stays on another chain', async () => {
     wagmi.getAccount.mockReturnValue({ chainId: 1 })
     wagmi.switchChain.mockRejectedValue(new Error('nope'))
@@ -112,9 +148,9 @@ describe('ensureChain', () => {
     wagmi.getAccount.mockReturnValue({ chainId: undefined })
     wagmi.switchChain.mockResolvedValue(undefined)
     wagmi.getWalletClient.mockResolvedValue(undefined)
-    vi.stubGlobal('window', {
-      ethereum: { request: vi.fn().mockResolvedValue('0x66eee') },
-    })
+    const request = vi.fn().mockResolvedValueOnce('0x1').mockResolvedValue('0x66eee')
+    vi.stubGlobal('window', { ethereum: { request } })
     await expect(ensureChain(config, ARB_SEPOLIA)).resolves.toBeUndefined()
+    expect(wagmi.switchChain).toHaveBeenCalledWith(config, { chainId: ARB_SEPOLIA })
   })
 })

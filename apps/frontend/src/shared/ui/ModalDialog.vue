@@ -8,6 +8,8 @@ const props = defineProps<{
   label?: string
   size?: 'md' | 'lg'
   headless?: boolean
+  /** Hide the top bar; pair with `label` for the accessible name. */
+  hideHeader?: boolean
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -30,7 +32,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         aria-modal="true"
         :aria-label="props.label ?? props.title"
       >
-        <header v-if="!props.headless" class="dialog-head">
+        <header v-if="!props.headless && !props.hideHeader" class="dialog-head">
           <h2>{{ props.title }}</h2>
           <button type="button" class="dialog-close" aria-label="Close" data-testid="dialog-close" @click="emit('close')">
             ✕
@@ -39,6 +41,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         <div class="dialog-body" :class="{ headless: props.headless }">
           <slot />
         </div>
+        <footer v-if="$slots.footer" class="dialog-foot">
+          <slot name="footer" />
+        </footer>
       </div>
     </div>
   </Teleport>
@@ -114,6 +119,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   min-height: 0;
   overflow-y: auto;
   padding: 1.1rem;
+}
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.85rem 1.1rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 /* headless dialogs (wizard) fill the dialog and manage their own padding/scroll */
 .dialog-body.headless {

@@ -10,6 +10,34 @@
       content="web3Agent creates AI agents with their own wallets on Arbitrum, Ethereum, or Mantle, registers them on ERC-8004, and lets you chat with them over the web, MCP and A2A."
     />
     <meta name="robots" content="index, follow" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <style>
+      /* Canvas color before the app CSS loads, so a reload never flashes white. */
+      html {
+        background: #0b1218;
+      }
+      html[data-theme="light"] {
+        background: #f4f7fa;
+      }
+    </style>
+    <script>
+      // Apply the stored theme before first paint so reloads never flash the
+      // wrong palette (keep in sync with shared/lib/theme.ts).
+      (() => {
+        try {
+          const saved = localStorage.getItem("theme");
+          const pref = saved === "light" || saved === "dark" ? saved : "auto";
+          const light =
+            pref === "light" ||
+            (pref === "auto" && window.matchMedia("(prefers-color-scheme: light)").matches);
+          document.documentElement.dataset.theme = light ? "light" : "dark";
+        } catch {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="web3Agent" />
     <meta
@@ -36,7 +64,8 @@
     </script>
   </head>
   <body>
-    <div id="app">
+    <div id="app"></div>
+    <noscript>
       <main>
         <h1>web3Agent</h1>
         <p>
@@ -64,7 +93,7 @@
           Experimental. Not for production or real funds.
         </p>
       </main>
-    </div>
+    </noscript>
     <script type="module" src="/src/app/main.ts"></script>
   </body>
 </html>

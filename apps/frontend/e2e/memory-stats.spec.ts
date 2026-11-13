@@ -33,18 +33,18 @@ test.describe("agent memory (conversations)", () => {
     await expect(card).toHaveClass(/selected/);
   });
 
-  test("+ New chat clears the recalled thread", async ({ page }) => {
+  test("New chat clears the recalled thread", async ({ page }) => {
     await setupOffline(page, { memory: sessionMemory() });
     await gotoWithAgent(page);
     await openConversations(page);
     await page.locator(".session-card").first().click();
     await expect(page.getByTestId("chat-bubble-user")).toHaveCount(1);
-    await page.getByRole("button", { name: "+ New chat" }).click();
+    await page.getByTestId("new-chat-btn").click();
     await expect(page.getByTestId("chat-bubble-user")).toHaveCount(0);
     await expect(page.getByTestId("chat-empty")).toBeVisible();
   });
 
-  test("+ New chat clears a live thread that was never recalled", async ({ page }) => {
+  test("New chat clears a live thread that was never recalled", async ({ page }) => {
     await setupOffline(page, {
       memory: sessionMemory(),
       chat: { reply: "live reply", events: [{ type: "message", content: "live reply" }] },
@@ -54,7 +54,7 @@ test.describe("agent memory (conversations)", () => {
     await page.getByTestId("chat-input").press("Enter");
     await expect(page.getByTestId("chat-bubble-user")).toHaveCount(1);
     await openConversations(page);
-    await page.getByRole("button", { name: "+ New chat" }).click();
+    await page.getByTestId("new-chat-btn").click();
     await expect(page.getByTestId("chat-bubble-user")).toHaveCount(0);
     await expect(page.getByTestId("chat-empty")).toBeVisible();
   });

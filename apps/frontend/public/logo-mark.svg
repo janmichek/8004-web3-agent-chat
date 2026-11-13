@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <!-- Hexagonal speech bubble with three agent nodes, cut out with a mask.
+       Used as a CSS mask, so the fill only needs to be opaque. -->
+  <mask id="logo-mark-cutouts" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+    <rect width="32" height="32" fill="#fff" />
+    <circle cx="10.4" cy="15" r="2" fill="#000" />
+    <circle cx="16" cy="15" r="2" fill="#000" />
+    <circle cx="21.6" cy="15" r="2" fill="#000" />
+  </mask>
+  <path
+    d="M8.2 3.2H23.8a2.4 2.4 0 0 1 2.1 1.3l4 10.2a2.4 2.4 0 0 1 0 2.6l-4 10.2a2.4 2.4 0 0 1-2.1 1.3H15.5L11 31.4V28.8H8.2a2.4 2.4 0 0 1-2.1-1.3L2.1 17.3a2.4 2.4 0 0 1 0-2.6l4-10.2a2.4 2.4 0 0 1 2.1-1.3Z"
+    fill="#fff"
+    mask="url(#logo-mark-cutouts)"
+  />
+</svg>

@@ -3,26 +3,21 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, unref, watch } fro
 import { useAccount, useBalance, useConfig, useSwitchChain } from '@wagmi/vue'
 import { useWeb3Auth, useWeb3AuthConnect, useWeb3AuthDisconnect } from '@web3auth/modal/vue'
 import { formatEther } from 'viem'
-import { ensureChain, getInjectedChainId } from '@/shared/lib'
+import { ensureChain, getWalletChainId } from '@/shared/lib'
 import { setThemePreference, themePreference, type ThemePreference } from '@/shared/lib'
 import { SUPPORTED_NETWORKS, findNetwork, isSupportedChain } from '@/shared/config'
+import { UserIcon } from '@/shared/ui'
 
 const wagmiConfig = useConfig()
-const { address, chainId: accountChainId, status: accountStatus } = useAccount()
+const { address, chainId: accountChainId, connector, status: accountStatus } = useAccount()
 const { isInitialized, initError } = useWeb3Auth()
-const {
-  connect,
-  isConnected,
-  loading: connectLoading,
-  error: connectError,
-} = useWeb3AuthConnect()
+const { connect, isConnected, loading: connectLoading } = useWeb3AuthConnect()
 const { disconnect, loading: disconnectLoading } = useWeb3AuthDisconnect()
 const { switchChain } = useSwitchChain()
 
 const signInDisabled = computed(
   () => connectLoading.value || !isInitialized.value || !!initError.value,
 )
-const authError = computed(() => initError.value ?? connectError.value)
 
 const showAccount = computed(() => isConnected.value && !!address.value)
 
@@ -43,6 +38,7 @@ const menuOpen = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
 const faucetCopied = ref(false)
 let faucetTimer: ReturnType<typeof setTimeout> | undefined
+let offChainChange: (() => void) | undefined
 
 async function refreshWalletChain() {
   if (!isConnected.value) {
@@ -50,7 +46,7 @@ async function refreshWalletChain() {
     return
   }
   try {
-    walletChainId.value = await getInjectedChainId()
+    walletChainId.value = await getWalletChainId(wagmiConfig)
   } catch {
     walletChainId.value = accountChainId.value
   }
@@ -64,6 +60,25 @@ watch(isConnected, (connected) => {
   if (!connected) menuOpen.value = false
 })
 
+function onChainChange() {
+  void refreshWalletChain()
+}
+
+/** Listen to the live `chainChanged` event; wagmi's cached id can stay stale. */
+function bindChainListener() {
+  offChainChange?.()
+  const active = connector.value
+  if (!active) {
+    offChainChange = undefined
+    return
+  }
+  active.emitter.on('change', onChainChange)
+  offChainChange = () => active.emitter.off('change', onChainChange)
+  void refreshWalletChain()
+}
+
+watch(connector, bindChainListener, { immediate: true })
+
 onMounted(() => {
   void refreshWalletChain()
   document.addEventListener('pointerdown', onDocPointerDown)
@@ -71,6 +86,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  offChainChange?.()
   document.removeEventListener('pointerdown', onDocPointerDown)
   document.removeEventListener('keydown', onDocKeydown)
   if (faucetTimer) clearTimeout(faucetTimer)
@@ -135,13 +151,19 @@ const themeLabel = computed(
 
 const wrongNetwork = computed(() => isConnected.value && !isSupportedChain(activeChainId.value))
 
-const eth = useBalance({ address: address })
+const eth = useBalance({
+  address,
+  chainId: activeChainId,
+  query: { enabled: computed(() => isSupportedChain(activeChainId.value) && !!address.value) },
+})
+const nativeSymbol = computed(() => activeNetwork.value?.nativeCurrency?.symbol ?? 'ETH')
 const ethDisplay = computed(() => {
   if (!isConnected.value || !address.value) return null
+  if (!isSupportedChain(activeChainId.value)) return null
   if (unref(eth.isFetching) && unref(eth.data) === undefined) return '…'
   const d = unref(eth.data)
   if (d?.value === undefined) return null
-  return `${Number(formatEther(d.value)).toPrecision(5)} ETH`
+  return `${Number(formatEther(d.value)).toPrecision(5)} ${nativeSymbol.value}`
 })
 
 async function onSignIn() {
@@ -205,11 +227,9 @@ async function onChainPicked(event: Event) {
     <div class="brand">
       <div class="brand-mark">
         <slot name="menu" />
-        <img class="mark" src="/logo-light.svg" alt="Web3 Agent Chat logo" width="32" height="32" />
+        <span class="mark" role="img" aria-label="W3AC logo"></span>
       </div>
-      <div>
-        <p class="name">Web3 Agent Chat</p>
-      </div>
+      <span class="wordmark" aria-hidden="true" />
     </div>
 
     <div class="actions">
@@ -226,16 +246,7 @@ async function onChainPicked(event: Event) {
             @click="toggleMenu"
           >
             <span class="person-wrap" aria-hidden="true">
-              <svg class="person-icon" viewBox="0 0 24 24" focusable="false">
-                <circle cx="12" cy="8" r="3.25" fill="none" stroke="currentColor" stroke-width="1.75" />
-                <path
-                  d="M5.5 19.25c.9-3.2 3.1-4.75 6.5-4.75s5.6 1.55 6.5 4.75"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.75"
-                  stroke-linecap="round"
-                />
-              </svg>
+              <UserIcon class="person-icon" />
             </span>
             <span class="addr mono">{{ shortAddress }}</span>
             <svg class="chevron" :class="{ open: menuOpen }" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -259,7 +270,6 @@ async function onChainPicked(event: Event) {
             <div class="panel-hero">
               <p class="panel-kicker">Balance</p>
               <p class="panel-balance mono">{{ ethDisplay ?? '—' }}</p>
-              <p class="panel-network" :class="{ warn: wrongNetwork }">{{ chainLabel }}</p>
             </div>
 
             <div class="panel-body">
@@ -341,40 +351,27 @@ async function onChainPicked(event: Event) {
         </div>
       </template>
       <template v-else>
-        <div class="theme-options theme-options-compact" role="group" data-testid="theme-toggle" :aria-label="themeLabel">
-          <button
-            v-for="opt in THEME_OPTIONS"
-            :key="opt.value"
-            type="button"
-            class="btn ghost theme-btn"
-            :class="{ active: themePreference === opt.value }"
-            :aria-pressed="themePreference === opt.value"
-            :aria-label="opt.label"
-            :title="opt.label"
-            :data-testid="`theme-${opt.value}`"
-            @click="setThemePreference(opt.value)"
-          >
-            <span aria-hidden="true">{{ opt.icon }}</span>
-            <span class="theme-btn-label">{{ opt.label }}</span>
-          </button>
-        </div>
         <span v-if="authPending" class="auth-skeleton" aria-hidden="true" />
         <button
           v-else
           type="button"
-          class="btn primary"
+          class="btn ghost account-btn sign-in-btn"
           :disabled="signInDisabled"
           @click="onSignIn"
         >
-          {{
-            connectLoading
-              ? 'Signing in…'
-              : initError
-                ? 'Sign in unavailable'
-                : 'Sign in'
-          }}
+          <span class="person-wrap" aria-hidden="true">
+            <UserIcon class="person-icon" />
+          </span>
+          <span class="sign-in-label">
+            {{
+              connectLoading
+                ? 'Signing in…'
+                : initError
+                  ? 'Sign in unavailable'
+                  : 'Sign in'
+            }}
+          </span>
         </button>
-        <p v-if="authError" class="auth-error">{{ authError.message }}</p>
       </template>
     </div>
   </header>

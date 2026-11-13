@@ -314,6 +314,7 @@ async function main(): Promise<void> {
     endpoints,
     trustModels: [],
     owners: [masterWallet.address],
+    creator: masterWallet.address,
     operators: [agentWallet.address],
     active: true,
     x402support,

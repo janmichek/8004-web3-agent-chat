@@ -32,6 +32,33 @@ export async function getInjectedChainId(): Promise<number | undefined> {
   return Number.parseInt(hex, 16);
 }
 
+/**
+ * Chain id of the *connected* wallet, read from the live provider.
+ *
+ * Wagmi's cached `chainId` is not trustworthy here: Web3Auth pins any provider
+ * chain outside its configured list to `chains[0]`, so a wallet sitting on
+ * mainnet looks like it is already on Arbitrum Sepolia. `window.ethereum` is
+ * also unreliable, because it can belong to a different extension than the
+ * connected wallet. Ask the connector's provider instead.
+ */
+export async function getWalletChainId(config?: Config): Promise<number | undefined> {
+  const account = config ? getAccount(config) : undefined;
+  if (account?.connector) {
+    try {
+      return await account.connector.getChainId();
+    } catch {
+      // Provider refused to answer; fall back below.
+    }
+  }
+  try {
+    const injected = await getInjectedChainId();
+    if (injected != null) return injected;
+  } catch {
+    // Injected provider unavailable or refused too.
+  }
+  return account?.chainId;
+}
+
 /** Same-origin proxy for in-page viem calls (Vite → API → the chain's RPC). */
 function appRpcUrl(chainId: number): string {
   return `${window.location.origin}/api/rpc?chainId=${chainId}`;
@@ -126,7 +153,10 @@ async function addChainViaWallet(config: Config, chainId: number): Promise<void>
  * Adds the chain if missing, then verifies chain id against wagmi state.
  */
 export async function ensureChain(config: Config, chainId: number): Promise<void> {
-  if (getAccount(config).chainId === chainId) return;
+  // Compare against the provider's chain, not wagmi's cached one: Web3Auth
+  // rewrites unsupported provider chains to `chains[0]`, which would make this
+  // return early and leave the wallet on the wrong network.
+  if ((await getWalletChainId(config)) === chainId) return;
 
   try {
     await switchChain(config, { chainId });
@@ -139,7 +169,7 @@ export async function ensureChain(config: Config, chainId: number): Promise<void
     }
   }
 
-  let after = getAccount(config).chainId;
+  let after = await getWalletChainId(config);
   if (after !== chainId) {
     const client = await getWalletClient(config);
     if (client) {
@@ -153,12 +183,7 @@ export async function ensureChain(config: Config, chainId: number): Promise<void
         }
       }
     }
-    after = getAccount(config).chainId;
-  }
-
-  // Fall back to injected ethereum only for verification when wagmi has no chainId.
-  if (after == null) {
-    after = await getInjectedChainId();
+    after = await getWalletChainId(config);
   }
 
   if (after !== chainId) {

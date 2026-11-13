@@ -481,22 +481,11 @@
   border-color: color-mix(in oklab, var(--accent) 38%, var(--border));
 }
 
-.env-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
-  align-items: start;
-}
-
 .env-col {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   min-width: 0;
-}
-
-.env-col .group-label {
-  margin-bottom: 0.1rem;
 }
 
 .field.row-card {
@@ -562,6 +551,10 @@
   font-family: var(--font-display);
   font-size: 0.95rem;
   font-weight: 600;
+}
+
+.panel-head > .count-pill:only-child {
+  margin-left: auto;
 }
 
 .count-pill {
@@ -1031,7 +1024,6 @@
 }
 
 @media (max-width: 620px) {
-  .env-grid,
   .ability-grid,
   .oasf-grid {
     grid-template-columns: 1fr;

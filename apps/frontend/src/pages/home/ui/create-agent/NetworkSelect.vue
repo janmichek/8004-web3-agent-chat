@@ -258,7 +258,7 @@ onBeforeUnmount(() => {
 
 .network-select.compact {
   width: fit-content;
-  min-width: 11rem;
+  min-width: 0;
 }
 
 .compact .trigger {

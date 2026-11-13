@@ -197,6 +197,7 @@ export async function createAgentHandler(c: Context) {
     endpoints: endpoints as AgentConfig["endpoints"],
     trustModels: [],
     owners: [owner],
+    creator: masterWallet.address,
     operators: [agentWallet.address],
     active,
     x402support,

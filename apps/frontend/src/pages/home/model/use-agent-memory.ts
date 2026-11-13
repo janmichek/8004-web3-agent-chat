@@ -1,4 +1,4 @@
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { fetchMemory, type AgentSummary, type MemorySummary } from "@/shared/api";
 
 /**
@@ -12,6 +12,13 @@ export function useAgentMemory(
   const memory = ref<MemorySummary | null>(null);
   const loading = ref(false);
   const error = ref("");
+
+  /** Sessions ordered newest first, so the freshest conversation is on top. */
+  const sessions = computed(() =>
+    [...(memory.value?.sessions ?? [])].sort(
+      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    ),
+  );
 
   async function load() {
     const name = agent()?.name;
@@ -37,5 +44,5 @@ export function useAgentMemory(
     void load();
   });
 
-  return { memory, loading, error, load };
+  return { memory, sessions, loading, error, load };
 }

@@ -39,24 +39,21 @@
   transition: transform 0.35s var(--ease-spring);
   width: 2rem;
   height: 2rem;
-  border-radius: 0.4rem;
-  object-fit: contain;
+  background-color: var(--accent);
+  -webkit-mask: url("/logo-mark.svg") center / contain no-repeat;
+  mask: url("/logo-mark.svg") center / contain no-repeat;
   display: block;
   flex-shrink: 0;
 }
 
-.name {
-  margin: 0;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.05rem;
-  letter-spacing: -0.02em;
-}
-
-.theme-btn {
-  padding: 0.45rem 0.65rem;
-  line-height: 1;
+.wordmark {
+  display: block;
+  height: 2rem;
+  aspect-ratio: 80.07 / 32;
+  flex-shrink: 0;
+  background-color: var(--accent);
+  -webkit-mask: url("/logo-wordmark.svg") center / contain no-repeat;
+  mask: url("/logo-wordmark.svg") center / contain no-repeat;
 }
 
 .auth-skeleton {
@@ -108,6 +105,17 @@
   background: var(--surface-2);
   border-color: color-mix(in oklab, var(--accent) 45%, var(--border));
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.sign-in-btn {
+  padding-right: 0.85rem;
+}
+
+.sign-in-label {
+  font-size: 0.84rem;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .person-wrap {
@@ -221,16 +229,6 @@
   font-weight: 500;
   color: var(--ink);
   letter-spacing: -0.02em;
-}
-
-.panel-network {
-  margin: 0.35rem 0 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.panel-network.warn {
-  color: var(--warn);
 }
 
 .panel-body {
@@ -367,10 +365,10 @@
 }
 
 .theme-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
   width: 100%;
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--border);
@@ -382,7 +380,8 @@
 }
 
 .theme-options {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: center;
   gap: 0.2rem;
   padding: 0.15rem;
@@ -394,6 +393,7 @@
 .theme-option {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.3rem;
   margin: 0;
   padding: 0.3rem 0.55rem;
@@ -418,27 +418,6 @@
 }
 
 .theme-option.active {
-  color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 14%, transparent);
-}
-
-.theme-options-compact {
-  gap: 0.25rem;
-  padding: 0.2rem;
-}
-
-.theme-options-compact .theme-btn {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-}
-
-.theme-options-compact .theme-btn:hover {
-  color: var(--ink);
-  background: var(--surface-2);
-}
-
-.theme-options-compact .theme-btn.active {
   color: var(--accent);
   background: color-mix(in oklab, var(--accent) 14%, transparent);
 }
@@ -479,18 +458,8 @@
   justify-content: center;
 }
 
-.auth-error {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--danger, #c0392b);
-  max-width: 16rem;
-}
-
 @media (max-width: 640px) {
   .bar {
     padding: 0.85rem 1rem;
-  }
-  .theme-btn-label {
-    display: none;
   }
 }

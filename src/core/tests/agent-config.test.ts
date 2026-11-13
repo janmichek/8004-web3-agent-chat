@@ -189,6 +189,11 @@ describe('parseAgentConfig', () => {
     expect(parsed).not.toBe(cfg)
   })
 
+  it('keeps the optional creator address', () => {
+    const creator = '0x0000000000000000000000000000000000000001'
+    expect(parseAgentConfig({ ...config(), creator }).creator).toBe(creator)
+  })
+
   it('drops unknown top-level keys but keeps extra metadata', () => {
     const parsed = parseAgentConfig({
       ...config({ oasfSkills: ['602'] }),

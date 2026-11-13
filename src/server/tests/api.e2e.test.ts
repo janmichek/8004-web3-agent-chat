@@ -313,6 +313,12 @@ describe('API offline e2e', () => {
     })
     expect(res.status).toBe(201)
     expect(fundAgentWallet).not.toHaveBeenCalled()
+
+    const saved = JSON.parse(
+      fs.readFileSync(path.join('/tmp/web3agent-test-agents', name, 'agent-config.json'), 'utf-8'),
+    ) as { creator?: string }
+    // The signer (master wallet) is the on-chain creator; the connected wallet owns the NFT.
+    expect(saved.creator).toBe('0x0000000000000000000000000000000000000001')
   })
 
   it('POST /api/upload/image validates backend + payload without pinning', async () => {

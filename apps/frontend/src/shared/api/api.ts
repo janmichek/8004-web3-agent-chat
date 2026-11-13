@@ -10,6 +10,8 @@ export type AgentSummary = {
   agentId?: string;
   agentURI?: string;
   owners?: string[];
+  /** Wallet that signed the on-chain registration (the initial NFT owner). */
+  creator?: string;
   operators?: string[];
   actions: string[];
   tools: string[];
